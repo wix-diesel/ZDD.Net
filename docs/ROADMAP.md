@@ -32,7 +32,8 @@ Core レイヤは下から積むため、序盤の PR は `internal` のコー�
 - [ ] 再帰していないか（§PLAN 4.5 — 深い ZDD でスタックオーバーフロー即死）
 - [ ] hot path でアロケーションしていないか
 - [ ] `IDdSpec` を interface 型で受けていないか（struct ジェネリック制約になっているか）
-- [ ] `netstandard2.0` でビルドが通るか（モダン API を無条件に使っていないか）
+- [ ] `netstandard2.0` でビルドが通るか（`Span`/`ArrayPool`/`HashCode` を無条件に使っていないか）
+- [ ] `PackageReference` を増やしていないか（**外部依存ゼロが方針**）
 - [ ] 総当たり照合テストが追加されているか
 
 ---
@@ -41,9 +42,10 @@ Core レイヤは下から積むため、序盤の PR は `internal` のコー�
 
 | ID | タイトル | 内容 | 受け入れ条件 | 目安 | 依存 |
 |---|---|---|---|---|---|
-| **M0-1** | ソリューション骨格と共通ビルド設定 | `ZDD.Net.sln`、`src/ZDD.Net`（ns2.0+net10）、`tests/ZDD.Net.Tests`（xUnit）、`Directory.Build.props`、`Directory.Packages.props`、`.editorconfig`、`InternalsVisibleTo` | 両 TFM でビルド成功、ダミーテスト 1 本が通る | 設定のみ | — |
-| **M0-2** | CI ワークフロー | GitHub Actions: ubuntu/windows × 全 TFM の build + test、カバレッジ収集、PR テンプレート | PR で CI が回りグリーン | 設定のみ | M0-1 |
-| **M0-3** | 内部ユーティリティ（polyfill） | `Internal/BitOps`（`Log2`/`PopCount`/`RoundUpPow2`）、`Internal/Hashing`（64bit mix・FNV）、`Internal/NullableAttributes`、`Internal/ThrowHelper` | 単体テスト。ns2.0/net10 で同一結果 | 〜250 | M0-1 |
+| **M0-1** | ソリューション骨格と共通ビルド設定 | `ZDD.Net.sln`、`src/ZDD.Net`（`netstandard2.0;net8.0`）、`tests/ZDD.Net.Tests`（xUnit）、`Directory.Build.props`、`Directory.Packages.props`、`.editorconfig`、`InternalsVisibleTo` | 両 TFM でビルド成功、ダミーテスト 1 本が通る | 設定のみ | — |
+| **M0-2** | 開発環境セットアップ | `scripts/setup-dev-env.sh`（`apt-get install dotnet-sdk-8.0`）、`.claude/settings.json` の SessionStart フック、`global.json` | 新規セッションで `dotnet build` が通る | 設定のみ | M0-1 |
+| **M0-3** | CI ワークフロー | GitHub Actions: ubuntu/windows × 全 TFM の build + test、カバレッジ収集、PR テンプレート（レビュー観点チェックリスト入り） | PR で CI が回りグリーン | 設定のみ | M0-1 |
+| **M0-4** | 内部ユーティリティ（polyfill） | `Internal/BitOps`（`Log2`/`PopCount`/`RoundUpPow2`）、`Internal/Hashing`（64bit mix・FNV）、`Internal/SimpleArrayPool`、`Internal/NullableAttributes`、`Internal/ThrowHelper` | 単体テスト。**ns2.0/net8 で同一結果**（`#if NET` 分岐の等価性テスト） | 〜250 | M0-1 |
 
 ---
 
@@ -51,7 +53,7 @@ Core レイヤは下から積むため、序盤の PR は `internal` のコー�
 
 | ID | タイトル | 内容 | 受け入れ条件 | 目安 | 依存 |
 |---|---|---|---|---|---|
-| **M1-1** | ノード表 | `ZddNode` struct、ノード配列、倍化リサイズ、終端 ID(0/1) の予約 | 100 万ノード追加の単体テスト、リサイズ境界のテスト | 〜200 | M0-3 |
+| **M1-1** | ノード表 | `ZddNode` struct、ノード配列、倍化リサイズ、終端 ID(0/1) の予約、**2^31 到達時の明示的例外** | 100 万ノード追加の単体テスト、リサイズ境界のテスト | 〜200 | M0-4 |
 | **M1-2** | 一意化表 | オープンアドレス法ハッシュ表、`GetNode(level,lo,hi)`（**ゼロサプレス規則 `hi==0 → lo` をここで適用**）、負荷率 0.7 で倍化 | 同一 (level,lo,hi) が同一 ID を返す。衝突多発ケースのテスト | 〜250 | M1-1 |
 | **M1-3** | `ZddManager` / `Zdd` の骨格 | 公開型、`Empty`/`Base`/`Singleton(item)`、`Level`↔`Item` 変換、等値比較、`NodeCount`、`Support` | `Singleton` の組合せで簡単な族が作れる | 〜250 | M1-2 |
 | **M1-4** | 演算キャッシュ | direct-mapped lossy cache、キー生成、サイズ自動調整、ヒット率統計 | キャッシュ有無で結果が一致すること（乱数テスト） | 〜200 | M1-2 |
@@ -87,45 +89,47 @@ Core レイヤは下から積むため、序盤の PR は `internal` のコー�
 | **M2-8** | s–t 単純パス | `PathSpec(s,t)`（mate 配列）、`allowAnyEndpoints` | **OEIS A007764 と一致**（〜7×7 を CI、8×8 以上は手動） | 〜300 | M2-5, M2-7 |
 | **M2-9** | 全域木・全域森 | `SpanningTreeSpec` / `ForestSpec`（comp 配列の正準化） | **行列木定理で独立計算した値と一致** | 〜300 | M2-8 |
 | **M2-10** | マッチング | `MatchingSpec(perfect:)` | bitmask DP のパーマネント計算と一致 | 〜200 | M2-9 |
-| **M2-11** | 進捗・診断・ベンチ | `IProgress` 通知、フロンティア幅のログ、`bench/ZDD.Net.Benchmarks` の初版 | ベンチが実行でき、基準値が `docs/benchmarks.md` に記録される | 〜250 | M2-10 |
+| **M2-11** | 進捗・診断・ベンチ基準値 | `IProgress` 通知、フロンティア幅のログ、`bench/ZDD.Net.Benchmarks` の初版、**代表 10 ケースの基準値を記録**（以降の PR が改善率を数値で示せるようにする） | ベンチが実行でき、基準値が `docs/benchmarks.md` に記録される | 〜250 | M2-10 |
 | **M2-12** | v0.2 リリース | ドキュメント、CHANGELOG、タグ | — | ドキュメント | M2-11 |
 
 ---
 
-## M3: スペック拡充と高レベル API（v0.3）
+## M3: 数千辺への対応と高レベル API（v0.3）
+
+> **優先順位の根拠**: 用途が「経路列挙・数え上げ＋汎用の組合せ数え上げ」、規模が「数千辺」と確定したため、
+> 当初 M4 に置いていた **辺順序最適化と状態の bit-packing を M3 に前倒し**した。
+> 数千辺ではフロンティア幅が支配的で、これらが無いと実用に届かない。
+> 逆に、分割・カット・シュタイナー・彩色は用途外なので M4 に後送りした。
 
 | ID | タイトル | 内容 | 受け入れ条件 | 目安 | 依存 |
 |---|---|---|---|---|---|
-| **M3-1** | 連結部分グラフ | `ConnectedSubgraphSpec(terminals)` | 小グラフで総当たり照合 | 〜300 | M2-12 |
-| **M3-2** | シュタイナー木 | `SteinerTreeSpec` | 既知の最小シュタイナー木と一致 | 〜250 | M3-1 |
-| **M3-3** | 次数制約 | `DegreeConstraintSpec(lo[], hi[])` | マッチング・パスを次数制約で再現できる | 〜250 | M2-12 |
-| **M3-4** | サイクル・ハミルトン | `CycleSpec` / `HamiltonianPathSpec` / `HamiltonianCycleSpec` | 既知の値（完全グラフ・Petersen）と一致 | 〜300 | M3-3 |
-| **M3-5** | 分割・カット | `GraphPartitionSpec(k, balance)` / `CutSpec(s,t)` | 小グラフで総当たり照合 | 〜350 | M3-1 |
+| **M3-1** | 辺順序（基本） | `EdgeOrderStrategy.Bfs/Dfs/Grid`、`Graph.Optimize()`、`EstimateMaxFrontierSize()` の実用化 | 数千辺の実グラフでフロンティア幅が既定順より改善 | 〜250 | M2-12 |
+| **M3-2** | フロンティア状態の bit-packing | 状態を `byte`/`short`/ビットフィールドに圧縮、状態表のインライン格納 | **メモリ 50% 以上削減、結果は不変**（M2 のテストが全て通る） | 〜350 | M3-1 |
+| **M3-3** | 辺順序（ビームサーチ） | パス幅近似最小化。幅の見積りに基づく探索 | 主要ベンチで M3-1 比 20% 以上の改善 | 〜350 | M3-2 |
+| **M3-4** | サイクル・ハミルトン | `CycleSpec`（単一／複数）、`HamiltonianPathSpec`、`HamiltonianCycleSpec` | 完全グラフ・Petersen グラフの既知値と一致 | 〜300 | M2-12 |
+| **M3-5** | スペック合成 | `spec.And(other)` / `.Or(other)`、`zdd.Subset(spec)`（ZddSubsetting） | 「パス かつ 辺数 ≤ k」が直接構築でき、事後フィルタと結果一致。中間 ZDD が小さいこと | 〜300 | M3-4 |
 | **M3-6** | 頂点系スペック | `IndependentSetSpec` / `CliqueSpec` / `VertexCoverSpec` / `DominatingSetSpec` | 素朴 DP と一致 | 〜350 | M2-12 |
-| **M3-7** | 彩色・オートマトン | `ColoringSpec(k)` / `DfaSpec` | 彩色多項式と一致 | 〜300 | M3-6 |
-| **M3-8** | スペック合成 | `spec.And(other)` / `.Or(other)`、`zdd.Subset(spec)`（ZddSubsetting） | 「パス かつ 辺数 ≤ k」が直接構築でき、事後フィルタと結果一致 | 〜300 | M3-4 |
-| **M3-9** | `SetSet<T>` | 任意要素型の族ラッパ、要素 ↔ 変数のマッピング、LINQ 連携 | 文字列要素の族で一通り動く | 〜300 | M2-12 |
-| **M3-10** | `GraphSet` | `Paths`/`Cycles`/`Trees`/`Forests`/`Matchings`/`Cliques`、`Including`/`Excluding`/`Larger`/`Smaller`、`MinIter`/`MaxIter`/`RandIter` | Graphillion のチュートリアル相当のシナリオが再現できる | 〜400 | M3-9, M3-8 |
-| **M3-11** | グラフ入出力 | DIMACS / エッジリスト / 簡易 JSON の読み書き | ラウンドトリップ | 〜200 | M3-10 |
-| **M3-12** | v0.3 リリース | ドキュメント、チュートリアル、CHANGELOG | — | ドキュメント | M3-11 |
+| **M3-7** | 次数制約 | `DegreeConstraintSpec(lo[], hi[])` | マッチング・パスを次数制約で再現でき、結果が一致 | 〜250 | M3-4 |
+| **M3-8** | `SetSet<T>` | 任意要素型の族ラッパ、要素 ↔ 変数のマッピング、LINQ 連携 | 文字列要素の族で一通り動く | 〜300 | M2-12 |
+| **M3-9** | `GraphSet` | `Paths`/`Cycles`/`Trees`/`Forests`/`Matchings`、`Including`/`Excluding`/`Larger`/`Smaller`、`MinIter`/`MaxIter`/`RandIter` | Graphillion のチュートリアル相当のシナリオが再現できる | 〜400 | M3-8, M3-5 |
+| **M3-10** | グラフ入出力 | DIMACS / エッジリスト / 簡易テキストの読み書き | ラウンドトリップ。数千辺の実データを読み込める | 〜200 | M3-9 |
+| **M3-11** | v0.3 リリース | ドキュメント、チュートリアル、CHANGELOG | **数千辺の実グラフで経路数え上げが完走する** | ドキュメント | M3-10 |
 
 ---
 
-## M4: 性能（v0.4）
+## M4: 性能と残りのスペック（v0.4）
 
 | ID | タイトル | 内容 | 受け入れ条件 | 目安 | 依存 |
 |---|---|---|---|---|---|
-| **M4-1** | ベンチ基準値の確立 | 代表 10 ケースのベンチ、`docs/benchmarks.md` に基準値を記録、回帰検出スクリプト | 以降の PR が改善率を数値で示せる | 〜200 | M3-12 |
-| **M4-2** | 辺順序（基本） | `EdgeOrderStrategy.Bfs/Dfs/Grid`、`Graph.Optimize()` | 格子・実グラフでフロンティア幅が改善 | 〜250 | M4-1 |
-| **M4-3** | 辺順序（ビームサーチ） | パス幅近似最小化 | 主要ベンチで M4-2 比 20% 以上の改善 | 〜350 | M4-2 |
-| **M4-4** | 状態の bit-packing | フロンティア状態を `byte`/`short`/ビットフィールドに圧縮 | メモリ 50% 削減、結果不変 | 〜300 | M4-1 |
-| **M4-5** | キャッシュ調整 | サイズ自動調整、キー分布の改善、ヒット率の計測 | 代表ベンチで 10% 以上改善 | 〜200 | M4-1 |
-| **M4-6** | net10 高速パス | `Span`/`ref`/`Unsafe`/`Intrinsics` による `#if NET` 実装 | ns2.0 と結果一致、net10 で改善 | 〜300 | M4-4 |
-| **M4-7** | 並列フロンティア構築 | レベル内展開の `Parallel.For` 化、パーティション別状態表 | **決定的な結果**（並列でもノード ID が一致）、4 コアで 2.5 倍以上 | 〜400 | M4-4 |
-| **M4-8** | 比較レポート | Graphillion / TdZdd との比較を `docs/benchmarks.md` に記載 | 目標（3 倍以内）の達否を明記 | ドキュメント | M4-7 |
+| **M4-1** | キャッシュ調整 | 演算キャッシュのサイズ自動調整、キー分布の改善、ヒット率の計測 | 代表ベンチで 10% 以上改善 | 〜200 | M3-11 |
+| **M4-2** | net8 高速パス | `Span`/`ref`/`Unsafe`/`Intrinsics` による `#if NET` 実装 | **ns2.0 と結果が完全一致**、net8 で改善 | 〜300 | M4-1 |
+| **M4-3** | 並列フロンティア構築 | レベル内展開の `Parallel.For` 化、パーティション別状態表 | **決定的な結果**（並列でもノード ID が一致）、4 コアで 2.5 倍以上 | 〜400 | M4-2 |
+| **M4-4** | 連結部分グラフ | `ConnectedSubgraphSpec(terminals)` | 小グラフで総当たり照合 | 〜300 | M3-11 |
+| **M4-5** | シュタイナー木 | `SteinerTreeSpec` | 既知の最小シュタイナー木と一致 | 〜250 | M4-4 |
+| **M4-6** | 分割・カット | `GraphPartitionSpec(k, balance)` / `CutSpec(s,t)` | 小グラフで総当たり照合 | 〜350 | M4-4 |
+| **M4-7** | 彩色・オートマトン | `ColoringSpec(k)` / `DfaSpec` | 彩色多項式と一致 | 〜300 | M3-11 |
+| **M4-8** | 比較レポート | Graphillion / TdZdd との比較を `docs/benchmarks.md` に記載 | 目標（3 倍以内）の達否を明記 | ドキュメント | M4-3 |
 | **M4-9** | v0.4 リリース | — | — | ドキュメント | M4-8 |
-
----
 
 ## M5: I/O・メモリ管理（v0.5）
 
@@ -157,10 +161,10 @@ Core レイヤは下から積むため、序盤の PR は `internal` のコー�
 
 | マイルストーン | PR 数 | 目安期間 |
 |---|---|---|
-| M0 | 3 | 2〜3 日 |
+| M0 | 4 | 2〜3 日 |
 | M1 (v0.1) | 17 | 2〜3 週 |
 | M2 (v0.2) | 12 | 2〜3 週 |
-| M3 (v0.3) | 12 | 3 週 |
+| M3 (v0.3) | 11 | 3 週 |
 | M4 (v0.4) | 9 | 3 週 |
 | M5 (v0.5) | 7 | 2 週 |
 | M6 (v1.0) | 5 | 1〜2 週 |
