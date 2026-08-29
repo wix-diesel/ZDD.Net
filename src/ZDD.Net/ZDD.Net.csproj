@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!--
+      netstandard2.0 carries the full feature set (.NET Framework 4.6.1+, Unity, Mono).
+      net8.0 exists only so that #if NET fast paths can use Span/Intrinsics/BitOperations.
+      Consumers on .NET 10 resolve the net8.0 asset, which is fully compatible.
+      See docs/PLAN.md section 2.
+    -->
+    <TargetFrameworks>netstandard2.0;net8.0</TargetFrameworks>
+    <RootNamespace>ZDD.Net</RootNamespace>
+    <AssemblyName>ZDD.Net</AssemblyName>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IsPackable>true</IsPackable>
+    <PackageId>ZDD.Net</PackageId>
+    <Description>Zero-suppressed decision diagrams and frontier-based search, implemented natively in C# with no external dependencies.</Description>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net8.0'">
+    <IsAotCompatible>true</IsAotCompatible>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="ZDD.Net.Tests" />
+    <InternalsVisibleTo Include="ZDD.Net.Tests.NetStandard" />
+    <InternalsVisibleTo Include="ZDD.Net.Benchmarks" />
+  </ItemGroup>
+
+</Project>
