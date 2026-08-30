@@ -242,6 +242,94 @@ namespace ZDD.Net.Core
         internal Zdd OffSet(in Zdd f, int item) => ApplyUnary(ZddOperation.OffSet, f, item, nameof(f));
 
         /// <summary>
+        /// <paramref name="items"/> の有無をまとめて反転した族を返す（<see cref="Change"/> の一般化）。
+        /// </summary>
+        /// <param name="f">対象の族。このマネージャに属していなければならない。</param>
+        /// <param name="items">反転する item index の並び。空なら <paramref name="f"/> がそのまま返る。</param>
+        /// <remarks>
+        /// <see cref="Change"/> を順に掛けるだけ。<see cref="Change"/> はどの item についても対合
+        /// （2 回で元に戻る）で、item どうしの順序も結果に影響しないので、
+        /// 同じ item を 2 度渡すと反転が打ち消し合う。
+        /// 範囲検査は 1 つでも外れていれば<b>何も計算する前に</b>済ませる。
+        /// </remarks>
+        internal Zdd Flip(in Zdd f, ReadOnlySpan<int> items)
+        {
+            EnsureOwns(f, nameof(f));
+
+            // 途中まで反転してから例外にすると、呼び出し側から見て何が起きたのか分からない。
+            // 欲しいのはレベルではなく範囲検査そのものなので、結果は捨てる。
+            foreach (int item in items)
+            {
+                _ = LevelOf(item);
+            }
+
+            // 破棄済みならここで ObjectDisposedException になる（表もキャッシュも触るため）。
+            TuneCache();
+
+            int result = f.Id;
+
+            foreach (int item in items)
+            {
+                result = UnaryOperations.Apply(this, ZddOperation.Change, result, item);
+            }
+
+            return new Zdd(this, result);
+        }
+
+        /// <summary>包含関係で極大な要素だけを残した族を返す。</summary>
+        /// <param name="f">対象の族。このマネージャに属していなければならない。</param>
+        internal Zdd Maximal(in Zdd f) => ApplyExtremal(ZddOperation.Maximal, f);
+
+        /// <summary>包含関係で極小な要素だけを残した族を返す。</summary>
+        /// <param name="f">対象の族。このマネージャに属していなければならない。</param>
+        internal Zdd Minimal(in Zdd f) => ApplyExtremal(ZddOperation.Minimal, f);
+
+        /// <summary><paramref name="f"/> のどの要素とも交わる集合をすべて集めた族を返す。</summary>
+        /// <param name="f">対象の族。このマネージャに属していなければならない。</param>
+        internal Zdd HittingSets(in Zdd f) => ApplyExtremal(ZddOperation.HittingSets, f);
+
+        /// <summary>補 <c>2^U ∖ f</c>（<c>U</c> はこのマネージャの全変数）を返す。</summary>
+        /// <param name="f">対象の族。このマネージャに属していなければならない。</param>
+        internal Zdd Complement(in Zdd f) => ApplyExtremal(ZddOperation.Complement, f);
+
+        /// <summary>
+        /// 全体集合の冪集合 <c>2^U</c>（<see cref="VariableCount"/> 個の item の全部分集合）の根ノード ID。
+        /// </summary>
+        /// <remarks>
+        /// どの item も「入れても入れなくてもよい」ので、各レベルで 0-枝と 1-枝が同じ族を指す。
+        /// ノードは変数の個数ぶんだけで、族としての大きさ（2^n 個の集合）とは無関係に小さい。
+        /// <see cref="ZddOperation.Quotient"/>（<c>f / ∅</c>）と <see cref="ZddOperation.Complement"/> が
+        /// 同じ全体集合を指すように、組み立てはここ 1 箇所に置く。
+        /// </remarks>
+        /// <exception cref="ObjectDisposedException">このマネージャが破棄済みの場合。</exception>
+        internal int PowerSetRoot()
+        {
+            UniqueTable table = Table;
+            int result = NodeTable.Top;
+
+            for (int level = 1; level <= _variableCount; level++)
+            {
+                result = table.GetNode(level, result, result);
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// item を取らない単項演算の共通の入口。所有マネージャの一致を確かめ、キャッシュを整えてから
+        /// <see cref="ExtremalOperations.Apply"/> に渡す。
+        /// </summary>
+        private Zdd ApplyExtremal(ZddOperation op, in Zdd f)
+        {
+            EnsureOwns(f, nameof(f));
+
+            // 破棄済みならここで ObjectDisposedException になる（表もキャッシュも触るため）。
+            TuneCache();
+
+            return new Zdd(this, ExtremalOperations.Apply(this, op, f.Id));
+        }
+
+        /// <summary>
         /// 単項演算の共通の入口。所有マネージャの一致を確かめ、キャッシュを整えてから
         /// <see cref="UnaryOperations.Apply"/> に渡す。<paramref name="item"/> の範囲検査は
         /// その中の <see cref="LevelOf"/> が行う。

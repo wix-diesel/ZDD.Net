@@ -252,7 +252,7 @@ namespace ZDD.Net.Core
         {
             if (gRoot == NodeTable.Bottom)
             {
-                return PowerSet(manager);
+                return manager.PowerSetRoot();
             }
 
             UniqueTable table = manager.Table;
@@ -484,26 +484,6 @@ namespace ZDD.Net.Core
         /// </summary>
         private static int Combine(ZddManager manager, ZddOperation op, int f, int g) =>
             BinaryOperations.Apply(manager, op, f, g);
-
-        /// <summary>
-        /// 全体集合の冪集合 <c>2^U</c>（<see cref="ZddManager.VariableCount"/> 個の item の全部分集合）。
-        /// </summary>
-        /// <remarks>
-        /// どの item も「入れても入れなくてもよい」ので、各レベルで 0-枝と 1-枝が同じ族を指す。
-        /// ノードは変数の個数ぶんだけで、族としての大きさ（2^n 個の集合）とは無関係に小さい。
-        /// </remarks>
-        private static int PowerSet(ZddManager manager)
-        {
-            UniqueTable table = manager.Table;
-            int result = NodeTable.Top;
-
-            for (int level = 1; level <= manager.VariableCount; level++)
-            {
-                result = table.GetNode(level, result, result);
-            }
-
-            return result;
-        }
 
         private static ArgumentOutOfRangeException Unsupported(ZddOperation op) =>
             new ArgumentOutOfRangeException(
