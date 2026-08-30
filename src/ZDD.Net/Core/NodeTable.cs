@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using ZDD.Net.Internal;
@@ -22,6 +23,23 @@ namespace ZDD.Net.Core
     /// <para>
     /// 設計方針（docs/PLAN.md §4.1・§10）: <c>List&lt;T&gt;</c> や <c>Dictionary</c> を使わず生の配列で持つ、
     /// レベルごとに表を分割せず全体で 1 本にする、ID は <c>int</c> のままとし 64bit ID 版は作らない。
+    /// </para>
+    /// <para>
+    /// <b>不変条件</b>: <c>FirstNodeId &lt;= _count &lt;= _nodes.Length</c> が常に成り立つ。
+    /// <see cref="Unsafe.Add{T}(ref T, nint)"/> で配列の境界チェックを省く箇所は、
+    /// <c>id &lt; _count</c> を確認済みであることと、この不変条件だけを根拠に成立している。
+    /// <see cref="Grow"/> は配列を先に差し替えてから <c>_count</c> を進めるため、
+    /// 途中で不変条件が破れる瞬間は無い。<c>_count</c> を触る変更を入れるときは
+    /// この不変条件を必ず保つこと（デバッグビルドでは <see cref="Debug.Assert(bool)"/> が番人になる）。
+    /// </para>
+    /// <para>
+    /// <b>スレッド安全性</b>: この型は<b>スレッドセーフではない</b>。同一インスタンスへの
+    /// <see cref="Add"/> と読み出しを複数スレッドから並行に行ってはならない。
+    /// 上記の境界チェック省略は単一スレッド実行を前提としており、並行実行では
+    /// 「新しい <c>_count</c> と古い <c>_nodes</c>」を観測してヒープ破壊に至り得る
+    /// （通常の配列アクセスなら例外で済むところが、未定義動作になる）。
+    /// 並列フロンティア構築（docs/PLAN.md §10-8, v0.4）を入れる際は、
+    /// スレッドごとに別インスタンスを持つか、この省略自体を見直すこと。
     /// </para>
     /// </remarks>
     internal sealed class NodeTable
@@ -144,6 +162,8 @@ namespace ZDD.Net.Core
                 }
 
                 // 上で範囲を確認済みなので、配列アクセスの境界チェックを重ねて払わない（PLAN §10-3）。
+                // 安全性は不変条件 _count <= _nodes.Length に依存する（型の remarks 参照）。
+                Debug.Assert((uint)id < (uint)_nodes.Length, "node id must be within the backing array");
                 return ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_nodes), (nint)(uint)id);
             }
         }
@@ -166,11 +186,15 @@ namespace ZDD.Net.Core
             ValidateNewNode(level, lo, hi);
 
             int id = _count;
-            if (id == _nodes.Length)
+
+            // 不変条件より等号でしか成立しないが、万一 _count が先走った場合でも
+            // 境界外書き込みにならないよう >= で受ける。
+            if (id >= _nodes.Length)
             {
                 Grow();
             }
 
+            Debug.Assert((uint)id < (uint)_nodes.Length, "the grown array must have room for the new node");
             ref ZddNode node = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_nodes), (nint)(uint)id);
             node.Level = level;
             node.Lo = lo;
@@ -225,6 +249,8 @@ namespace ZDD.Net.Core
 
             int newCapacity = capacity <= _capacityLimit / 2 ? capacity * 2 : _capacityLimit;
 
+            // ZddNode は参照型フィールドを持たないため、未初期化のまま確保しても
+            // GC が追跡すべき値は生じない（参照を含む型なら、この API でもゼロ初期化される）。
             ZddNode[] grown = GC.AllocateUninitializedArray<ZddNode>(newCapacity);
             Array.Copy(_nodes, grown, capacity);
             _nodes = grown;
