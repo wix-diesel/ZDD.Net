@@ -30,7 +30,7 @@ jobs:
         run: dotnet restore ZDD.Net.sln
 
       - name: ビルド
-        run: dotnet build ZDD.Net.sln --no-restore --configuration Release -f ${{ matrix.tfm }}
+        run: dotnet build ZDD.Net.sln --no-restore --configuration Release
 
       - name: テスト
         run: >
@@ -38,7 +38,6 @@ jobs:
           --no-restore
           --no-build
           --configuration Release
-          -f ${{ matrix.tfm }}
           --collect:"XPlat Code Coverage"
           --results-directory ./coverage
           --logger trx
