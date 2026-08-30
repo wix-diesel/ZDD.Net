@@ -35,8 +35,12 @@ namespace ZDD.Net.Core
     /// <para>
     /// <b>破棄</b>: <see cref="Dispose"/> はノード表と一意化表への参照を手放し、GC が回収できるようにする。
     /// アンマネージドな資源は持たないので、破棄を忘れてもリークはしない
-    /// （大きな配列の回収が GC 任せになるだけ）。破棄後にこのマネージャや、
-    /// これに属する <see cref="Zdd"/> を操作すると <see cref="ObjectDisposedException"/> になる。
+    /// （大きな配列の回収が GC 任せになるだけ）。破棄後は、<b>表を読む操作</b>
+    /// （<see cref="Empty"/> / <see cref="Base"/> / <see cref="Singleton"/> / <see cref="NodeCount"/> と、
+    /// これに属する <see cref="Zdd"/> の <see cref="Zdd.NodeCount"/> / <see cref="Zdd.Support"/>）が
+    /// <see cref="ObjectDisposedException"/> になる。表を読まないもの
+    /// （<see cref="VariableCount"/> / <see cref="IsDisposed"/> と、<see cref="Zdd"/> の等値比較・
+    /// <see cref="Zdd.IsEmpty"/> / <see cref="Zdd.IsBase"/>）は破棄後も使える。
     /// </para>
     /// </remarks>
     public sealed class ZddManager : IDisposable

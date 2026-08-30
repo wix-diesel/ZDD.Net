@@ -380,8 +380,12 @@ namespace ZDD.Net.Tests.Core
         {
             ZddManagerOptions options = new ZddManagerOptions();
 
-            Assert.Throws<ArgumentOutOfRangeException>(() => options.InitialNodeCapacity = capacity);
-            Assert.Throws<ArgumentOutOfRangeException>(() => options.InitialUniqueTableCapacity = capacity);
+            AssertRejectedCapacity(
+                nameof(ZddManagerOptions.InitialNodeCapacity),
+                () => options.InitialNodeCapacity = capacity);
+            AssertRejectedCapacity(
+                nameof(ZddManagerOptions.InitialUniqueTableCapacity),
+                () => options.InitialUniqueTableCapacity = capacity);
         }
 
         [Fact]
@@ -389,10 +393,24 @@ namespace ZDD.Net.Tests.Core
         {
             ZddManagerOptions options = new ZddManagerOptions();
 
-            Assert.Throws<ArgumentOutOfRangeException>(
+            AssertRejectedCapacity(
+                nameof(ZddManagerOptions.InitialNodeCapacity),
                 () => options.InitialNodeCapacity = ZddManagerOptions.MaxInitialNodeCapacity + 1);
-            Assert.Throws<ArgumentOutOfRangeException>(
+            AssertRejectedCapacity(
+                nameof(ZddManagerOptions.InitialUniqueTableCapacity),
                 () => options.InitialUniqueTableCapacity = UniqueTable.MaxCapacity + 1);
+        }
+
+        /// <summary>
+        /// セッターが弾いたことを、BCL と同じ ParamName（"value"）と、どのプロパティかを名指しする
+        /// メッセージの両方で確かめる。
+        /// </summary>
+        private static void AssertRejectedCapacity(string propertyName, Action assignment)
+        {
+            ArgumentOutOfRangeException exception = Assert.Throws<ArgumentOutOfRangeException>(assignment);
+
+            Assert.Equal("value", exception.ParamName);
+            Assert.Contains(propertyName, exception.Message, StringComparison.Ordinal);
         }
 
         // ---- 破棄 ----

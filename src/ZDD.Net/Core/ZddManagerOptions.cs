@@ -42,13 +42,14 @@ namespace ZDD.Net.Core
             get => _initialNodeCapacity;
             set
             {
-                ThrowHelper.ThrowIfNegativeOrZero(value, nameof(value));
-
-                if (value > MaxInitialNodeCapacity)
+                // ParamName はプロパティ名ではなく "value"（セッターの実引数名）にする。BCL の
+                // プロパティセッターと同じ規約で、CA2208 の「実在する引数名か」の検査にも通る。
+                // どのプロパティかはメッセージ側で名指しする。
+                if (value <= 0 || value > MaxInitialNodeCapacity)
                 {
                     ThrowHelper.ThrowArgumentOutOfRangeException(
                         nameof(value),
-                        $"'{nameof(InitialNodeCapacity)}' must not exceed {MaxInitialNodeCapacity}, but was {value}.");
+                        $"'{nameof(InitialNodeCapacity)}' must be between 1 and {MaxInitialNodeCapacity}, but was {value}.");
                 }
 
                 _initialNodeCapacity = value;
@@ -70,13 +71,11 @@ namespace ZDD.Net.Core
             get => _initialUniqueTableCapacity;
             set
             {
-                ThrowHelper.ThrowIfNegativeOrZero(value, nameof(value));
-
-                if (value > UniqueTable.MaxCapacity)
+                if (value <= 0 || value > UniqueTable.MaxCapacity)
                 {
                     ThrowHelper.ThrowArgumentOutOfRangeException(
                         nameof(value),
-                        $"'{nameof(InitialUniqueTableCapacity)}' must not exceed {UniqueTable.MaxCapacity}, but was {value}.");
+                        $"'{nameof(InitialUniqueTableCapacity)}' must be between 1 and {UniqueTable.MaxCapacity}, but was {value}.");
                 }
 
                 _initialUniqueTableCapacity = value;
