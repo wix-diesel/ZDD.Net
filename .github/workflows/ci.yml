@@ -18,21 +18,21 @@ jobs:
         tfm: [net10.0]
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Checkout
+      - name: チェックアウト
         uses: actions/checkout@v4
 
-      - name: Setup .NET
+      - name: .NET セットアップ
         uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
 
-      - name: Restore
+      - name: リストア
         run: dotnet restore ZDD.Net.sln
 
-      - name: Build
+      - name: ビルド
         run: dotnet build ZDD.Net.sln --no-restore --configuration Release -f ${{ matrix.tfm }}
 
-      - name: Test
+      - name: テスト
         run: >
           dotnet test tests/ZDD.Net.Tests/ZDD.Net.Tests.csproj
           --no-restore
@@ -42,7 +42,7 @@ jobs:
           --results-directory ./coverage
           --logger trx
 
-      - name: Upload coverage
+      - name: カバレッジのアップロード
         uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -50,7 +50,7 @@ jobs:
           path: ./coverage
           retention-days: 14
 
-      - name: Upload test results
+      - name: テスト結果のアップロード
         uses: actions/upload-artifact@v4
         if: always()
         with:

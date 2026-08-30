@@ -20,6 +20,7 @@
 | コミット | Conventional Commits（`feat:` `fix:` `test:` `docs:` `perf:` `refactor:` `chore:`） |
 | マージ | squash merge。PR タイトルがそのままコミットメッセージになる |
 | 依存関係 | 積み上げ（stacked）PR にせず、**前の PR がマージされてから次を切る**。並行可能な PR は表の「依存」欄で明示 |
+| 言語 | **PR の本文・コメントは必ず日本語で記載する** |
 
 ### 「まだ公開 API から到達できないコード」の扱い
 
