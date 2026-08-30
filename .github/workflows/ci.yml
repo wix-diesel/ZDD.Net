@@ -37,6 +37,18 @@ jobs:
           --results-directory ./coverage
           --logger trx
 
+      - name: プロパティテスト
+        # 既定の試行回数は 1 プロパティ 100 回（tests/ZDD.Net.Tests.Properties の PropertyCheck）。
+        # 増やしたいときは ZDD_PROPERTY_ITER を、種を変えたいときは ZDD_PROPERTY_SEED を渡す。
+        run: >
+          dotnet test tests/ZDD.Net.Tests.Properties/ZDD.Net.Tests.Properties.csproj
+          --no-restore
+          --no-build
+          --configuration Release
+          --collect:"XPlat Code Coverage"
+          --results-directory ./coverage
+          --logger trx
+
       - name: カバレッジのアップロード
         uses: actions/upload-artifact@v4
         if: always()
