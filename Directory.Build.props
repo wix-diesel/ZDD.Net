@@ -1,0 +1,31 @@
+<Project>
+
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <Deterministic>true</Deterministic>
+    <DebugType>portable</DebugType>
+    <NeutralLanguage>en-US</NeutralLanguage>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <!--
+    Package metadata. The library is not published yet (see docs/OPEN-QUESTIONS.md, D3),
+    but keeping the metadata correct from the start costs nothing.
+  -->
+  <PropertyGroup>
+    <Authors>ZDD.Net contributors</Authors>
+    <Product>ZDD.Net</Product>
+    <Copyright>Copyright (c) ZDD.Net contributors</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/wix-diesel/ZDD.Net</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <VersionPrefix>0.1.0</VersionPrefix>
+    <VersionSuffix>alpha</VersionSuffix>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>ZDD.Net</RootNamespace>
+    <AssemblyName>ZDD.Net</AssemblyName>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IsAotCompatible>true</IsAotCompatible>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <IsPackable>true</IsPackable>
+    <PackageId>ZDD.Net</PackageId>
+    <Description>Zero-suppressed decision diagrams and frontier-based search, implemented natively in C# with no external dependencies.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="ZDD.Net.Tests" />
+    <InternalsVisibleTo Include="ZDD.Net.Benchmarks" />
+  </ItemGroup>
+
+</Project>
