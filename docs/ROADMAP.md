@@ -61,7 +61,7 @@ Core レイヤは下から積むため、序盤の PR は `internal` のコー�
 | [x] | **M1-3** | `ZddManager` / `Zdd` の骨格 | 公開型、`Empty`/`Base`/`Singleton(item)`、`Level`↔`Item` 変換、等値比較、`NodeCount`、`Support` | `Singleton` の組合せで簡単な族が作れる | 〜250 | M1-2 |
 | [x] | **M1-4** | 演算キャッシュ | direct-mapped lossy cache、キー生成、サイズ自動調整、ヒット率統計 | キャッシュ有無で結果が一致すること（乱数テスト） | 〜200 | M1-2 |
 | [x] | **M1-5** | 単項演算 | `Change` / `OnSet(Subset1)` / `OffSet(Subset0)`。**反復（明示スタック）実装の雛形をここで確立する** | 総当たり照合（変数 ≤ 12） | 〜300 | M1-3, M1-4 |
-| [ ] | **M1-6** | 総当たり照合テスト基盤 | `BruteForceFamily`（`List<HashSet<int>>` による素朴実装）、ランダム族生成、`AssertSameFamily` | M1-5 の全演算を照合できる | テストのみ | M1-5 |
+| [x] | **M1-6** | 総当たり照合テスト基盤 | `BruteForceFamily`（集合をビットマスクで表した素朴実装）、ランダム族生成、`AssertSameFamily` | M1-5 の全演算を照合できる | テストのみ | M1-5 |
 | [ ] | **M1-7** | 集合演算 | `Union` / `Intersect` / `Difference` / `SymmetricDifference`（反復実装、キャッシュ利用） | 総当たり照合＋代数法則（交換・結合・分配・ド・モルガン） | 〜350 | M1-6 |
 | [ ] | **M1-8** | 積・商・剰余 | `Product(*)` / `Quotient(/)` / `Remainder(%)` | 総当たり照合、`f == f/g*g + f%g` の検証 | 〜350 | M1-7 |
 | [ ] | **M1-9** | 包含系演算 | `Meet` / `Restrict(SupersetsOf)` / `Permit(SubsetsOf)` / `NonSubsetsOf` / `NonSupersetsOf` | 総当たり照合 | 〜350 | M1-8 |

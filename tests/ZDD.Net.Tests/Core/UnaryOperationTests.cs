@@ -1,8 +1,7 @@
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using Xunit;
 using ZDD.Net.Core;
+using ZDD.Net.Tests.Harness;
 
 namespace ZDD.Net.Tests.Core
 {
@@ -10,8 +9,9 @@ namespace ZDD.Net.Tests.Core
     /// <see cref="Zdd.Change"/> / <see cref="Zdd.OnSet"/> / <see cref="Zdd.OffSet"/> の検証。
     /// </summary>
     /// <remarks>
-    /// 照合相手はこのファイル内の素朴実装（集合をビットマスクで表した <see cref="SortedSet{T}"/>）。
-    /// M1-6 で共通の総当たり照合基盤が入ったら、そちらへ寄せる。
+    /// 照合相手は <see cref="BruteForceFamily"/>（定義をそのままループで書いた素朴実装）で、
+    /// 比較は <see cref="FamilyAssert.AssertSameFamily(string?, in Zdd, BruteForceFamily)"/> が行う。
+    /// 総当たりの回し方は <see cref="FamilyCases"/> にある。
     /// </remarks>
     public class UnaryOperationTests
     {
@@ -21,23 +21,13 @@ namespace ZDD.Net.Tests.Core
         public void EveryFamilyOfThreeVariablesMatchesTheNaiveImplementation()
         {
             const int VariableCount = 3;
-            int maskCount = 1 << VariableCount;
 
             using ZddManager manager = new ZddManager(VariableCount);
 
             // 3 変数の集合は 8 個。その部分集合＝族は 2^8 = 256 通りで、すべて試せる。
-            for (int family = 0; family < 1 << 8; family++)
+            foreach (BruteForceFamily family in FamilyCases.AllFamilies(VariableCount))
             {
-                SortedSet<int> masks = new SortedSet<int>(
-                    Enumerable.Range(0, maskCount).Where(mask => (family & (1 << mask)) != 0));
-
-                Zdd zdd = Build(manager, masks);
-                Assert.True(masks.SetEquals(ToMasks(manager, zdd)), "The family builder itself must round-trip.");
-
-                for (int item = 0; item < VariableCount; item++)
-                {
-                    AssertUnaryOperationsMatchNaive(manager, zdd, masks, item);
-                }
+                AssertUnaryOperationsMatchNaive(manager, family);
             }
         }
 
@@ -46,26 +36,35 @@ namespace ZDD.Net.Tests.Core
         [InlineData(2)]
         [InlineData(4)]
         [InlineData(7)]
-        [InlineData(10)]
-        [InlineData(12)]
+        [InlineData(FamilyCases.DefaultVariableCount)]
+        [InlineData(FamilyCases.ExhaustiveVariableLimit)]
         public void RandomFamiliesMatchTheNaiveImplementation(int variableCount)
         {
-            Random random = new Random(20260830 + variableCount);
-            int maskCount = 1 << variableCount;
-
             using ZddManager manager = new ZddManager(variableCount);
 
-            for (int round = 0; round < 50; round++)
+            foreach (BruteForceFamily family in
+                FamilyCases.RandomFamilies(variableCount, 50, seed: 20260830 + variableCount))
             {
-                SortedSet<int> masks = RandomFamily(random, maskCount);
-                Zdd zdd = Build(manager, masks);
-                Assert.True(masks.SetEquals(ToMasks(manager, zdd)), "The family builder itself must round-trip.");
-
-                for (int item = 0; item < variableCount; item++)
-                {
-                    AssertUnaryOperationsMatchNaive(manager, zdd, masks, item);
-                }
+                AssertUnaryOperationsMatchNaive(manager, family);
             }
+        }
+
+        [Fact]
+        [Trait("Category", "Slow")]
+        public void EverySubsetOfTwelveVariablesMatchesTheNaiveImplementation()
+        {
+            const int VariableCount = FamilyCases.ExhaustiveVariableLimit;
+
+            using ZddManager manager = new ZddManager(VariableCount);
+
+            // 1 つの集合だけを持つ族を、2^12 = 4096 個の集合すべてについて回す。
+            foreach (int mask in FamilyCases.AllSubsets(VariableCount))
+            {
+                AssertUnaryOperationsMatchNaive(manager, BruteForceFamily.FromMasks(VariableCount, [mask]));
+            }
+
+            // 4096 個すべてを持つ族（冪集合）も 1 度。
+            AssertUnaryOperationsMatchNaive(manager, BruteForceFamily.PowerSet(VariableCount));
         }
 
         // ---- 代数的な性質 ----
@@ -74,13 +73,12 @@ namespace ZDD.Net.Tests.Core
         public void ChangeAppliedTwiceIsTheIdentity()
         {
             const int VariableCount = 8;
-            Random random = new Random(4649);
 
             using ZddManager manager = new ZddManager(VariableCount);
 
-            for (int round = 0; round < 50; round++)
+            foreach (BruteForceFamily family in FamilyCases.RandomFamilies(VariableCount, 50, seed: 4649))
             {
-                Zdd zdd = Build(manager, RandomFamily(random, 1 << VariableCount));
+                Zdd zdd = ZddFamilies.Build(manager, family);
 
                 for (int item = 0; item < VariableCount; item++)
                 {
@@ -93,23 +91,21 @@ namespace ZDD.Net.Tests.Core
         public void OnSetAndOffSetSplitTheFamilyInTwo()
         {
             const int VariableCount = 8;
-            Random random = new Random(1729);
 
             using ZddManager manager = new ZddManager(VariableCount);
 
-            for (int round = 0; round < 50; round++)
+            foreach (BruteForceFamily family in FamilyCases.RandomFamilies(VariableCount, 50, seed: 1729))
             {
-                SortedSet<int> masks = RandomFamily(random, 1 << VariableCount);
-                Zdd zdd = Build(manager, masks);
+                Zdd zdd = ZddFamilies.Build(manager, family);
 
                 for (int item = 0; item < VariableCount; item++)
                 {
                     // 和は演算としてはまだ無い（M1-7）ので、素朴表現の側で合わせる。
-                    SortedSet<int> without = ToMasks(manager, zdd.OffSet(item));
-                    SortedSet<int> with = ToMasks(manager, zdd.OnSet(item).Change(item));
+                    BruteForceFamily without = ZddFamilies.ToBruteForce(zdd.OffSet(item));
+                    BruteForceFamily with = ZddFamilies.ToBruteForce(zdd.OnSet(item).Change(item));
 
-                    Assert.Empty(without.Intersect(with));
-                    Assert.True(masks.SetEquals(without.Union(with)));
+                    Assert.True(without.Intersect(with).IsEmpty);
+                    Assert.Equal(family, without.Union(with));
                 }
             }
         }
@@ -140,7 +136,7 @@ namespace ZDD.Net.Tests.Core
         {
             using ZddManager manager = new ZddManager(6);
 
-            Zdd zdd = Build(manager, new SortedSet<int> { 0b000001, 0b010010, 0b010011, 0b101000 });
+            Zdd zdd = ZddFamilies.Build(manager, [0], [1, 4], [0, 1, 4], [3, 5]);
 
             for (int item = 0; item < 6; item++)
             {
@@ -154,29 +150,22 @@ namespace ZDD.Net.Tests.Core
         [Fact]
         public void TheResultIsTheSameWithAndWithoutTheOperationCache()
         {
-            const int VariableCount = 10;
-            Random random = new Random(31337);
+            const int VariableCount = FamilyCases.DefaultVariableCount;
 
             ZddManagerOptions disabled = new ZddManagerOptions { InitialCacheCapacity = 0, MaxCacheCapacity = 0 };
 
             using ZddManager cached = new ZddManager(VariableCount);
             using ZddManager uncached = new ZddManager(VariableCount, disabled);
 
-            for (int round = 0; round < 30; round++)
+            foreach (BruteForceFamily family in FamilyCases.RandomFamilies(VariableCount, 30, seed: 31337))
             {
-                SortedSet<int> masks = RandomFamily(random, 1 << VariableCount);
-
-                Zdd withCache = Build(cached, masks);
-                Zdd withoutCache = Build(uncached, masks);
+                Zdd withCache = ZddFamilies.Build(cached, family);
+                Zdd withoutCache = ZddFamilies.Build(uncached, family);
 
                 for (int item = 0; item < VariableCount; item++)
                 {
-                    Assert.True(ToMasks(cached, withCache.Change(item))
-                        .SetEquals(ToMasks(uncached, withoutCache.Change(item))));
-                    Assert.True(ToMasks(cached, withCache.OnSet(item))
-                        .SetEquals(ToMasks(uncached, withoutCache.OnSet(item))));
-                    Assert.True(ToMasks(cached, withCache.OffSet(item))
-                        .SetEquals(ToMasks(uncached, withoutCache.OffSet(item))));
+                    AssertUnaryOperationsMatchNaive(cached, withCache, family, item);
+                    AssertUnaryOperationsMatchNaive(uncached, withoutCache, family, item);
                 }
             }
         }
@@ -296,163 +285,31 @@ namespace ZDD.Net.Tests.Core
             Assert.Throws<ObjectDisposedException>(() => zdd.OffSet(1));
         }
 
-        // ---- 素朴実装（M1-6 の共通基盤が入るまでの簡易版） ----
+        // ---- 照合の本体 ----
+
+        /// <summary>族を ZDD に組み立て、全 item について 3 つの単項演算を素朴実装と突き合わせる。</summary>
+        private static void AssertUnaryOperationsMatchNaive(ZddManager manager, BruteForceFamily family)
+        {
+            Zdd zdd = ZddFamilies.Build(manager, family);
+
+            // 組み立て自体が壊れていたら、以降の照合は何も言っていないことになる。
+            FamilyAssert.AssertSameFamily("the family builder", zdd, family);
+
+            for (int item = 0; item < manager.VariableCount; item++)
+            {
+                AssertUnaryOperationsMatchNaive(manager, zdd, family, item);
+            }
+        }
 
         private static void AssertUnaryOperationsMatchNaive(
             ZddManager manager,
             in Zdd zdd,
-            SortedSet<int> masks,
+            BruteForceFamily family,
             int item)
         {
-            int bit = 1 << item;
-
-            SortedSet<int> change = new SortedSet<int>(masks.Select(mask => mask ^ bit));
-            SortedSet<int> onSet = new SortedSet<int>(masks.Where(mask => (mask & bit) != 0).Select(mask => mask & ~bit));
-            SortedSet<int> offSet = new SortedSet<int>(masks.Where(mask => (mask & bit) == 0));
-
-            AssertSameFamily(manager, change, zdd.Change(item));
-            AssertSameFamily(manager, onSet, zdd.OnSet(item));
-            AssertSameFamily(manager, offSet, zdd.OffSet(item));
-        }
-
-        private static void AssertSameFamily(ZddManager manager, SortedSet<int> expected, in Zdd actual)
-        {
-            SortedSet<int> produced = ToMasks(manager, actual);
-
-            Assert.True(
-                expected.SetEquals(produced),
-                $"expected {{{string.Join(", ", expected)}}} but the diagram holds {{{string.Join(", ", produced)}}}.");
-
-            // ZDD は正準形なので、同じ族なら同じハンドルになっていなければならない。
-            Assert.Equal(Build(manager, expected), actual);
-        }
-
-        private static SortedSet<int> RandomFamily(Random random, int maskCount)
-        {
-            SortedSet<int> masks = new SortedSet<int>();
-            int size = random.Next(0, Math.Min(maskCount, 24) + 1);
-
-            for (int i = 0; i < size; i++)
-            {
-                masks.Add(random.Next(maskCount));
-            }
-
-            return masks;
-        }
-
-        /// <summary>
-        /// 集合をビットマスクで表した族から ZDD を組み立てる。
-        /// item ごとに族を「その item を含まない側／含む側」に割り、下の段から
-        /// <see cref="ZddManager.CreateNode"/> で積み上げる。<b>再帰しない</b>。
-        /// </summary>
-        private static Zdd Build(ZddManager manager, IEnumerable<int> masks)
-        {
-            int variableCount = manager.VariableCount;
-
-            List<Dictionary<string, Group>> levels = new List<Dictionary<string, Group>>();
-            for (int item = 0; item <= variableCount; item++)
-            {
-                levels.Add(new Dictionary<string, Group>(StringComparer.Ordinal));
-            }
-
-            string rootKey = Register(levels[0], masks);
-
-            for (int item = 0; item < variableCount; item++)
-            {
-                int bit = 1 << item;
-
-                foreach (Group group in levels[item].Values.ToList())
-                {
-                    group.LoKey = Register(
-                        levels[item + 1],
-                        group.Masks.Where(mask => (mask & bit) == 0));
-                    group.HiKey = Register(
-                        levels[item + 1],
-                        group.Masks.Where(mask => (mask & bit) != 0).Select(mask => mask & ~bit));
-                }
-            }
-
-            // 族はマスクの集合だけで決まるので、段をまたいで同じキーが現れても同じノードでよい。
-            Dictionary<string, Zdd> built = new Dictionary<string, Zdd>(StringComparer.Ordinal);
-
-            foreach (KeyValuePair<string, Group> entry in levels[variableCount])
-            {
-                // 全 item を割り振り終えた段に残るのは空集合だけ。
-                built[entry.Key] = entry.Value.Masks.Count == 0 ? manager.Empty : manager.Base;
-            }
-
-            for (int item = variableCount - 1; item >= 0; item--)
-            {
-                foreach (KeyValuePair<string, Group> entry in levels[item])
-                {
-                    Group group = entry.Value;
-                    built[entry.Key] = manager.CreateNode(item, built[group.LoKey!], built[group.HiKey!]);
-                }
-            }
-
-            return built[rootKey];
-        }
-
-        private static string Register(Dictionary<string, Group> level, IEnumerable<int> masks)
-        {
-            SortedSet<int> sorted = new SortedSet<int>(masks);
-            string key = string.Join(",", sorted);
-
-            if (!level.ContainsKey(key))
-            {
-                level.Add(key, new Group(sorted));
-            }
-
-            return key;
-        }
-
-        /// <summary>
-        /// ZDD が表す族を、集合のビットマスクの集合として取り出す。
-        /// 明示スタックで根から終端までのパスを全部辿る（変数 12 個までなので高々 4096 本）。
-        /// </summary>
-        private static SortedSet<int> ToMasks(ZddManager manager, in Zdd zdd)
-        {
-            SortedSet<int> masks = new SortedSet<int>();
-            NodeTable nodes = manager.Table.Nodes;
-
-            Stack<(int Id, int Mask)> stack = new Stack<(int, int)>();
-            stack.Push((zdd.Id, 0));
-
-            while (stack.Count > 0)
-            {
-                (int id, int mask) = stack.Pop();
-
-                if (id == NodeTable.Bottom)
-                {
-                    continue;
-                }
-
-                if (id == NodeTable.Top)
-                {
-                    masks.Add(mask);
-                    continue;
-                }
-
-                ZddNode node = nodes[id];
-                int item = manager.ItemOf(node.Level);
-
-                stack.Push((node.Lo, mask));
-                stack.Push((node.Hi, mask | (1 << item)));
-            }
-
-            return masks;
-        }
-
-        /// <summary>組み立ての途中で現れる「ある段より下だけを見た族」。</summary>
-        private sealed class Group
-        {
-            public Group(SortedSet<int> masks) => Masks = masks;
-
-            public SortedSet<int> Masks { get; }
-
-            public string? LoKey { get; set; }
-
-            public string? HiKey { get; set; }
+            FamilyAssert.AssertSameFamily($"Change({item})", zdd.Change(item), family.Change(item), family);
+            FamilyAssert.AssertSameFamily($"OnSet({item})", zdd.OnSet(item), family.OnSet(item), family);
+            FamilyAssert.AssertSameFamily($"OffSet({item})", zdd.OffSet(item), family.OffSet(item), family);
         }
     }
 }
