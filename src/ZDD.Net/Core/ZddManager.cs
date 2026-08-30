@@ -53,6 +53,17 @@ namespace ZDD.Net.Core
         /// <summary>演算結果のメモ表。<see cref="_table"/> と同時に手放す。</summary>
         private OperationCache? _cache;
 
+        /// <summary>
+        /// 反復実装が使う作業領域の貸出枠。演算のたびに作り直さず、ここに 1 個だけ置いて使い回す。
+        /// <b>貸出中も参照は手放さない</b>（貸出中かどうかは <see cref="_workspaceInUse"/> が持つ）。
+        /// 手放してしまうと、入れ子で借りた使い捨ての作業領域が枠に居座り、
+        /// 大きく育った本来の作業領域のほうが捨てられてしまう。
+        /// </summary>
+        private OperationWorkspace? _workspace;
+
+        /// <summary><see cref="_workspace"/> が貸出中かどうか。</summary>
+        private bool _workspaceInUse;
+
         /// <summary>変数の個数を指定してマネージャを作る。</summary>
         /// <param name="variableCount">
         /// 扱う変数（item）の個数。有効な item index は 0 … <paramref name="variableCount"/> - 1。
@@ -135,6 +146,83 @@ namespace ZDD.Net.Core
         {
             _table = null;
             _cache = null;
+            _workspace = null;
+            _workspaceInUse = false;
+        }
+
+        /// <summary>
+        /// 各集合の <paramref name="item"/> の有無を反転した族を返す。
+        /// </summary>
+        /// <param name="f">対象の族。このマネージャに属していなければならない。</param>
+        /// <param name="item">0 以上 <see cref="VariableCount"/> 未満の item index。</param>
+        internal Zdd Change(in Zdd f, int item) => ApplyUnary(ZddOperation.Change, f, item, nameof(f));
+
+        /// <summary>
+        /// <paramref name="item"/> を含む集合だけを取り出し、そこから <paramref name="item"/> を除いた族を返す。
+        /// </summary>
+        /// <param name="f">対象の族。このマネージャに属していなければならない。</param>
+        /// <param name="item">0 以上 <see cref="VariableCount"/> 未満の item index。</param>
+        internal Zdd OnSet(in Zdd f, int item) => ApplyUnary(ZddOperation.OnSet, f, item, nameof(f));
+
+        /// <summary>
+        /// <paramref name="item"/> を含まない集合だけを残した族を返す。
+        /// </summary>
+        /// <param name="f">対象の族。このマネージャに属していなければならない。</param>
+        /// <param name="item">0 以上 <see cref="VariableCount"/> 未満の item index。</param>
+        internal Zdd OffSet(in Zdd f, int item) => ApplyUnary(ZddOperation.OffSet, f, item, nameof(f));
+
+        /// <summary>
+        /// 単項演算の共通の入口。所有マネージャの一致を確かめ、キャッシュを整えてから
+        /// <see cref="UnaryOperations.Apply"/> に渡す。<paramref name="item"/> の範囲検査は
+        /// その中の <see cref="LevelOf"/> が行う。
+        /// </summary>
+        private Zdd ApplyUnary(ZddOperation op, in Zdd f, int item, string paramName)
+        {
+            EnsureOwns(f, paramName);
+
+            // 破棄済みならここで ObjectDisposedException になる（表もキャッシュも触るため）。
+            TuneCache();
+
+            return new Zdd(this, UnaryOperations.Apply(this, op, f.Id, item));
+        }
+
+        /// <summary>
+        /// 反復実装の作業領域を借りる。使い終わったら必ず <see cref="ReturnWorkspace"/> で返す。
+        /// </summary>
+        /// <remarks>
+        /// 枠は 1 個だけで、それが貸出中のときにもう一度借りると<b>使い捨ての</b>作業領域を作って返す
+        /// （演算の中から別の演算を呼ぶ形になっても、同じ作業領域を 2 箇所で使うことはない）。
+        /// 枠に置いてある作業領域は貸出中も差し替えないので、入れ子の内側で作られた使い捨ての分に
+        /// 押し出されることはなく、育った配列がそのまま次の演算に引き継がれる。
+        /// </remarks>
+        /// <exception cref="ObjectDisposedException">このマネージャが破棄済みの場合。</exception>
+        internal OperationWorkspace RentWorkspace()
+        {
+            // 破棄後に貸出枠を作り直さないための番。演算の入口が先に弾くので通常は到達しない。
+            EnsureNotDisposed();
+
+            if (_workspaceInUse)
+            {
+                return new OperationWorkspace();
+            }
+
+            OperationWorkspace workspace = _workspace ??= new OperationWorkspace();
+            _workspaceInUse = true;
+            return workspace;
+        }
+
+        /// <summary>
+        /// 借りた作業領域を返す。中身は次の演算のために空にされる。
+        /// 入れ子で借りた使い捨ての分は、空にしたうえで GC に任せる。
+        /// </summary>
+        internal void ReturnWorkspace(OperationWorkspace workspace)
+        {
+            workspace.Reset();
+
+            if (ReferenceEquals(workspace, _workspace))
+            {
+                _workspaceInUse = false;
+            }
         }
 
         /// <summary>
