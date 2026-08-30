@@ -48,7 +48,7 @@ Core レイヤは下から積むため、序盤の PR は `internal` のコー�
 | [x] | **M0-1** | ソリューション骨格と共通ビルド設定 | `ZDD.Net.sln`、`src/ZDD.Net`（`net10.0`）、`tests/ZDD.Net.Tests`（xUnit）、`Directory.Build.props`、`Directory.Packages.props`、`.editorconfig`、`InternalsVisibleTo` | ビルド成功、スモークテストが通る | 設定のみ | — |
 | [x] | **M0-2** | 開発環境セットアップ | `scripts/setup-dev-env.sh`（`apt-get install dotnet-sdk-10.0`）、`.claude/settings.json` の SessionStart フック、`global.json` | 新規セッションで `dotnet build` が通る | 設定のみ | M0-1 |
 | [x] | **M0-3** | CI ワークフロー | GitHub Actions: ubuntu-latest（Linux）での build + test、カバレッジ収集、PR テンプレート（レビュー観点チェックリスト入り） | PR で CI が回りグリーン | 設定のみ | M0-1 |
-| [ ] | **M0-4** | 内部ユーティリティ | `Internal/Hashing`（一意化表向けの 64bit mix。`System.HashCode` は hot path には汎用すぎる）、`Internal/ThrowHelper` | 単体テスト（分布・衝突率の確認） | 〜120 | M0-1 |
+| [x] | **M0-4** | 内部ユーティリティ | `Internal/Hashing`（一意化表向けの 64bit mix。`System.HashCode` は hot path には汎用すぎる）、`Internal/ThrowHelper` | 単体テスト（分布・衝突率の確認） | 〜120 | M0-1 |
 
 ---
 
