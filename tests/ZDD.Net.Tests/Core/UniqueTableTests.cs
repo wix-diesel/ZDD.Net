@@ -156,6 +156,58 @@ namespace ZDD.Net.Tests.Core
             Assert.Equal(1, table.Count);
         }
 
+        [Theory]
+        [InlineData(0)]
+        [InlineData(-1)]
+        public void GetNodeThrowsForNonPositiveLevel(int level)
+        {
+            UniqueTable table = new UniqueTable();
+
+            ArgumentOutOfRangeException exception = Assert.Throws<ArgumentOutOfRangeException>(
+                () => table.GetNode(level, NodeTable.Bottom, NodeTable.Top));
+
+            Assert.Equal("level", exception.ParamName);
+        }
+
+        [Theory]
+        [InlineData(NodeTable.Bottom)]
+        [InlineData(NodeTable.Top)]
+        public void GetNodeThrowsForALoThatIsNotAnExistingId(int hi)
+        {
+            UniqueTable table = new UniqueTable();
+
+            // ゼロサプレス規則で早期に返る経路（hi == ⊥）も検証を通ること。
+            ArgumentOutOfRangeException exception = Assert.Throws<ArgumentOutOfRangeException>(
+                () => table.GetNode(level: 1, lo: NodeTable.FirstNodeId, hi: hi));
+
+            Assert.Equal("lo", exception.ParamName);
+        }
+
+        [Fact]
+        public void GetNodeThrowsForAHiThatIsNotAnExistingId()
+        {
+            UniqueTable table = new UniqueTable();
+
+            ArgumentOutOfRangeException exception = Assert.Throws<ArgumentOutOfRangeException>(
+                () => table.GetNode(level: 1, lo: NodeTable.Bottom, hi: NodeTable.FirstNodeId));
+
+            Assert.Equal("hi", exception.ParamName);
+        }
+
+        [Fact]
+        public void RejectedKeysLeaveTheTableUntouched()
+        {
+            UniqueTable table = new UniqueTable();
+            table.GetNode(level: 1, lo: NodeTable.Bottom, hi: NodeTable.Top);
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => table.GetNode(0, NodeTable.Bottom, NodeTable.Top));
+            Assert.Throws<ArgumentOutOfRangeException>(() => table.GetNode(2, 99, NodeTable.Bottom));
+            Assert.Throws<ArgumentOutOfRangeException>(() => table.GetNode(2, NodeTable.Bottom, 99));
+
+            Assert.Equal(1, table.Count);
+            Assert.Equal(1, table.Nodes.Count);
+        }
+
         [Fact]
         public void TryGetExistingFindsRegisteredNodesOnly()
         {

@@ -147,22 +147,30 @@ namespace ZDD.Net.Core
         /// <paramref name="lo"/> そのもの（ゼロサプレス削減規則）。
         /// そうでなければ既存の同形ノード、無ければ新しく確保したノードの ID。
         /// </returns>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// <paramref name="level"/> が 0 以下、または <paramref name="lo"/>/<paramref name="hi"/> が
+        /// ノード表に存在しない ID の場合。ゼロサプレス規則で早期に返る経路でも同じく検証される。
+        /// </exception>
         public int GetNode(int level, int lo, int hi)
         {
+            // 検証はゼロサプレス規則の前に置く。規則の側は表にもノード表にも触れずに返るので、
+            // ここで弾かなければ不正な level / 存在しない ID が Release ビルドで素通りしてしまう。
+            ValidateKey(level, lo, hi);
+
             // ゼロサプレス削減規則: 1-枝が ⊥ を指すノードは「その変数を含む組合せが 1 つも無い」
             // ことを意味し、部分集合族としては 0-枝の側と等しい。ノードを作らずに lo を返す。
             if (hi == NodeTable.Bottom)
             {
-                AssertChild(level, lo, nameof(lo));
+                AssertChildLevel(level, lo, nameof(lo));
                 return lo;
             }
 
-            AssertChild(level, lo, nameof(lo));
-            AssertChild(level, hi, nameof(hi));
+            AssertChildLevel(level, lo, nameof(lo));
+            AssertChildLevel(level, hi, nameof(hi));
 
             int[] slots = _slots;
             int mask = slots.Length - 1;
-            int slot = Hashing.IndexFor(Hashing.Combine(level, lo, hi), slots.Length);
+            int slot = Hashing.IndexForPowerOfTwo(Hashing.Combine(level, lo, hi), slots.Length);
 
             while (true)
             {
@@ -204,7 +212,7 @@ namespace ZDD.Net.Core
         {
             int[] slots = _slots;
             int mask = slots.Length - 1;
-            int slot = Hashing.IndexFor(Hashing.Combine(level, lo, hi), slots.Length);
+            int slot = Hashing.IndexForPowerOfTwo(Hashing.Combine(level, lo, hi), slots.Length);
 
             while (true)
             {
@@ -235,7 +243,7 @@ namespace ZDD.Net.Core
         {
             int[] slots = _slots;
             int mask = slots.Length - 1;
-            int slot = Hashing.IndexFor(Hashing.Combine(level, lo, hi), slots.Length);
+            int slot = Hashing.IndexForPowerOfTwo(Hashing.Combine(level, lo, hi), slots.Length);
 
             while (slots[slot] != EmptySlot)
             {
@@ -275,7 +283,7 @@ namespace ZDD.Net.Core
                 }
 
                 ref ZddNode node = ref _nodes[id];
-                int slot = Hashing.IndexFor(Hashing.Combine(node.Level, node.Lo, node.Hi), newCapacity);
+                int slot = Hashing.IndexForPowerOfTwo(Hashing.Combine(node.Level, node.Lo, node.Hi), newCapacity);
                 while (grown[slot] != EmptySlot)
                 {
                     slot = (slot + 1) & mask;
@@ -292,17 +300,44 @@ namespace ZDD.Net.Core
             (int)((long)capacity * MaxLoadFactorPercent / 100);
 
         /// <summary>
+        /// キーが構造的に成立していること（レベルが正、子が実在する ID）を検証する。
+        /// ゼロサプレス規則で早期に返る経路も含め、<see cref="GetNode"/> の全経路が最初に通る。
+        /// </summary>
+        /// <remarks>
+        /// 新規確保の経路では <see cref="NodeTable.Add"/> が同じ検証を行うが、そちらは表に
+        /// 未登録だった場合にしか通らない。Release ビルドでも成立する保証をここで与えるため、
+        /// 検査の重複（比較 3 個分）は受け入れる。
+        /// </remarks>
+        private void ValidateKey(int level, int lo, int hi)
+        {
+            ThrowHelper.ThrowIfNegativeOrZero(level, nameof(level));
+
+            int nextId = _nodes.NextId;
+
+            if ((uint)lo >= (uint)nextId)
+            {
+                ThrowHelper.ThrowArgumentOutOfRangeException(
+                    nameof(lo),
+                    $"The lo child must be an existing node id (0..{nextId - 1}), but was {lo}.");
+            }
+
+            if ((uint)hi >= (uint)nextId)
+            {
+                ThrowHelper.ThrowArgumentOutOfRangeException(
+                    nameof(hi),
+                    $"The hi child must be an existing node id (0..{nextId - 1}), but was {hi}.");
+            }
+        }
+
+        /// <summary>
         /// 子ノードの水準が親より真に小さいことを Debug ビルドで表明する。
         /// 変数順序が守られていない呼び出しは、そのままだと正準形が壊れた ZDD として
         /// ずっと後の演算で表面化するため、生成時点で落とす。
+        /// 子の ID が実在することは <see cref="ValidateKey"/> が先に保証している。
         /// </summary>
         [Conditional("DEBUG")]
-        private void AssertChild(int level, int child, string name)
+        private void AssertChildLevel(int level, int child, string name)
         {
-            Debug.Assert(level > 0, $"The level must be positive, but was {level}.");
-            Debug.Assert(
-                (uint)child < (uint)_nodes.NextId,
-                $"The {name} child must be an existing node id (0..{_nodes.NextId - 1}), but was {child}.");
             Debug.Assert(
                 _nodes[child].Level < level,
                 $"The {name} child (id {child}, level {_nodes[child].Level}) must sit strictly below level {level}.");
