@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using ZDD.Net.Internal;
 
@@ -101,6 +102,65 @@ namespace ZDD.Net.Core
         /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
         /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
         public int[] Support() => Manager.CollectSupport(_id);
+
+        /// <summary>
+        /// この族に属する集合の個数（濃度）。厳密な値を返す。
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// 濃度は変数の個数に対して指数的に大きくなりうる（n 変数の冪集合なら 2^n）ので、
+        /// 型は <see cref="BigInteger"/> にしてある。数え上げ自体は
+        /// <b>ノード数ぶんの足し算</b>で済むので、10^24 個の集合を持つ族でも一瞬で返る
+        /// （<see cref="CardinalityEval"/>）。
+        /// </para>
+        /// <para>
+        /// 呼ぶたびに族を走査する（値は覚えておかない）。速さが要るなら
+        /// <see cref="CountApprox"/> を使う。走査は明示スタックによる反復で、再帰しない
+        /// （docs/PLAN.md §4.5）。
+        /// </para>
+        /// </remarks>
+        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public BigInteger Count => this.Evaluate<CardinalityEval, BigInteger>(default);
+
+        /// <summary>
+        /// この族に属する集合の個数を <see cref="double"/> で近似した値。<see cref="Count"/> より速い。
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// 濃度が 2^53 以下なら <see cref="Count"/> と<b>厳密に一致</b>する。それを超えると
+        /// 下位の桁が丸められ、<see cref="double.MaxValue"/>（およそ 1.8 × 10^308）を超えると
+        /// <see cref="double.PositiveInfinity"/> になる（例外にはならない）。
+        /// 詳しくは <see cref="ApproximateCardinalityEval"/> を参照。
+        /// </para>
+        /// <para>
+        /// 走査の形は <see cref="Count"/> と同じで、違うのは足し算の型だけである
+        /// （<see cref="BigInteger"/> の加算は桁数に比例した時間とアロケーションを伴う。
+        /// docs/PLAN.md §10-5）。
+        /// </para>
+        /// </remarks>
+        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public double CountApprox => this.Evaluate<ApproximateCardinalityEval, double>(default);
+
+        /// <summary>
+        /// この族に属する集合の個数を、集合の要素数ごとに数えた分布を返す。
+        /// </summary>
+        /// <returns>
+        /// 添字 <c>k</c> に「要素数 <c>k</c> の集合の個数」が入った配列。長さは
+        /// <b>この族に属する集合の最大要素数 + 1</b>で、空の族 ∅ では長さ 0、
+        /// <c>{∅}</c> では <c>[1]</c> になる。総和は <see cref="Count"/> に一致する。
+        /// 呼び出しごとに新しい配列を返すので、書き換えても族には影響しない。
+        /// </returns>
+        /// <remarks>
+        /// 冪集合なら二項係数の並び（<c>[C(n,0), C(n,1), …, C(n,n)]</c>）になる。
+        /// ノードごとに配列を 1 本作るため、時間・メモリとも
+        /// <c>O(ノード数 × 最大要素数)</c> かかる（<see cref="SizeDistributionEval"/>）。
+        /// 総数だけが要るなら <see cref="Count"/> のほうが桁違いに軽い。
+        /// </remarks>
+        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public BigInteger[] CountBySize() => this.Evaluate<SizeDistributionEval, BigInteger[]>(default);
 
         /// <summary>
         /// 和 <c>F ∪ G</c>。どちらか一方にでも属する集合を持つ族を返す。
