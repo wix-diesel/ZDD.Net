@@ -574,6 +574,24 @@ graph.EstimateMaxFrontierSize();   // 実行前に見積り、大きすぎるな
 8. **ストレス**: 深い ZDD（変数数 10 万）でスタックオーバーフローしないこと（§4.5 の回帰テスト）。
 9. **CI**: GitHub Actions で ubuntu / windows × 2 TFM のマトリクス、カバレッジ計測。
 
+### 11.1 プロパティテストの置き場と再現性
+
+プロパティテストは `tests/ZDD.Net.Tests.Properties/`（CsCheck）に置く。総当たり照合
+（`tests/ZDD.Net.Tests/`）とは別プロジェクトにするのは、**CsCheck の `PackageReference` を
+そこだけに閉じ込める**ため。本体 `src/ZDD.Net` の依存ゼロ（`docs/OPEN-QUESTIONS.md` B1）は
+`DependencyPolicyTests` が csproj と出来上がったアセンブリの両方で検査する。
+
+- **入力**は ZDD ではなくビットマスクの並び（`FamilySpec`）で生成する。反例を縮めた結果が
+  「変数 1 個・集合 2 個」のように読める形で出るのは、生成器がこの形だからである。
+- **再現性**: CsCheck の `seed` は最初の 1 回ぶんの種でしかないので、`PropertyCheck` が
+  種から `PCG` を 1 本立て、各回の生成直前の状態を種として控えながら自分で回す。
+  よって種を固定すれば入力列全体が再現する。種はプロパティ名から決まり、
+  環境変数 `ZDD_PROPERTY_SEED` で差し替えられる。
+- **シュリンク**: 失敗した回の種で CsCheck の `Sample` を回し直し、残りの試行を反例の縮小に使う。
+  縮んだ反例とそれを再生する種は例外メッセージとテスト出力の両方に出る。
+- **実行時間**: 既定は 1 プロパティ 100 回で、CI の追加時間は 1 秒未満。
+  重く回したいときは `ZDD_PROPERTY_ITER` を上げる（20000 回でおよそ 1 分）。
+
 ---
 
 ## 12. マイルストーン
