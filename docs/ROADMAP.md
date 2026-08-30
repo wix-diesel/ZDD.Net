@@ -63,7 +63,7 @@ Core レイヤは下から積むため、序盤の PR は `internal` のコー�
 | [x] | **M1-5** | 単項演算 | `Change` / `OnSet(Subset1)` / `OffSet(Subset0)`。**反復（明示スタック）実装の雛形をここで確立する** | 総当たり照合（変数 ≤ 12） | 〜300 | M1-3, M1-4 |
 | [x] | **M1-6** | 総当たり照合テスト基盤 | `BruteForceFamily`（集合をビットマスクで表した素朴実装）、ランダム族生成、`AssertSameFamily` | M1-5 の全演算を照合できる | テストのみ | M1-5 |
 | [x] | **M1-7** | 集合演算 | `Union` / `Intersect` / `Difference` / `SymmetricDifference`（反復実装、キャッシュ利用） | 総当たり照合＋代数法則（交換・結合・分配。ド・モルガンは `Complement` が要るので M1-10 で追加） | 〜350 | M1-6 |
-| [ ] | **M1-8** | 積・商・剰余 | `Product(*)` / `Quotient(/)` / `Remainder(%)` | 総当たり照合、`f == f/g*g + f%g` の検証 | 〜350 | M1-7 |
+| [x] | **M1-8** | 積・商・剰余 | `Product(*)` / `Quotient(/)` / `Remainder(%)`（反復実装、キャッシュ利用） | 総当たり照合、`f == f/g*g + f%g` の検証、積の代数法則（交換・結合・分配）、境界入力（`f / ∅ == 2^U`） | 〜350 | M1-7 |
 | [ ] | **M1-9** | 包含系演算 | `Meet` / `Restrict(SupersetsOf)` / `Permit(SubsetsOf)` / `NonSubsetsOf` / `NonSupersetsOf` | 総当たり照合 | 〜350 | M1-8 |
 | [ ] | **M1-10** | 極大・極小 | `Maximal` / `Minimal` / `HittingSets` / `Complement` | 総当たり照合＋ド・モルガン則（`Complement` が要るため M1-7 から持ち越し） | 〜300 | M1-9 |
 | [ ] | **M1-11** | プロパティテスト | CsCheck による全演算のランダム検証、シュリンク付き | CI に組み込み、シード固定で再現可能 | テストのみ | M1-10 |

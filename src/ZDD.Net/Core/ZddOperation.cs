@@ -98,16 +98,20 @@ namespace ZDD.Net.Core
         /// この正規化だけでヒット率が実質的に上がる。
         /// </para>
         /// <para>
-        /// <see cref="ZddOperation.Product"/> も数学的には可換だが、可換として扱うかどうかは
-        /// 実装が本当に対称な再帰になっているかに依る。ここでは M1-4 の時点で確実に対称と
-        /// 言い切れる 4 つだけを可換とし、残りは各演算が入る PR で判断する
+        /// 数学的に可換でも、<b>実装の分解が本当に対称</b>でなければここに入れてはならない
         /// （誤って可換とみなすと<b>誤った結果を返す</b>ので、疑わしいものは非可換側に置く）。
+        /// <see cref="ZddOperation.Product"/> は M1-8 で対称であることを確かめて加えた:
+        /// レベルが揃った分解は <c>f₀ * g₀</c> と 3 項の和のどちらも左右の入れ替えで不変で、
+        /// 片方だけが上にある分解も「上の族を降ろす」形が同じになる。
+        /// <see cref="ZddOperation.Quotient"/> / <see cref="ZddOperation.Remainder"/> は
+        /// そもそも非可換（<c>f / g</c> と <c>g / f</c> は別物）。
         /// </para>
         /// </remarks>
         public static bool IsCommutative(ZddOperation op) =>
             op is ZddOperation.Union
                 or ZddOperation.Intersect
                 or ZddOperation.SymmetricDifference
+                or ZddOperation.Product
                 or ZddOperation.Meet;
 
         /// <summary>

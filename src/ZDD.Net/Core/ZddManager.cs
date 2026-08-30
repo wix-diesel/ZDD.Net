@@ -45,6 +45,9 @@ namespace ZDD.Net.Core
     /// </remarks>
     public sealed class ZddManager : IDisposable
     {
+        /// <summary>作業領域の貸出枠の初期段数。入れ子は「積 → 和」の 1 段だけなので、これで足りる。</summary>
+        private const int InitialWorkspaceDepth = 2;
+
         private readonly int _variableCount;
 
         /// <summary>破棄されると <see langword="null"/> になる。破棄済みかどうかの判定も兼ねる。</summary>
@@ -54,15 +57,20 @@ namespace ZDD.Net.Core
         private OperationCache? _cache;
 
         /// <summary>
-        /// 反復実装が使う作業領域の貸出枠。演算のたびに作り直さず、ここに 1 個だけ置いて使い回す。
-        /// <b>貸出中も参照は手放さない</b>（貸出中かどうかは <see cref="_workspaceInUse"/> が持つ）。
-        /// 手放してしまうと、入れ子で借りた使い捨ての作業領域が枠に居座り、
-        /// 大きく育った本来の作業領域のほうが捨てられてしまう。
+        /// 反復実装が使う作業領域の貸出枠。演算のたびに作り直さず、ここに置いて使い回す。
+        /// 添字は<b>入れ子の深さ</b>で、深さ 0 が普通の演算、深さ 1 以上は
+        /// 「演算の合成の途中で別の演算を呼んだ」ぶん（積 → 和、商 → 交わり）。
+        /// 深さごとに別の作業領域を渡すので、同じものを 2 箇所で使うことはない。
         /// </summary>
-        private OperationWorkspace? _workspace;
+        /// <remarks>
+        /// 枠は使い終わっても手放さない。育った配列をそのまま次の演算に引き継ぐためで、
+        /// これが無いと入れ子で呼ばれる演算が呼び出しのたびに作業領域を作り直すことになる
+        /// （積は合成のたびに和を呼ぶので、ノード 1 個あたりのアロケーションになってしまう）。
+        /// </remarks>
+        private OperationWorkspace?[] _workspaces;
 
-        /// <summary><see cref="_workspace"/> が貸出中かどうか。</summary>
-        private bool _workspaceInUse;
+        /// <summary>いま貸し出している作業領域の個数（＝次に貸す枠の添字）。</summary>
+        private int _workspaceDepth;
 
         /// <summary>変数の個数を指定してマネージャを作る。</summary>
         /// <param name="variableCount">
@@ -85,6 +93,7 @@ namespace ZDD.Net.Core
                 new NodeTable(NodeTable.FirstNodeId + effective.InitialNodeCapacity),
                 effective.InitialUniqueTableCapacity);
             _cache = new OperationCache(effective.InitialCacheCapacity, effective.MaxCacheCapacity);
+            _workspaces = new OperationWorkspace?[InitialWorkspaceDepth];
         }
 
         /// <summary>このマネージャが扱う変数（item）の個数。生成後は変わらない。</summary>
@@ -146,8 +155,8 @@ namespace ZDD.Net.Core
         {
             _table = null;
             _cache = null;
-            _workspace = null;
-            _workspaceInUse = false;
+            _workspaces = Array.Empty<OperationWorkspace?>();
+            _workspaceDepth = 0;
         }
 
         /// <summary>和 <c>f ∪ g</c>。どちらか一方にでも属する集合を持つ族を返す。</summary>
@@ -170,6 +179,21 @@ namespace ZDD.Net.Core
         /// <param name="g">右の族。このマネージャに属していなければならない。</param>
         internal Zdd SymmetricDifference(in Zdd f, in Zdd g) =>
             ApplyBinary(ZddOperation.SymmetricDifference, f, g);
+
+        /// <summary>積 <c>f * g</c>。<c>{ a ∪ b : a ∈ f, b ∈ g }</c> を返す。</summary>
+        /// <param name="f">左の族。このマネージャに属していなければならない。</param>
+        /// <param name="g">右の族。このマネージャに属していなければならない。</param>
+        internal Zdd Product(in Zdd f, in Zdd g) => ApplyBinary(ZddOperation.Product, f, g);
+
+        /// <summary>商 <c>f / g</c>。</summary>
+        /// <param name="f">割られる族。このマネージャに属していなければならない。</param>
+        /// <param name="g">割る族。このマネージャに属していなければならない。</param>
+        internal Zdd Quotient(in Zdd f, in Zdd g) => ApplyBinary(ZddOperation.Quotient, f, g);
+
+        /// <summary>剰余 <c>f % g</c>。</summary>
+        /// <param name="f">割られる族。このマネージャに属していなければならない。</param>
+        /// <param name="g">割る族。このマネージャに属していなければならない。</param>
+        internal Zdd Remainder(in Zdd f, in Zdd g) => ApplyBinary(ZddOperation.Remainder, f, g);
 
         /// <summary>
         /// 各集合の <paramref name="item"/> の有無を反転した族を返す。
@@ -209,8 +233,13 @@ namespace ZDD.Net.Core
 
         /// <summary>
         /// 二項演算の共通の入口。両オペランドがこのマネージャのものであることを確かめ、
-        /// キャッシュを整えてから <see cref="BinaryOperations.Apply"/> に渡す。
+        /// キャッシュを整えてから演算の実装に渡す。
         /// </summary>
+        /// <remarks>
+        /// 集合演算（<see cref="BinaryOperations"/>）と家族代数の積・商・剰余
+        /// （<see cref="FamilyAlgebraOperations"/>）は走査の形が違うので実装が別になっているが、
+        /// 引数の検査とキャッシュの手入れは同じなので、入口はここ 1 つにまとめてある。
+        /// </remarks>
         private Zdd ApplyBinary(ZddOperation op, in Zdd f, in Zdd g)
         {
             EnsureOwns(f, nameof(f));
@@ -219,17 +248,20 @@ namespace ZDD.Net.Core
             // 破棄済みならここで ObjectDisposedException になる（表もキャッシュも触るため）。
             TuneCache();
 
-            return new Zdd(this, BinaryOperations.Apply(this, op, f.Id, g.Id));
+            int result = op is ZddOperation.Product or ZddOperation.Quotient or ZddOperation.Remainder
+                ? FamilyAlgebraOperations.Apply(this, op, f.Id, g.Id)
+                : BinaryOperations.Apply(this, op, f.Id, g.Id);
+
+            return new Zdd(this, result);
         }
 
         /// <summary>
         /// 反復実装の作業領域を借りる。使い終わったら必ず <see cref="ReturnWorkspace"/> で返す。
         /// </summary>
         /// <remarks>
-        /// 枠は 1 個だけで、それが貸出中のときにもう一度借りると<b>使い捨ての</b>作業領域を作って返す
-        /// （演算の中から別の演算を呼ぶ形になっても、同じ作業領域を 2 箇所で使うことはない）。
-        /// 枠に置いてある作業領域は貸出中も差し替えないので、入れ子の内側で作られた使い捨ての分に
-        /// 押し出されることはなく、育った配列がそのまま次の演算に引き継がれる。
+        /// 貸出中にもう一度借りると<b>別の</b>作業領域が返る（演算の中から別の演算を呼ぶ形になっても、
+        /// 同じ作業領域を 2 箇所で使うことはない）。深さごとの枠は返しても手放さないので、
+        /// 入れ子の内側で使う分も含めて、育った配列がそのまま次の演算に引き継がれる。
         /// </remarks>
         /// <exception cref="ObjectDisposedException">このマネージャが破棄済みの場合。</exception>
         internal OperationWorkspace RentWorkspace()
@@ -237,27 +269,30 @@ namespace ZDD.Net.Core
             // 破棄後に貸出枠を作り直さないための番。演算の入口が先に弾くので通常は到達しない。
             EnsureNotDisposed();
 
-            if (_workspaceInUse)
+            if (_workspaceDepth == _workspaces.Length)
             {
-                return new OperationWorkspace();
+                Array.Resize(ref _workspaces, _workspaces.Length * 2);
             }
 
-            OperationWorkspace workspace = _workspace ??= new OperationWorkspace();
-            _workspaceInUse = true;
+            OperationWorkspace workspace = _workspaces[_workspaceDepth] ??= new OperationWorkspace();
+            _workspaceDepth++;
             return workspace;
         }
 
         /// <summary>
-        /// 借りた作業領域を返す。中身は次の演算のために空にされる。
-        /// 入れ子で借りた使い捨ての分は、空にしたうえで GC に任せる。
+        /// 借りた作業領域を返す。中身は次の演算のために空にされ、枠はそのまま残る。
         /// </summary>
+        /// <remarks>
+        /// 貸し借りは入れ子（LIFO）でしか起きない。いちばん内側のものでなければ深さを戻さないので、
+        /// 順序が狂っても枠が飛び越して空くことはない。
+        /// </remarks>
         internal void ReturnWorkspace(OperationWorkspace workspace)
         {
             workspace.Reset();
 
-            if (ReferenceEquals(workspace, _workspace))
+            if (_workspaceDepth > 0 && ReferenceEquals(_workspaces[_workspaceDepth - 1], workspace))
             {
-                _workspaceInUse = false;
+                _workspaceDepth--;
             }
         }
 

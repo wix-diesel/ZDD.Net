@@ -1,6 +1,5 @@
 using System;
 using System.Diagnostics;
-using System.Runtime.CompilerServices;
 
 namespace ZDD.Net.Core
 {
@@ -14,7 +13,7 @@ namespace ZDD.Net.Core
     /// <b>単項演算の雛形をそのまま二項に広げたもの</b>（<see cref="UnaryOperations.Apply"/> /
     /// docs/PLAN.md §4.5）。スタックの回し方は同じで、変わるのは
     /// 「部分問題が 1 つのノードではなく<b>ノードの対</b>になる」ところだけである。
-    /// 対は <see cref="KeyOf"/> で 1 個の <c>long</c> に詰め、
+    /// 対は <see cref="OperationKey.Of"/> で 1 個の <c>long</c> に詰め、
     /// 作業スタックと途中結果表にはその値を入れる。
     /// </para>
     /// <para>
@@ -31,17 +30,11 @@ namespace ZDD.Net.Core
     /// 演算ごとに違うのはその 1 点だけなので、4 演算を 1 つのループで書いている。
     /// </para>
     /// <para>
-    /// <b>可換演算のキー</b>: <see cref="ZddOperations.IsCommutative"/> が真の演算では
-    /// オペランドを昇順に並べ替えてからキーにする。二項の分解は
-    /// <c>(f₀, g)</c> と <c>(g, f₀)</c> のように左右が入れ替わった同じ部分問題へ何度も到達するので、
-    /// 正規化しておくと途中結果表も演算キャッシュもそのぶん当たるようになる。
+    /// <b>可換演算のキー</b>: オペランドの正規化は <see cref="OperationKey"/> が引き受ける。
     /// </para>
     /// </remarks>
     internal static class BinaryOperations
     {
-        /// <summary>Hi 枝が部分問題ではないことを表す番兵。キーは常に非負なので取り違えない。</summary>
-        private const long NoKey = -1;
-
         /// <summary>ノードを作らず Lo 枝の答をそのまま結果にすることを表す番兵のレベル。</summary>
         /// <remarks>レベル 0 は終端のもので、演算がノードを作るレベルには決してならない。</remarks>
         private const int NoNode = 0;
@@ -84,14 +77,14 @@ namespace ZDD.Net.Core
             OperationWorkspace work = manager.RentWorkspace();
             try
             {
-                long rootKey = KeyOf(op, fRoot, gRoot);
+                long rootKey = OperationKey.Of(op, fRoot, gRoot);
                 work.PushVisit(rootKey);
 
                 while (work.TryPop(out long entry))
                 {
                     long key = OperationWorkspace.KeyOf(entry);
-                    int f = LeftOf(key);
-                    int g = RightOf(key);
+                    int f = OperationKey.LeftOf(key);
+                    int g = OperationKey.RightOf(key);
 
                     if (OperationWorkspace.IsCombine(entry))
                     {
@@ -112,7 +105,7 @@ namespace ZDD.Net.Core
                         {
                             // Hi 枝は「部分問題の答」か「そのまま残る既存のノード」のどちらか。
                             int hiResult = hiId;
-                            if (hiKey != NoKey)
+                            if (hiKey != OperationKey.None)
                             {
                                 work.TryGetResult(hiKey, out hiResult);
                             }
@@ -156,7 +149,7 @@ namespace ZDD.Net.Core
                         work.PushVisit(childLoKey);
                     }
 
-                    if (childHiKey != NoKey && !work.HasResult(childHiKey))
+                    if (childHiKey != OperationKey.None && !work.HasResult(childHiKey))
                     {
                         work.PushVisit(childHiKey);
                     }
@@ -226,10 +219,10 @@ namespace ZDD.Net.Core
         /// </param>
         /// <param name="loKey">0-枝側の部分問題のキー。常に有効。</param>
         /// <param name="hiKey">
-        /// 1-枝側の部分問題のキー。<see cref="NoKey"/> なら 1-枝は部分問題ではなく
+        /// 1-枝側の部分問題のキー。<see cref="OperationKey.None"/> なら 1-枝は部分問題ではなく
         /// <paramref name="hiId"/> のノードがそのまま入る。
         /// </param>
-        /// <param name="hiId"><paramref name="hiKey"/> が <see cref="NoKey"/> のときの 1-枝のノード ID。</param>
+        /// <param name="hiId"><paramref name="hiKey"/> が <see cref="OperationKey.None"/> のときの 1-枝のノード ID。</param>
         private static void Decompose(
             ZddOperation op,
             NodeTable nodes,
@@ -267,8 +260,8 @@ namespace ZDD.Net.Core
                 }
 
                 level = fLevel;
-                loKey = KeyOf(op, fLo, gLo);
-                hiKey = KeyOf(op, fHi, gHi);
+                loKey = OperationKey.Of(op, fLo, gLo);
+                hiKey = OperationKey.Of(op, fHi, gHi);
                 hiId = NodeTable.Bottom;
                 return;
             }
@@ -304,8 +297,8 @@ namespace ZDD.Net.Core
             };
 
             // 差だけが非可換なので、上下を入れ替えても左右の並びは崩さない。
-            loKey = fIsUpper ? KeyOf(op, upperLo, lower) : KeyOf(op, lower, upperLo);
-            hiKey = NoKey;
+            loKey = fIsUpper ? OperationKey.Of(op, upperLo, lower) : OperationKey.Of(op, lower, upperLo);
+            hiKey = OperationKey.None;
 
             if (keepsUpperHi)
             {
@@ -318,32 +311,6 @@ namespace ZDD.Net.Core
                 hiId = NodeTable.Bottom;
             }
         }
-
-        /// <summary>
-        /// 2 つのノード ID を 1 個の非負の <c>long</c> に詰める。可換演算では昇順に正規化する。
-        /// </summary>
-        /// <remarks>
-        /// ノード ID は非負なので、上位 32bit に左を置いた値も必ず非負になる。
-        /// これは <see cref="OperationWorkspace"/> のキーの約束（負値は「合成」の印）を満たすために要る。
-        /// </remarks>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static long KeyOf(ZddOperation op, int f, int g)
-        {
-            if (f > g && ZddOperations.IsCommutative(op))
-            {
-                (f, g) = (g, f);
-            }
-
-            return (long)(((ulong)(uint)f << 32) | (uint)g);
-        }
-
-        /// <summary>キーに詰めた左オペランド。</summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static int LeftOf(long key) => (int)((ulong)key >> 32);
-
-        /// <summary>キーに詰めた右オペランド。</summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static int RightOf(long key) => (int)key;
 
         private static ArgumentOutOfRangeException Unsupported(ZddOperation op) =>
             new ArgumentOutOfRangeException(

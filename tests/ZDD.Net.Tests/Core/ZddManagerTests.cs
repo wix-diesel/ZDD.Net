@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using Xunit;
 using ZDD.Net.Core;
 
@@ -561,11 +562,52 @@ namespace ZDD.Net.Tests.Core
             OperationWorkspace outer = manager.RentWorkspace();
             OperationWorkspace inner = manager.RentWorkspace();
 
-            // 入れ子の内側は使い捨て。先に返っても、育っている外側を押しのけてはならない。
+            // 深さごとに枠が分かれている。内側が先に返っても、外側の枠は動かない。
             manager.ReturnWorkspace(inner);
             manager.ReturnWorkspace(outer);
 
             Assert.Same(outer, manager.RentWorkspace());
+        }
+
+        [Fact]
+        public void NestedRentalsReuseTheSameWorkspaces()
+        {
+            using ZddManager manager = new ZddManager(3);
+
+            // 入れ子（積 → 和、商 → 交わり）は合成のたびに起きるので、
+            // 内側のぶんも作り直してはならない。深さごとに同じものが返る。
+            OperationWorkspace[] first = RentAndReturn(manager, depth: 3);
+            OperationWorkspace[] second = RentAndReturn(manager, depth: 3);
+
+            Assert.Equal(first, second);
+        }
+
+        [Fact]
+        public void TheWorkspacePoolGrowsWithTheNestingDepth()
+        {
+            using ZddManager manager = new ZddManager(3);
+
+            // 初期の枠数を超えて借りても、それぞれ別の作業領域になる。
+            OperationWorkspace[] rented = RentAndReturn(manager, depth: 8);
+
+            Assert.Equal(8, rented.Distinct().Count());
+        }
+
+        private static OperationWorkspace[] RentAndReturn(ZddManager manager, int depth)
+        {
+            OperationWorkspace[] rented = new OperationWorkspace[depth];
+
+            for (int i = 0; i < depth; i++)
+            {
+                rented[i] = manager.RentWorkspace();
+            }
+
+            for (int i = depth - 1; i >= 0; i--)
+            {
+                manager.ReturnWorkspace(rented[i]);
+            }
+
+            return rented;
         }
 
         [Fact]
