@@ -352,6 +352,62 @@ namespace ZDD.Net.Tests.Core
 
             Assert.Equal(ZddManagerOptions.DefaultInitialNodeCapacity + 2, manager.Table.Nodes.Capacity);
             Assert.Equal(ZddManagerOptions.DefaultInitialUniqueTableCapacity, manager.Table.Capacity);
+            Assert.Equal(ZddManagerOptions.DefaultInitialCacheCapacity, manager.Cache.Capacity);
+            Assert.Equal(ZddManagerOptions.DefaultMaxCacheCapacity, manager.Cache.MaxCapacity);
+        }
+
+        [Fact]
+        public void TheOperationCacheIsSizedByTheOptions()
+        {
+            ZddManagerOptions options = new ZddManagerOptions
+            {
+                InitialCacheCapacity = 8,
+                MaxCacheCapacity = 64,
+            };
+
+            using ZddManager manager = new ZddManager(4, options);
+
+            Assert.Equal(8, manager.Cache.Capacity);
+            Assert.Equal(64, manager.Cache.MaxCapacity);
+        }
+
+        [Fact]
+        public void TheOperationCacheCanBeDisabledThroughTheOptions()
+        {
+            ZddManagerOptions options = new ZddManagerOptions { MaxCacheCapacity = 0 };
+
+            using ZddManager manager = new ZddManager(4, options);
+
+            Assert.False(manager.Cache.IsEnabled);
+
+            manager.TuneCache();
+
+            Assert.False(manager.Cache.IsEnabled);
+        }
+
+        [Fact]
+        public void TuningTheCacheFollowsTheNodeCount()
+        {
+            ZddManagerOptions options = new ZddManagerOptions
+            {
+                InitialCacheCapacity = 1,
+                MaxCacheCapacity = 1024,
+            };
+
+            using ZddManager manager = new ZddManager(256, options);
+
+            manager.TuneCache();
+            Assert.Equal(1, manager.Cache.Capacity);
+
+            for (int item = 0; item < 256; item++)
+            {
+                manager.Singleton(item);
+            }
+
+            manager.TuneCache();
+
+            // 256 ノード → 64 エントリ（ノード数の 1/4）。
+            Assert.Equal(64, manager.Cache.Capacity);
         }
 
         [Fact]
@@ -401,6 +457,33 @@ namespace ZDD.Net.Tests.Core
                 () => options.InitialUniqueTableCapacity = UniqueTable.MaxCapacity + 1);
         }
 
+        [Fact]
+        public void OptionsAcceptZeroForTheCacheButRejectNegativeAndOversizedValues()
+        {
+            ZddManagerOptions options = new ZddManagerOptions
+            {
+                // 0 は「表を確保しない」「キャッシュ無効」という正当な設定。
+                InitialCacheCapacity = 0,
+                MaxCacheCapacity = 0,
+            };
+
+            Assert.Equal(0, options.InitialCacheCapacity);
+            Assert.Equal(0, options.MaxCacheCapacity);
+
+            AssertRejectedCapacity(
+                nameof(ZddManagerOptions.InitialCacheCapacity),
+                () => options.InitialCacheCapacity = -1);
+            AssertRejectedCapacity(
+                nameof(ZddManagerOptions.MaxCacheCapacity),
+                () => options.MaxCacheCapacity = -1);
+            AssertRejectedCapacity(
+                nameof(ZddManagerOptions.InitialCacheCapacity),
+                () => options.InitialCacheCapacity = OperationCache.CapacityLimit + 1);
+            AssertRejectedCapacity(
+                nameof(ZddManagerOptions.MaxCacheCapacity),
+                () => options.MaxCacheCapacity = OperationCache.CapacityLimit + 1);
+        }
+
         /// <summary>
         /// セッターが弾いたことを、BCL と同じ ParamName（"value"）と、どのプロパティかを名指しする
         /// メッセージの両方で確かめる。
@@ -441,6 +524,8 @@ namespace ZDD.Net.Tests.Core
             Assert.Throws<ObjectDisposedException>(() => manager.Singleton(0));
             Assert.Throws<ObjectDisposedException>(() => single.NodeCount);
             Assert.Throws<ObjectDisposedException>(() => single.Support());
+            Assert.Throws<ObjectDisposedException>(() => manager.Cache);
+            Assert.Throws<ObjectDisposedException>(() => manager.TuneCache());
         }
 
         [Fact]
