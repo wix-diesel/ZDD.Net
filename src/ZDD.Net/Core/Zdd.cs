@@ -102,6 +102,62 @@ namespace ZDD.Net.Core
         /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
         public int[] Support() => Manager.CollectSupport(_id);
 
+        /// <summary>
+        /// この族のすべての集合について、<paramref name="item"/> の有無を反転した族を返す。
+        /// </summary>
+        /// <param name="item">0 以上 <see cref="ZddManager.VariableCount"/> 未満の item index。</param>
+        /// <returns>
+        /// <c>{ s △ {item} : s ∈ this }</c>。たとえば <c>{∅, {1}}</c> に <c>Change(1)</c> をかけると
+        /// <c>{{1}, ∅}</c>、すなわち同じ族に戻る。<b>集合の個数は変わらない</b>ので、
+        /// <c>Change(i)</c> を 2 回かければ必ず元の族になる。
+        /// </returns>
+        /// <remarks>
+        /// 実装は明示スタックによる反復で、再帰しない（docs/PLAN.md §4.5）。
+        /// 途中結果はマネージャの演算キャッシュに載るので、同じ族に同じ演算を繰り返しても安い。
+        /// </remarks>
+        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="item"/> が範囲外の場合。</exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public Zdd Change(int item) => Manager.Change(this, item);
+
+        /// <summary>
+        /// <paramref name="item"/> を含む集合だけを取り出し、そこから <paramref name="item"/> を
+        /// 除いた族を返す（Minato の <c>Subset1</c>）。
+        /// </summary>
+        /// <param name="item">0 以上 <see cref="ZddManager.VariableCount"/> 未満の item index。</param>
+        /// <returns>
+        /// <c>{ s ∖ {item} : s ∈ this, item ∈ s }</c>。<see cref="OffSet"/> と対になっていて、
+        /// <c>OffSet(i)</c> と <c>OnSet(i).Change(i)</c> は元の族を重複なく 2 つに分ける。
+        /// </returns>
+        /// <remarks>
+        /// 実装は明示スタックによる反復で、再帰しない（docs/PLAN.md §4.5）。
+        /// </remarks>
+        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="item"/> が範囲外の場合。</exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public Zdd OnSet(int item) => Manager.OnSet(this, item);
+
+        /// <summary><see cref="OnSet"/> の別名（Minato の記法）。</summary>
+        /// <param name="item">0 以上 <see cref="ZddManager.VariableCount"/> 未満の item index。</param>
+        public Zdd Subset1(int item) => Manager.OnSet(this, item);
+
+        /// <summary>
+        /// <paramref name="item"/> を含まない集合だけを残した族を返す（Minato の <c>Subset0</c>）。
+        /// </summary>
+        /// <param name="item">0 以上 <see cref="ZddManager.VariableCount"/> 未満の item index。</param>
+        /// <returns><c>{ s : s ∈ this, item ∉ s }</c>。集合そのものは変わらない。</returns>
+        /// <remarks>
+        /// 実装は明示スタックによる反復で、再帰しない（docs/PLAN.md §4.5）。
+        /// </remarks>
+        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="item"/> が範囲外の場合。</exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public Zdd OffSet(int item) => Manager.OffSet(this, item);
+
+        /// <summary><see cref="OffSet"/> の別名（Minato の記法）。</summary>
+        /// <param name="item">0 以上 <see cref="ZddManager.VariableCount"/> 未満の item index。</param>
+        public Zdd Subset0(int item) => Manager.OffSet(this, item);
+
         /// <summary>2 つのハンドルが同じマネージャの同じ族を指すかどうか。</summary>
         /// <param name="other">比較相手。</param>
         public bool Equals(Zdd other) => ReferenceEquals(_manager, other._manager) && _id == other._id;

@@ -528,6 +528,47 @@ namespace ZDD.Net.Tests.Core
             Assert.Throws<ObjectDisposedException>(() => manager.TuneCache());
         }
 
+        // ---- 反復実装の作業領域 ----
+
+        [Fact]
+        public void TheWorkspaceIsHandedBackOutAfterItIsReturned()
+        {
+            using ZddManager manager = new ZddManager(3);
+
+            OperationWorkspace workspace = manager.RentWorkspace();
+            manager.ReturnWorkspace(workspace);
+
+            // 演算のたびに作り直さないこと（配列を使い回すため）。
+            Assert.Same(workspace, manager.RentWorkspace());
+        }
+
+        [Fact]
+        public void ARentalWhileAnotherIsOutGetsItsOwnWorkspace()
+        {
+            using ZddManager manager = new ZddManager(3);
+
+            OperationWorkspace outer = manager.RentWorkspace();
+            OperationWorkspace inner = manager.RentWorkspace();
+
+            Assert.NotSame(outer, inner);
+        }
+
+        [Fact]
+        public void AReturnedWorkspaceIsEmpty()
+        {
+            using ZddManager manager = new ZddManager(3);
+
+            OperationWorkspace workspace = manager.RentWorkspace();
+            workspace.PushVisit(1);
+            workspace.SetResult(1, 2);
+
+            manager.ReturnWorkspace(workspace);
+
+            Assert.True(workspace.IsEmpty);
+            Assert.Equal(0, workspace.ResultCount);
+            Assert.False(workspace.HasResult(1));
+        }
+
         [Fact]
         public void AHandleFromADisposedManagerStillCompares()
         {
