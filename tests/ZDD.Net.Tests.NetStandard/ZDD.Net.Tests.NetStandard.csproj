@@ -2,11 +2,11 @@
 
   <!--
     Runs the exact same test sources as ZDD.Net.Tests, but against the netstandard2.0
-    build of the library instead of the net8.0 one. The two builds differ only in
+    build of the library instead of the net10.0 one. The two builds differ only in
     #if NET fast paths, and this project is what proves they behave identically.
   -->
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
     <RootNamespace>ZDD.Net.Tests</RootNamespace>

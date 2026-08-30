@@ -8,12 +8,12 @@ namespace ZDD.Net.Internal
     {
         /// <summary>
         /// Identifies which target framework asset of the library was loaded, so that the
-        /// netstandard2.0 and net8.0 builds can be told apart at run time. The two builds
+        /// netstandard2.0 and net10.0 builds can be told apart at run time. The two builds
         /// must behave identically; only <c>#if NET</c> fast paths may differ.
         /// </summary>
         internal const string TargetFrameworkMoniker =
 #if NET
-            "net8.0";
+            "net10.0";
 #else
             "netstandard2.0";
 #endif

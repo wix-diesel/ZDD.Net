@@ -3,11 +3,11 @@
   <PropertyGroup>
     <!--
       netstandard2.0 carries the full feature set (.NET Framework 4.6.1+, Unity, Mono).
-      net8.0 exists only so that #if NET fast paths can use Span/Intrinsics/BitOperations.
-      Consumers on .NET 10 resolve the net8.0 asset, which is fully compatible.
-      See docs/PLAN.md section 2.
+      net10.0 exists only so that #if NET fast paths can use Span/Intrinsics/BitOperations.
+      Consumers on .NET 8/9 resolve the netstandard2.0 asset, which is functionally
+      identical; only the fast paths differ. See docs/PLAN.md section 2.
     -->
-    <TargetFrameworks>netstandard2.0;net8.0</TargetFrameworks>
+    <TargetFrameworks>netstandard2.0;net10.0</TargetFrameworks>
     <RootNamespace>ZDD.Net</RootNamespace>
     <AssemblyName>ZDD.Net</AssemblyName>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -17,7 +17,7 @@
     <Description>Zero-suppressed decision diagrams and frontier-based search, implemented natively in C# with no external dependencies.</Description>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(TargetFramework)' == 'net8.0'">
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0'">
     <IsAotCompatible>true</IsAotCompatible>
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
   </PropertyGroup>

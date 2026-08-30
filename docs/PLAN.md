@@ -12,7 +12,7 @@ C# ネイティブ実装による ZDD（Zero-suppressed Decision Diagram）＋�
 
 | 項目 | 結論 |
 |---|---|
-| ターゲット | **`netstandard2.0` + `net8.0` のマルチターゲット**（ns2.0 で全機能提供、net8 は高速パスのみ差し替え。net10 以降の利用者は net8.0 アセットがそのまま動く） |
+| ターゲット | **`netstandard2.0` + `net10.0` のマルチターゲット**（ns2.0 で全機能提供、net10 は高速パスのみ差し替え） |
 | ネイティブ度 | 100% managed C#（P/Invoke なし・NativeAOT 互換）。**外部 NuGet 依存ゼロ** |
 | 主用途 | **経路列挙・数え上げ**（s–t パス／サイクル）＋ **汎用の組合せ数え上げ**（基数制約・線形制約・独立集合） |
 | 想定規模 | **数千辺**。状態の bit-packing と辺順序最適化を v0.3 までに前倒しする |
@@ -51,20 +51,18 @@ C# ネイティブ実装による ZDD（Zero-suppressed Decision Diagram）＋�
 
 ## 2. ターゲットフレームワークの決定
 
-### 結論: `<TargetFrameworks>netstandard2.0;net8.0</TargetFrameworks>`
+### 結論: `<TargetFrameworks>netstandard2.0;net10.0</TargetFrameworks>`
 
 「可能なら .NET Standard」という要望に対し、**netstandard2.0 で全機能を実装可能**と判断した。
 ZDD エンジンの本質は `int[]` 配列上のハッシュ表とループであり、モダン API に依存しない。
 
-第 2 の TFM を `net10.0` ではなく **`net8.0`** にした理由:
+第 2 の TFM は **`net10.0`**。`#if NET` の高速パス（`Span` / `System.Runtime.Intrinsics` /
+`BitOperations` / `CollectionsMarshal` / `GC.AllocateUninitializedArray`）をここに置く。
 
-1. **`#if` で欲しかった高速化 API はすべて net8.0 に揃っている** —
-   `Span<T>` / `System.Runtime.Intrinsics` / `BitOperations` / `CollectionsMarshal` /
-   `GC.AllocateUninitializedArray` / `ref` フィールド。net10 固有で必要なものが実質ない。
-2. **net10 利用者は net8.0 アセットをそのまま使える**（上位互換）。TFM を増やしても得るものが少ない。
-3. **開発環境の制約**（後述）。この remote 環境では .NET 10 SDK を取得できない。
-
-net10 専用の最適化が実測で効くと分かった時点で `net10.0` を足す。コード変更は不要な設計にしておく。
+`net8.0` を第 3 の TFM に足さない理由: **.NET 8 のサポートは 2026 年 11 月に終了**する一方、
+本ライブラリの v1.0 到達はその前後になる。.NET 8/9 の利用者は `netstandard2.0` アセットに解決され、
+**機能は完全に同一**（差は `#if NET` の高速パスのみ）なので実害が小さい。
+net8 向けの高速パスが必要になった場合は `net8.0` を足すだけでよく、コード変更は不要。
 
 ### 開発環境について（実測）
 
@@ -73,18 +71,14 @@ net10 専用の最適化が実測で効くと分かった時点で `net10.0` を
 | ホスト | 結果 | 影響 |
 |---|---|---|
 | `builds.dotnet.microsoft.com` | **403（ポリシー拒否）** | `dotnet-install.sh` による SDK 取得が不可 |
-| `aka.ms` / `dotnetcli.azureedge.net` | 到達不可 | 同上 |
-| `packages.microsoft.com` | 200（ただし SDK パッケージなし） | .NET 9/10 は取得不可 |
-| **Ubuntu noble リポジトリ** | **OK** | **`apt-get install dotnet-sdk-8.0` で .NET 8 SDK を導入できる** |
+| `download.visualstudio.microsoft.com` / `aka.ms` / `dotnetcli.blob.core.windows.net` | 到達不可 | 同上 |
+| `packages.microsoft.com` | 200（ただし noble prod に SDK パッケージなし） | この経路では取得できない |
+| **Ubuntu noble リポジトリ** | **OK** | **`apt-get install -y dotnet-sdk-10.0` で .NET 10 SDK（10.0.111）を導入できる** |
 | `api.nuget.org` / `www.nuget.org` | OK | NuGet 復元は問題なく動作 |
 
-→ `apt-get install -y dotnet-sdk-8.0` で **ビルド・テストとも実行可能**であることを確認済み
-（`netstandard2.0` ビルド成功、xUnit の復元と実行成功）。
+→ `dotnet-sdk-10.0` に加えて `dotnet-sdk-aot-10.0`（NativeAOT コンポーネント）も導入でき、
+**M6-2 の NativeAOT 検証もこの環境で実施できる**。
 `scripts/setup-dev-env.sh` と SessionStart フックで自動化する。
-
-net10 を正式サポートしたくなった場合は、環境のネットワークポリシーに
-`builds.dotnet.microsoft.com` を追加するか、GitHub Actions 側（`actions/setup-dotnet`）でのみ
-net10 をビルド・検証する。
 
 ### 外部依存: **ゼロを厳守**
 
@@ -92,10 +86,10 @@ net10 をビルド・検証する。
 
 | 使えないもの | 対処 |
 |---|---|
-| `Span<T>` / `Memory<T>`（`System.Memory` が必要） | **公開 API から排除**。`IArrayDdSpec` は `int[] state, int offset` の形にする。内部も素の配列 + index で書く（ZDD エンジンは元々この形なので実害は小さい）。net8 側では `#if NET` で `Span` オーバーロードを追加 |
-| `ArrayPool<T>`（`System.Buffers` が必要） | `Internal/SimpleArrayPool`（`int[][]` のスタック）を自前実装。net8 では `ArrayPool` に委譲 |
+| `Span<T>` / `Memory<T>`（`System.Memory` が必要） | **公開 API から排除**。`IArrayDdSpec` は `int[] state, int offset` の形にする。内部も素の配列 + index で書く（ZDD エンジンは元々この形なので実害は小さい）。net10 側では `#if NET` で `Span` オーバーロードを追加 |
+| `ArrayPool<T>`（`System.Buffers` が必要） | `Internal/SimpleArrayPool`（`int[][]` のスタック）を自前実装。net10 では `ArrayPool` に委譲 |
 | `System.HashCode`（`Microsoft.Bcl.HashCode` が必要） | `Internal/Hashing`（64bit mix・FNV）を自前実装。どのみち独自ハッシュが要る |
-| `System.Numerics.BitOperations` | `Internal/BitOps` に polyfill。net8 では本家に委譲 |
+| `System.Numerics.BitOperations` | `Internal/BitOps` に polyfill。net10 では本家に委譲 |
 | ジェネリック数学（`INumber<T>`, `static abstract`） | **使わない**。重み型は `IWeightOps<T>` を struct ジェネリック制約で受ける戦略パターン（JIT が devirtualize するので ns2.0 でも高速） |
 | `[NotNullWhen]` 等の nullable 属性 | `Internal/NullableAttributes.cs` に internal で polyfill |
 
@@ -109,12 +103,12 @@ net10 をビルド・検証する。
 
 ```xml
 <PropertyGroup>
-  <TargetFrameworks>netstandard2.0;net8.0</TargetFrameworks>
+  <TargetFrameworks>netstandard2.0;net10.0</TargetFrameworks>
   <LangVersion>latest</LangVersion>
   <Nullable>enable</Nullable>
   <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-  <AllowUnsafeBlocks>true</AllowUnsafeBlocks>   <!-- net8 の高速パスのみ -->
-  <IsAotCompatible Condition="'$(TargetFramework)'=='net8.0'">true</IsAotCompatible>
+  <AllowUnsafeBlocks>true</AllowUnsafeBlocks>   <!-- net10 の高速パスのみ -->
+  <IsAotCompatible Condition="'$(TargetFramework)'=='net10.0'">true</IsAotCompatible>
   <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
   <GenerateDocumentationFile>true</GenerateDocumentationFile>
 </PropertyGroup>
@@ -122,7 +116,7 @@ net10 をビルド・検証する。
 
 ### この選択で広がる対象
 
-.NET Framework 4.6.1+ / Unity（Mono・IL2CPP）/ Xamarin / .NET Core 2.0+ / .NET 5〜10 以降。
+.NET Framework 4.6.1+ / Unity（Mono・IL2CPP）/ Xamarin / .NET Core 2.0+ / .NET 5 以降。
 特に **Unity での経路列挙・組合せ最適化用途**は ns2.0 でしか届かない層であり、価値が大きい。
 
 ## 3. リポジトリ構成
@@ -321,7 +315,7 @@ public interface IDdSpec<TState>
 }
 
 // 可変長・配列状態用（TdZdd の PodArrayDdSpec 相当）
-// 依存ゼロ方針のため ns2.0 でも使える「配列 + オフセット」形式にする（Span は net8 側の追加 API）
+// 依存ゼロ方針のため ns2.0 でも使える「配列 + オフセット」形式にする（Span は net10 側の追加 API）
 public interface IArrayDdSpec
 {
     int ArrayLength { get; }                                        // 状態配列の要素数
@@ -507,7 +501,7 @@ graph.EstimateMaxFrontierSize();   // 実行前に見積り、大きすぎるな
    `IDdSpec<T>` を interface 型で受けると仮想呼び出しになり数倍遅くなるので、
    **必ず `where TSpec : IDdSpec<TState>` の型引数で受ける**。
 3. **境界チェック除去**: ループを `for (int i = 0; i < arr.Length; i++)` の形に揃える。
-   net8 では `Unsafe.Add` / `ref` 経由の高速パスを `#if NET` で用意。
+   net10 では `Unsafe.Add` / `ref` 経由の高速パスを `#if NET` で用意。
 4. **ハッシュ表はオープンアドレス法**（`Dictionary` の 2 段間接を避ける）。
 5. **`BigInteger` は遅い**ので、濃度計算は `double`（近似・高速）と `BigInteger`（厳密）の 2 系統。
    さらに「128bit 整数で足りる場合の高速パス」を検討。

@@ -18,27 +18,27 @@
 | **D2** | 想定規模 | **数千辺** | フロンティア幅が支配的。bit-packing（M3-2）とビームサーチ辺順序（M3-3）が v0.3 の必須項目に昇格 |
 | **B1** | 外部依存 | **`PackageReference` ゼロを厳守** | `Span`/`ArrayPool`/`HashCode` を公開 API から排除。`IArrayDdSpec` は `int[] state, int offset` 形式。自前 polyfill を M0-4 に集約 |
 | **D3** | 公開範囲 | **未定**（v0.5 時点で判断） | 公開できる前提で設計する。**コード内 XML doc は英語**で書き始める（後からの翻訳はコストが高い）。M6 の一部は保留 |
-| **A1** | 開発環境 | **Ubuntu リポジトリから .NET 8 SDK を導入**（検証済み） | 後述の実測結果を参照。`scripts/setup-dev-env.sh` + SessionStart フックで自動化（M0-2） |
+| **A1** | 開発環境 | **Ubuntu リポジトリから .NET 10 SDK（10.0.111）を導入**（検証済み） | 後述の実測結果を参照。`scripts/setup-dev-env.sh` + SessionStart フックで自動化（M0-2） |
 | **B2** | BDD 対応 | **不要（ZDD 専用）** | 演算セットが半分で済み、ノード表の設計もゼロサプレス規則に特化できる |
 | **B3** | N 分岐 DD | **現時点では考えない（2 分岐固定）** | `IDdSpec` をジェネリックにせず、`GetChild(..., int value)` の value を 0/1 に固定できる |
 | **D5** | 高レベル API | **将来的に必要** | `GraphSet`/`SetSet<T>` は v0.3 の最後尾に維持。低レベル API を先に安定させる |
-| **A11** | TFM | **`netstandard2.0;net8.0`**（`net10.0` は当面外す） | A1 の制約と、`#if` で欲しい API が net8 に全て揃っていることから。net10 利用者は net8.0 アセットで動作 |
+| **A11** | TFM | **`netstandard2.0;net10.0`** | .NET 10 SDK が導入できたため当初計画どおり。.NET 8 は 2026 年 11 月にサポート終了するため第 3 TFM には加えない（.NET 8/9 利用者は ns2.0 アセットに解決され、機能は同一） |
 
 ### A1 の実測結果（このリモート環境の egress ポリシー）
 
 | ホスト | 結果 |
 |---|---|
 | `builds.dotnet.microsoft.com` | **403（組織のポリシー拒否）** → `dotnet-install.sh` 不可 |
-| `aka.ms` / `dotnetcli.azureedge.net` / `ci.dot.net` | 到達不可 |
-| `packages.microsoft.com` | 200。ただし noble prod に SDK パッケージなし（.NET 9/10 は取得不可） |
-| **Ubuntu noble リポジトリ** | **OK** → `apt-get install -y dotnet-sdk-8.0` で導入成功 |
+| `download.visualstudio.microsoft.com` / `aka.ms` / `dotnetcli.blob.core.windows.net` / `ci.dot.net` | 到達不可 |
+| `packages.microsoft.com` | 200。ただし noble prod に SDK パッケージなし |
+| **Ubuntu noble リポジトリ** | **OK** → `apt-get install -y dotnet-sdk-10.0` で .NET 10 SDK（10.0.111）と `dotnet-sdk-aot-10.0` を導入成功 |
 | `api.nuget.org` / `www.nuget.org` | OK → NuGet 復元は正常動作 |
 
-検証済み: `netstandard2.0` のビルド成功、xUnit プロジェクトの復元とテスト実行成功。
+検証済み: `netstandard2.0` + `net10.0` の両 TFM でビルド成功（警告 0）、xUnit の復元とテスト実行成功、
+`dotnet pack` で両アセットが依存ゼロで生成されること。NativeAOT コンポーネントも入るため M6-2 も実施可能。
 
-**`net10.0` を正式サポートしたい場合**は、環境のネットワークポリシーに
-`builds.dotnet.microsoft.com` の追加を依頼するか、GitHub Actions 側（`actions/setup-dotnet`）
-でのみ net10 をビルド・検証する構成にする。
+CI（GitHub Actions）では `actions/setup-dotnet` で 10.0.x を入れる。`global.json` は
+`10.0.100` + `rollForward: latestMajor` に固定してある。
 
 ---
 
@@ -46,7 +46,7 @@
 
 | # | 優先 | 論点 | 選択肢 | 暫定案 | 決定 |
 |---|---|---|---|---|---|
-| A1 | ~~P0~~ | 開発環境に .NET SDK が無い | — | — | **決定: Ubuntu リポジトリの `dotnet-sdk-8.0` を使う。`dotnet-install.sh` はポリシー拒否のため不可。net10 SDK は取得できない** |
+| A1 | ~~P0~~ | 開発環境に .NET SDK が無い | — | — | **決定: Ubuntu リポジトリの `dotnet-sdk-10.0` を使う**。`dotnet-install.sh`（builds.dotnet.microsoft.com）はポリシー拒否のため不可 |
 | A2 | **P0** | レビュー体制 | (a) 人がレビューして承認 / (b) Claude が自己レビュー＋人が最終承認 / (c) 自動マージ | (b) | **暫定案で進行**（「レビューしながら進めたい」との要望より） |
 | A3 | **P0** | 1 PR の許容規模 | 400 行 / 600 行 / 制限なし | 本体 400 行目安・上限 600 行 | |
 | A4 | **P0** | マージ先ブランチ | `main` 直 / `develop` を挟む | v1.0 までは `main` 直（squash merge） | |
@@ -54,7 +54,7 @@
 | A6 | **P1** | ルート名前空間 | `ZDD.Net` / `ZddNet` / `Zdd` | `ZDD.Net`（`Net` は予約語でないので有効） | |
 | A7 | **P1** | XML doc・README の言語 | 日本語 / 英語 / 併記 | **コード内 XML doc は英語、`docs/` は日本語** | **決定**（D3 が未定のため、公開できる状態を保つ） |
 | A8 | **P1** | ライセンス | Apache-2.0 のまま / MIT に変更 | Apache-2.0 のまま（特許条項があり企業利用で有利）。ただし参考 OSS が全て MIT なので、エコシステム統一を優先するなら MIT も合理的 | |
-| A9 | ~~P2~~ | net8.0 を TFM に追加するか | — | — | **決定: net8.0 を第 2 TFM にし、net10.0 を外した**（上記 A11） |
+| A9 | ~~P2~~ | net8.0 を TFM に追加するか | — | — | **決定: 追加しない**。.NET 8 は 2026-11 にサポート終了。.NET 8/9 利用者は ns2.0 アセットで機能同一。必要になれば TFM を 1 つ足すだけでよい（コード変更不要） |
 | A10 | **P2** | Unity（IL2CPP）を公式サポートと明言するか | — | 明言するなら Unity での動作検証タスクが必要 | |
 
 ---
