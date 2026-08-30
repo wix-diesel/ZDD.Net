@@ -21,11 +21,21 @@ namespace ZDD.Net.Tests.Properties
         /// <summary>本体プロジェクトのファイル。</summary>
         private static readonly string LibraryProject = Path.Combine("src", "ZDD.Net", "ZDD.Net.csproj");
 
-        /// <summary>本体に効いてしまう共通のビルド設定。ここで参照を足されても依存ゼロは崩れる。</summary>
+        /// <summary>
+        /// 本体に効いてしまう共通のビルド設定。ここで参照を足されても依存ゼロは崩れる。
+        /// </summary>
+        /// <remarks>
+        /// <c>Directory.Packages.props</c> が並んでいるのは、中央パッケージ管理のファイルも
+        /// 全プロジェクトに読み込まれるため。ここに置いてよいのは版を決める
+        /// <c>PackageVersion</c> だけで、<c>PackageReference</c> や
+        /// <c>GlobalPackageReference</c>（全プロジェクトに参照を配るための項目）を書けば
+        /// 本体にもそのまま入ってしまう。
+        /// </remarks>
         private static readonly string[] SharedBuildFiles =
         {
             "Directory.Build.props",
             "Directory.Build.targets",
+            "Directory.Packages.props",
         };
 
         [Fact]
@@ -58,7 +68,7 @@ namespace ZDD.Net.Tests.Properties
                 Assert.True(
                     packages.Length == 0,
                     $"{file} applies to every project, so it must not reference " +
-                    $"any package, but references {string.Join(", ", packages)}.");
+                    $"any package, but has {string.Join(", ", packages)}.");
             }
         }
 
@@ -90,13 +100,20 @@ namespace ZDD.Net.Tests.Properties
             Assert.Contains("CsCheck", PackageReferencesIn(path));
         }
 
-        /// <summary>ビルド設定ファイルが参照しているパッケージの名前。</summary>
+        /// <summary>
+        /// ビルド設定ファイルが配っているパッケージ参照。<c>PackageReference</c> と
+        /// <c>GlobalPackageReference</c> の両方を拾う（後者は全プロジェクトに参照を配る項目で、
+        /// <c>Directory.Packages.props</c> にしか書けない）。版を決めるだけの
+        /// <c>PackageVersion</c> は参照ではないので拾わない。
+        /// </summary>
         private static string[] PackageReferencesIn(string path)
         {
             XDocument document = XDocument.Load(path);
 
             return document.Descendants()
-                .Where(element => element.Name.LocalName == "PackageReference")
+                .Where(element =>
+                    element.Name.LocalName == "PackageReference"
+                    || element.Name.LocalName == "GlobalPackageReference")
                 .Select(element =>
                     element.Attribute("Include")?.Value
                     ?? element.Attribute("Update")?.Value
