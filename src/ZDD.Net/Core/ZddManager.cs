@@ -195,6 +195,31 @@ namespace ZDD.Net.Core
         /// <param name="g">割る族。このマネージャに属していなければならない。</param>
         internal Zdd Remainder(in Zdd f, in Zdd g) => ApplyBinary(ZddOperation.Remainder, f, g);
 
+        /// <summary>Meet <c>f ⊓ g</c>。<c>{ a ∩ b : a ∈ f, b ∈ g }</c> を返す。</summary>
+        /// <param name="f">左の族。このマネージャに属していなければならない。</param>
+        /// <param name="g">右の族。このマネージャに属していなければならない。</param>
+        internal Zdd Meet(in Zdd f, in Zdd g) => ApplyBinary(ZddOperation.Meet, f, g);
+
+        /// <summary><paramref name="g"/> のいずれかを含む <paramref name="f"/> の要素だけを残す。</summary>
+        /// <param name="f">ふるいにかけられる族。このマネージャに属していなければならない。</param>
+        /// <param name="g">条件を与える族。このマネージャに属していなければならない。</param>
+        internal Zdd SupersetsOf(in Zdd f, in Zdd g) => ApplyBinary(ZddOperation.SupersetsOf, f, g);
+
+        /// <summary><paramref name="g"/> のいずれかに含まれる <paramref name="f"/> の要素だけを残す。</summary>
+        /// <param name="f">ふるいにかけられる族。このマネージャに属していなければならない。</param>
+        /// <param name="g">条件を与える族。このマネージャに属していなければならない。</param>
+        internal Zdd SubsetsOf(in Zdd f, in Zdd g) => ApplyBinary(ZddOperation.SubsetsOf, f, g);
+
+        /// <summary><paramref name="g"/> のどれの部分集合でもない <paramref name="f"/> の要素だけを残す。</summary>
+        /// <param name="f">ふるいにかけられる族。このマネージャに属していなければならない。</param>
+        /// <param name="g">条件を与える族。このマネージャに属していなければならない。</param>
+        internal Zdd NonSubsetsOf(in Zdd f, in Zdd g) => ApplyBinary(ZddOperation.NonSubsetsOf, f, g);
+
+        /// <summary><paramref name="g"/> のどれの上位集合でもない <paramref name="f"/> の要素だけを残す。</summary>
+        /// <param name="f">ふるいにかけられる族。このマネージャに属していなければならない。</param>
+        /// <param name="g">条件を与える族。このマネージャに属していなければならない。</param>
+        internal Zdd NonSupersetsOf(in Zdd f, in Zdd g) => ApplyBinary(ZddOperation.NonSupersetsOf, f, g);
+
         /// <summary>
         /// 各集合の <paramref name="item"/> の有無を反転した族を返す。
         /// </summary>
@@ -236,8 +261,9 @@ namespace ZDD.Net.Core
         /// キャッシュを整えてから演算の実装に渡す。
         /// </summary>
         /// <remarks>
-        /// 集合演算（<see cref="BinaryOperations"/>）と家族代数の積・商・剰余
-        /// （<see cref="FamilyAlgebraOperations"/>）は走査の形が違うので実装が別になっているが、
+        /// 集合演算（<see cref="BinaryOperations"/>）・家族代数の積・商・剰余
+        /// （<see cref="FamilyAlgebraOperations"/>）・包含系のふるい
+        /// （<see cref="ContainmentOperations"/>）は走査の形が違うので実装が別になっているが、
         /// 引数の検査とキャッシュの手入れは同じなので、入口はここ 1 つにまとめてある。
         /// </remarks>
         private Zdd ApplyBinary(ZddOperation op, in Zdd f, in Zdd g)
@@ -248,9 +274,18 @@ namespace ZDD.Net.Core
             // 破棄済みならここで ObjectDisposedException になる（表もキャッシュも触るため）。
             TuneCache();
 
-            int result = op is ZddOperation.Product or ZddOperation.Quotient or ZddOperation.Remainder
-                ? FamilyAlgebraOperations.Apply(this, op, f.Id, g.Id)
-                : BinaryOperations.Apply(this, op, f.Id, g.Id);
+            int result = op switch
+            {
+                ZddOperation.Product or ZddOperation.Quotient or ZddOperation.Remainder =>
+                    FamilyAlgebraOperations.Apply(this, op, f.Id, g.Id),
+                ZddOperation.Meet
+                    or ZddOperation.SupersetsOf
+                    or ZddOperation.SubsetsOf
+                    or ZddOperation.NonSubsetsOf
+                    or ZddOperation.NonSupersetsOf =>
+                    ContainmentOperations.Apply(this, op, f.Id, g.Id),
+                _ => BinaryOperations.Apply(this, op, f.Id, g.Id),
+            };
 
             return new Zdd(this, result);
         }

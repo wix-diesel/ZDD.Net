@@ -245,6 +245,142 @@ namespace ZDD.Net.Core
         public Zdd Remainder(Zdd g) => Manager.Remainder(this, g);
 
         /// <summary>
+        /// Meet <c>F ⊓ G</c>。両方から 1 つずつ集合を採り、その<b>共通部分</b>を集めた族
+        /// <c>{ a ∩ b : a ∈ F, b ∈ G }</c> を返す。
+        /// </summary>
+        /// <param name="g">相手の族。この族と同じマネージャに属していなければならない。</param>
+        /// <remarks>
+        /// <para>
+        /// <see cref="Product"/> の「和を集める」を「交わりを集める」に替えたもの。
+        /// 交換則・結合則が成り立ち、<see cref="Union"/> に対して分配する。
+        /// </para>
+        /// <para>
+        /// <b>境界的な入力</b>: <c>F ⊓ ∅ == ∅</c>（相手が 1 つも集合を持たないので、作れる交わりも無い）、
+        /// <c>F ⊓ {∅} == {∅}</c>（∅ との交わりは常に ∅ なので、できるのは 1 通りだけ）。
+        /// <c>F ⊓ F</c> は <c>F</c> とは限らない（要素どうしの交わりが新しく増える）。
+        /// </para>
+        /// <para>
+        /// 実装は明示スタックによる反復で、再帰しない（docs/PLAN.md §4.5）。
+        /// </para>
+        /// </remarks>
+        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="g"/> が別のマネージャに属する、または <c>default(Zdd)</c> の場合。
+        /// </exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public Zdd Meet(Zdd g) => Manager.Meet(this, g);
+
+        /// <summary>
+        /// <paramref name="g"/> のいずれかを<b>含む</b>集合だけを残す
+        /// （<c>{ a ∈ F : ∃ b ∈ G, b ⊆ a }</c>）。
+        /// </summary>
+        /// <param name="g">条件を与える族。この族と同じマネージャに属していなければならない。</param>
+        /// <remarks>
+        /// <para>
+        /// <b>名前について</b>: SAPPOROBDD 由来の名前が <see cref="Restrict"/>、
+        /// 何が残るかをそのまま言い表した .NET 的な名前がこちら。<b>同じ演算</b>で、
+        /// どちらの名前で探しても見つかるように両方を用意してある。
+        /// </para>
+        /// <para>
+        /// 構築済みの巨大な族を後から絞り込む主要手段で、「全域木のうち、この辺集合を含むもの」の
+        /// ように使う。集合そのものは作り替えないので、結果は必ず <c>F</c> の部分族になる。
+        /// </para>
+        /// <para>
+        /// <b>境界的な入力</b>: <c>F.SupersetsOf(Base) == F</c>（∅ はどの集合にも含まれる）、
+        /// <c>F.SupersetsOf(∅) == ∅</c>（条件を満たす <c>b</c> が 1 つも無い）。
+        /// </para>
+        /// <para>
+        /// 実装は明示スタックによる反復で、再帰しない（docs/PLAN.md §4.5）。
+        /// </para>
+        /// </remarks>
+        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="g"/> が別のマネージャに属する、または <c>default(Zdd)</c> の場合。
+        /// </exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public Zdd SupersetsOf(Zdd g) => Manager.SupersetsOf(this, g);
+
+        /// <summary><see cref="SupersetsOf"/> の別名（SAPPOROBDD の記法）。同じ演算を指す。</summary>
+        /// <param name="g">条件を与える族。この族と同じマネージャに属していなければならない。</param>
+        public Zdd Restrict(Zdd g) => Manager.SupersetsOf(this, g);
+
+        /// <summary>
+        /// <paramref name="g"/> のいずれかに<b>含まれる</b>集合だけを残す
+        /// （<c>{ a ∈ F : ∃ b ∈ G, a ⊆ b }</c>）。
+        /// </summary>
+        /// <param name="g">条件を与える族。この族と同じマネージャに属していなければならない。</param>
+        /// <remarks>
+        /// <para>
+        /// <b>名前について</b>: SAPPOROBDD 由来の名前が <see cref="Permit"/>、
+        /// 何が残るかをそのまま言い表した .NET 的な名前がこちら。<b>同じ演算</b>で、
+        /// どちらの名前で探しても見つかるように両方を用意してある。
+        /// </para>
+        /// <para>
+        /// 「パスのうち、使ってよい辺だけでできているもの」のように、許可された集合の範囲へ
+        /// 族を閉じ込めるのに使う。結果は必ず <c>F</c> の部分族になる。
+        /// </para>
+        /// <para>
+        /// <b>境界的な入力</b>: <c>F.SubsetsOf(∅) == ∅</c>、
+        /// <c>F.SubsetsOf(Base)</c> は <c>F</c> が空集合を含むなら <c>{∅}</c>、含まなければ ∅
+        /// （<c>a ⊆ ∅</c> を満たすのは <c>a = ∅</c> だけ）。
+        /// </para>
+        /// <para>
+        /// 実装は明示スタックによる反復で、再帰しない（docs/PLAN.md §4.5）。
+        /// </para>
+        /// </remarks>
+        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="g"/> が別のマネージャに属する、または <c>default(Zdd)</c> の場合。
+        /// </exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public Zdd SubsetsOf(Zdd g) => Manager.SubsetsOf(this, g);
+
+        /// <summary><see cref="SubsetsOf"/> の別名（SAPPOROBDD の記法）。同じ演算を指す。</summary>
+        /// <param name="g">条件を与える族。この族と同じマネージャに属していなければならない。</param>
+        public Zdd Permit(Zdd g) => Manager.SubsetsOf(this, g);
+
+        /// <summary>
+        /// <paramref name="g"/> のどれの<b>部分集合でもない</b>集合だけを残す
+        /// （<c>{ a ∈ F : ∀ b ∈ G, a ⊄ b }</c>）。
+        /// </summary>
+        /// <param name="g">条件を与える族。この族と同じマネージャに属していなければならない。</param>
+        /// <returns>
+        /// <see cref="SubsetsOf"/> の否定版で、<c>F.NonSubsetsOf(G) == F - F.SubsetsOf(G)</c> が成り立つ。
+        /// 差を取らずに 1 回の走査で求めるので、中間の族を作らずに済む。
+        /// </returns>
+        /// <remarks>
+        /// <b>境界的な入力</b>: <c>F.NonSubsetsOf(∅) == F</c>（「∀ b ∈ ∅」は空虚に真）、
+        /// <c>F.NonSubsetsOf(F) == ∅</c>。実装は明示スタックによる反復で、再帰しない。
+        /// </remarks>
+        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="g"/> が別のマネージャに属する、または <c>default(Zdd)</c> の場合。
+        /// </exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public Zdd NonSubsetsOf(Zdd g) => Manager.NonSubsetsOf(this, g);
+
+        /// <summary>
+        /// <paramref name="g"/> のどれの<b>上位集合でもない</b>集合だけを残す
+        /// （<c>{ a ∈ F : ∀ b ∈ G, b ⊄ a }</c>）。
+        /// </summary>
+        /// <param name="g">条件を与える族。この族と同じマネージャに属していなければならない。</param>
+        /// <returns>
+        /// <see cref="SupersetsOf"/> の否定版で、<c>F.NonSupersetsOf(G) == F - F.SupersetsOf(G)</c> が
+        /// 成り立つ。「この辺集合を 1 つも丸ごとは含まない解」を取り出すのに使う。
+        /// </returns>
+        /// <remarks>
+        /// <b>境界的な入力</b>: <c>F.NonSupersetsOf(∅) == F</c>、
+        /// <c>F.NonSupersetsOf(Base) == ∅</c>（∅ はどの集合にも含まれてしまう）。
+        /// 実装は明示スタックによる反復で、再帰しない。
+        /// </remarks>
+        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="g"/> が別のマネージャに属する、または <c>default(Zdd)</c> の場合。
+        /// </exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public Zdd NonSupersetsOf(Zdd g) => Manager.NonSupersetsOf(this, g);
+
+        /// <summary>
         /// この族のすべての集合について、<paramref name="item"/> の有無を反転した族を返す。
         /// </summary>
         /// <param name="item">0 以上 <see cref="ZddManager.VariableCount"/> 未満の item index。</param>
