@@ -12,8 +12,8 @@ C# ネイティブ実装による ZDD（Zero-suppressed Decision Diagram）＋�
 
 | 項目 | 結論 |
 |---|---|
-| ターゲット | **`netstandard2.0` + `net10.0` のマルチターゲット**（ns2.0 で全機能提供、net10 は高速パスのみ差し替え） |
-| ネイティブ度 | 100% managed C#（P/Invoke なし・NativeAOT 互換）。**外部 NuGet 依存ゼロ** |
+| ターゲット | **`net10.0` 単独** |
+| ネイティブ度 | 100% managed C#（P/Invoke なし・NativeAOT 互換）。**外部 NuGet 依存ゼロ**（必要な API は全てフレームワーク同梱） |
 | 主用途 | **経路列挙・数え上げ**（s–t パス／サイクル）＋ **汎用の組合せ数え上げ**（基数制約・線形制約・独立集合） |
 | 想定規模 | **数千辺**。状態の bit-packing と辺順序最適化を v0.3 までに前倒しする |
 | アーキテクチャ | 3 レイヤ: **Core（ZDD エンジン）/ Frontier（フロンティア法フレームワーク）/ Graphs（グラフ問題 API）** |
@@ -51,18 +51,61 @@ C# ネイティブ実装による ZDD（Zero-suppressed Decision Diagram）＋�
 
 ## 2. ターゲットフレームワークの決定
 
-### 結論: `<TargetFrameworks>netstandard2.0;net10.0</TargetFrameworks>`
+### 結論: `<TargetFramework>net10.0</TargetFramework>`（単一ターゲット）
 
-「可能なら .NET Standard」という要望に対し、**netstandard2.0 で全機能を実装可能**と判断した。
-ZDD エンジンの本質は `int[]` 配列上のハッシュ表とループであり、モダン API に依存しない。
+当初は `netstandard2.0` を主ターゲットとして検討したが、**net10.0 単独**に決定した。
 
-第 2 の TFM は **`net10.0`**。`#if NET` の高速パス（`Span` / `System.Runtime.Intrinsics` /
-`BitOperations` / `CollectionsMarshal` / `GC.AllocateUninitializedArray`）をここに置く。
+**得られるもの**
 
-`net8.0` を第 3 の TFM に足さない理由: **.NET 8 のサポートは 2026 年 11 月に終了**する一方、
-本ライブラリの v1.0 到達はその前後になる。.NET 8/9 の利用者は `netstandard2.0` アセットに解決され、
-**機能は完全に同一**（差は `#if NET` の高速パスのみ）なので実害が小さい。
-net8 向けの高速パスが必要になった場合は `net8.0` を足すだけでよく、コード変更は不要。
+- **polyfill が全て不要**（`BitOps` / `HashCode` / `SimpleArrayPool` / nullable 属性）
+- **`#if NET` 分岐がゼロ** — コードが 1 本になり、テストプロジェクトも 1 本で済む
+- 素で使える API: `Span<T>` / `ReadOnlySpan<T>`、`ArrayPool<T>`、`System.HashCode`、
+  `BitOperations`、`System.Runtime.Intrinsics`（SIMD）、`CollectionsMarshal`、
+  `GC.AllocateUninitializedArray`（POH）、`ref` フィールド、`[InlineArray]`、
+  ジェネリック数学（`INumber<T>` / `static abstract` インタフェースメンバ）、
+  コレクション式、`params ReadOnlySpan<T>`
+- NativeAOT / トリミングを最初からフルサポートできる
+
+**失うもの（承知の上）**
+
+- .NET Framework 4.x / Unity（Mono・IL2CPP）/ Xamarin が対象外
+- .NET 8 / 9 の利用者も対象外（net10 へのアップグレードが必要）
+
+後から `netstandard2.0` を足すことは可能だが、その時点で polyfill 一式と `#if` 分岐が必要になる。
+そのため **内部実装は「素の配列 + `int` インデックス」を基本にしておく**方針は維持する
+（移植性のためだけでなく、そもそも性能上その方が良い）。
+
+### 設計への具体的な影響
+
+| 項目 | net10 単独での決定 |
+|---|---|
+| `IArrayDdSpec` | **`Span<int>` を使う**（ns2.0 の制約が消えたので「配列 + オフセット」にしない） |
+| 重み型 `IWeightOps<T>` | **`static abstract` インタフェースメンバ**で定義（ダミーインスタンスが不要になる） |
+| 配列プール | `ArrayPool<int>.Shared` を直接利用 |
+| ハッシュ | 一意化表は独自ハッシュのまま（`HashCode` は汎用すぎて hot path には重い）。`BitOperations` は素で使う |
+| フロンティア状態 | **`[InlineArray]`** による固定長インライン状態を検討（M3-2） |
+| SIMD | 状態比較・ハッシュに `System.Runtime.Intrinsics` を検討（M4-2） |
+
+### 外部依存: **ゼロを維持**
+
+`PackageReference` を 1 つも持たない。ただし net10 単独になったことで、これは**制約ではなくなった**
+（`Span` も `ArrayPool` も `BitOperations` もフレームワーク同梱）。
+方針としては維持し、テストで機械的に検証する。
+
+### 共通ビルド設定
+
+```xml
+<PropertyGroup>
+  <TargetFramework>net10.0</TargetFramework>
+  <LangVersion>latest</LangVersion>
+  <Nullable>enable</Nullable>
+  <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  <IsAotCompatible>true</IsAotCompatible>
+  <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+  <GenerateDocumentationFile>true</GenerateDocumentationFile>
+</PropertyGroup>
+```
 
 ### 開発環境について（実測）
 
@@ -80,45 +123,6 @@ net8 向けの高速パスが必要になった場合は `net8.0` を足すだ�
 **M6-2 の NativeAOT 検証もこの環境で実施できる**。
 `scripts/setup-dev-env.sh` と SessionStart フックで自動化する。
 
-### 外部依存: **ゼロを厳守**
-
-`PackageReference` を 1 つも持たない。これは `netstandard2.0` 側の書き方を強く縛る:
-
-| 使えないもの | 対処 |
-|---|---|
-| `Span<T>` / `Memory<T>`（`System.Memory` が必要） | **公開 API から排除**。`IArrayDdSpec` は `int[] state, int offset` の形にする。内部も素の配列 + index で書く（ZDD エンジンは元々この形なので実害は小さい）。net10 側では `#if NET` で `Span` オーバーロードを追加 |
-| `ArrayPool<T>`（`System.Buffers` が必要） | `Internal/SimpleArrayPool`（`int[][]` のスタック）を自前実装。net10 では `ArrayPool` に委譲 |
-| `System.HashCode`（`Microsoft.Bcl.HashCode` が必要） | `Internal/Hashing`（64bit mix・FNV）を自前実装。どのみち独自ハッシュが要る |
-| `System.Numerics.BitOperations` | `Internal/BitOps` に polyfill。net10 では本家に委譲 |
-| ジェネリック数学（`INumber<T>`, `static abstract`） | **使わない**。重み型は `IWeightOps<T>` を struct ジェネリック制約で受ける戦略パターン（JIT が devirtualize するので ns2.0 でも高速） |
-| `[NotNullWhen]` 等の nullable 属性 | `Internal/NullableAttributes.cs` に internal で polyfill |
-
-`netstandard2.0` の参照アセンブリに含まれるものは依存に数えない。以下は問題なく使える:
-
-- `System.Numerics.BigInteger`（濃度計算）
-- `System.Threading.Tasks.Parallel` / `CancellationToken`（並列構築・キャンセル）
-- `IProgress<T>`（進捗通知）
-
-### 共通ビルド設定
-
-```xml
-<PropertyGroup>
-  <TargetFrameworks>netstandard2.0;net10.0</TargetFrameworks>
-  <LangVersion>latest</LangVersion>
-  <Nullable>enable</Nullable>
-  <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-  <AllowUnsafeBlocks>true</AllowUnsafeBlocks>   <!-- net10 の高速パスのみ -->
-  <IsAotCompatible Condition="'$(TargetFramework)'=='net10.0'">true</IsAotCompatible>
-  <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
-  <GenerateDocumentationFile>true</GenerateDocumentationFile>
-</PropertyGroup>
-```
-
-### この選択で広がる対象
-
-.NET Framework 4.6.1+ / Unity（Mono・IL2CPP）/ Xamarin / .NET Core 2.0+ / .NET 5 以降。
-特に **Unity での経路列挙・組合せ最適化用途**は ns2.0 でしか届かない層であり、価値が大きい。
-
 ## 3. リポジトリ構成
 
 ```
@@ -132,7 +136,7 @@ src/
     Specs/                    … 組み込みスペック（パス・木・マッチング・基数制約 …）
     Graphs/                   … Graph / GraphSet 高レベル API・辺順序最適化
     Io/                       … シリアライズ・DOT 出力・Graphillion 互換 I/O
-    Internal/                 … polyfill・ハッシュ・ビット操作
+    Internal/                 … ハッシュ・ビット操作・共通ユーティリティ
 tests/
   ZDD.Net.Tests/              … xUnit（単体・総当たり照合・既知値）
   ZDD.Net.Tests.Properties/   … CsCheck によるプロパティテスト
@@ -315,12 +319,11 @@ public interface IDdSpec<TState>
 }
 
 // 可変長・配列状態用（TdZdd の PodArrayDdSpec 相当）
-// 依存ゼロ方針のため ns2.0 でも使える「配列 + オフセット」形式にする（Span は net10 側の追加 API）
 public interface IArrayDdSpec
 {
-    int ArrayLength { get; }                                        // 状態配列の要素数
-    int GetRoot(int[] state, int offset);
-    int GetChild(int[] state, int offset, int level, int value);
+    int ArrayLength { get; }                                  // 状態配列の要素数
+    int GetRoot(Span<int> state);
+    int GetChild(Span<int> state, int level, int value);
 }
 
 // スカラ + 配列の複合（HybridDdSpec 相当）
@@ -501,7 +504,7 @@ graph.EstimateMaxFrontierSize();   // 実行前に見積り、大きすぎるな
    `IDdSpec<T>` を interface 型で受けると仮想呼び出しになり数倍遅くなるので、
    **必ず `where TSpec : IDdSpec<TState>` の型引数で受ける**。
 3. **境界チェック除去**: ループを `for (int i = 0; i < arr.Length; i++)` の形に揃える。
-   net10 では `Unsafe.Add` / `ref` 経由の高速パスを `#if NET` で用意。
+   必要に応じて `Unsafe.Add` / `ref` 経由でさらに詰める。
 4. **ハッシュ表はオープンアドレス法**（`Dictionary` の 2 段間接を避ける）。
 5. **`BigInteger` は遅い**ので、濃度計算は `double`（近似・高速）と `BigInteger`（厳密）の 2 系統。
    さらに「128bit 整数で足りる場合の高速パス」を検討。
@@ -565,7 +568,7 @@ graph.EstimateMaxFrontierSize();   // 実行前に見積り、大きすぎるな
 | フロンティア幅の爆発でメモリ枯渇（**数千辺想定なので現実的なリスク**） | 大 | 事前見積り API・辺順序最適化・上限設定と graceful な例外・進捗コールバック |
 | 深い再帰による `StackOverflowException`（プロセス即死） | 大 | 設計初期から**全演算を反復実装**（§4.5）。回帰テストで担保 |
 | `IDdSpec` を interface 型で受けて仮想呼び出しになり大幅低速化 | 中 | struct ジェネリック制約を API で強制。アナライザまたはベンチで検出 |
-| 依存ゼロ方針により ns2.0 側のコードが素の配列で二重化する | 中 | `#if NET` の分岐点を `Internal/` の少数のユーティリティに閉じ込め、アルゴリズム本体は 1 本にする |
+| net10 単独にしたことで .NET Framework / Unity 利用者に届かない | 中 | 承知の上での決定。内部実装を「素の配列 + int index」に保ち、必要になれば `netstandard2.0` を後から足せる状態にしておく |
 | `BigInteger` がボトルネックになる | 中 | `double` 近似版を既定に、厳密版は明示 API |
 | 参考 OSS のコード混入によるライセンス問題 | 中 | 論文からの再実装を原則化。`THIRD-PARTY-NOTICES.md` を整備 |
 | ZDD の理論を知らない利用者が使えない | 中 | Graphillion 語彙の高レベル API を用意し、ZDD を知らなくても使える入口を作る |

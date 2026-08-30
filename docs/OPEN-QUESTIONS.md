@@ -16,13 +16,13 @@
 |---|---|---|---|
 | **D1** | 主用途 | **経路列挙・数え上げ ＋ 汎用の組合せ数え上げ** | 辺順序最適化・状態圧縮を M3 に前倒し。分割／カット／シュタイナー／彩色は M4 に後送り |
 | **D2** | 想定規模 | **数千辺** | フロンティア幅が支配的。bit-packing（M3-2）とビームサーチ辺順序（M3-3）が v0.3 の必須項目に昇格 |
-| **B1** | 外部依存 | **`PackageReference` ゼロを厳守** | `Span`/`ArrayPool`/`HashCode` を公開 API から排除。`IArrayDdSpec` は `int[] state, int offset` 形式。自前 polyfill を M0-4 に集約 |
+| **B1** | 外部依存 | **`PackageReference` ゼロを維持** | net10 単独になったため制約ではなくなった（必要な API は全てフレームワーク同梱）。方針は維持し、テストで機械的に検証する。`IArrayDdSpec` は `Span<int>` 形式に戻した |
 | **D3** | 公開範囲 | **未定**（v0.5 時点で判断） | 公開できる前提で設計する。**コード内 XML doc は英語**で書き始める（後からの翻訳はコストが高い）。M6 の一部は保留 |
 | **A1** | 開発環境 | **Ubuntu リポジトリから .NET 10 SDK（10.0.111）を導入**（検証済み） | 後述の実測結果を参照。`scripts/setup-dev-env.sh` + SessionStart フックで自動化（M0-2） |
 | **B2** | BDD 対応 | **不要（ZDD 専用）** | 演算セットが半分で済み、ノード表の設計もゼロサプレス規則に特化できる |
 | **B3** | N 分岐 DD | **現時点では考えない（2 分岐固定）** | `IDdSpec` をジェネリックにせず、`GetChild(..., int value)` の value を 0/1 に固定できる |
 | **D5** | 高レベル API | **将来的に必要** | `GraphSet`/`SetSet<T>` は v0.3 の最後尾に維持。低レベル API を先に安定させる |
-| **A11** | TFM | **`netstandard2.0;net10.0`** | .NET 10 SDK が導入できたため当初計画どおり。.NET 8 は 2026 年 11 月にサポート終了するため第 3 TFM には加えない（.NET 8/9 利用者は ns2.0 アセットに解決され、機能は同一） |
+| **A11** | TFM | **`net10.0` 単独**（`netstandard2.0` は外す） | polyfill と `#if NET` 分岐が全て不要になり、テストプロジェクトも 1 本で済む。`Span`/`ArrayPool`/`BitOperations`/`Intrinsics`/`[InlineArray]`/generic math を素で使える。引き換えに .NET Framework・Unity・.NET 8/9 は対象外 |
 
 ### A1 の実測結果（このリモート環境の egress ポリシー）
 
@@ -34,8 +34,8 @@
 | **Ubuntu noble リポジトリ** | **OK** → `apt-get install -y dotnet-sdk-10.0` で .NET 10 SDK（10.0.111）と `dotnet-sdk-aot-10.0` を導入成功 |
 | `api.nuget.org` / `www.nuget.org` | OK → NuGet 復元は正常動作 |
 
-検証済み: `netstandard2.0` + `net10.0` の両 TFM でビルド成功（警告 0）、xUnit の復元とテスト実行成功、
-`dotnet pack` で両アセットが依存ゼロで生成されること。NativeAOT コンポーネントも入るため M6-2 も実施可能。
+検証済み: `net10.0` でビルド成功（警告 0）、xUnit の復元とテスト実行成功、
+`dotnet pack` が依存ゼロで生成されること。NativeAOT コンポーネントも入るため M6-2 も実施可能。
 
 CI（GitHub Actions）では `actions/setup-dotnet` で 10.0.x を入れる。`global.json` は
 `10.0.100` + `rollForward: latestMajor` に固定してある。
@@ -54,8 +54,8 @@ CI（GitHub Actions）では `actions/setup-dotnet` で 10.0.x を入れる。`g
 | A6 | **P1** | ルート名前空間 | `ZDD.Net` / `ZddNet` / `Zdd` | `ZDD.Net`（`Net` は予約語でないので有効） | |
 | A7 | **P1** | XML doc・README の言語 | 日本語 / 英語 / 併記 | **コード内 XML doc は英語、`docs/` は日本語** | **決定**（D3 が未定のため、公開できる状態を保つ） |
 | A8 | **P1** | ライセンス | Apache-2.0 のまま / MIT に変更 | Apache-2.0 のまま（特許条項があり企業利用で有利）。ただし参考 OSS が全て MIT なので、エコシステム統一を優先するなら MIT も合理的 | |
-| A9 | ~~P2~~ | net8.0 を TFM に追加するか | — | — | **決定: 追加しない**。.NET 8 は 2026-11 にサポート終了。.NET 8/9 利用者は ns2.0 アセットで機能同一。必要になれば TFM を 1 つ足すだけでよい（コード変更不要） |
-| A10 | **P2** | Unity（IL2CPP）を公式サポートと明言するか | — | 明言するなら Unity での動作検証タスクが必要 | |
+| A9 | ~~P2~~ | net8.0 を TFM に追加するか | — | — | **決定: 追加しない**。net10 単独（A11） |
+| A10 | ~~P2~~ | Unity（IL2CPP）を公式サポートと明言するか | — | — | **決定: 対象外**（net10 単独化により） |
 
 ---
 
@@ -63,7 +63,7 @@ CI（GitHub Actions）では `actions/setup-dotnet` で 10.0.x を入れる。`g
 
 | # | 優先 | 論点 | 詳細 | 暫定案 | 決定 |
 |---|---|---|---|---|---|
-| B1 | ~~P0~~ | **外部依存パッケージを許容するか** | `netstandard2.0` で `Span<T>` を使うには `System.Memory`、`ArrayPool` には `System.Buffers`、`HashCode` には `Microsoft.Bcl.HashCode` の参照が要る。**「依存ゼロ」を最優先するなら ns2.0 側は素の配列 + index だけで書く必要があり、コードが二重化する** | — | **決定: 依存ゼロを厳守**。`IArrayDdSpec` は `int[] state, int offset` 形式に確定 |
+| B1 | ~~P0~~ | **外部依存パッケージを許容するか** | — | — | **決定: `PackageReference` ゼロを維持**。net10 単独化により制約は消え、`IArrayDdSpec` は `Span<int>` 形式に確定 |
 | B2 | ~~P0~~ | **BDD も扱うか** | — | — | **決定: ZDD 専用**。BDD 用の演算・削減規則は一切入れない |
 | B3 | ~~P0~~ | N 分岐（N-ary）DD を将来サポートするか | — | — | **決定: 2 分岐固定**（現時点では N 分岐を考えない）。多値変数は 1-hot 符号化で対応。将来必要になった場合は既存 API を壊さず別の型階層として追加する |
 | B4 | **P1** | `Zdd` ハンドルの形 | (a) `struct Zdd { ZddManager Manager; int Id; }`（16 B、API が快適）/ (b) `struct ZddRef { int Id; }` + マネージャを明示的に渡す（4 B、高速だが冗長） | (a)。演算子オーバーロードが使えて誤用も防げる。マネージャ不一致は例外 | |
@@ -72,13 +72,13 @@ CI（GitHub Actions）では `actions/setup-dotnet` で 10.0.x を入れる。`g
 | B7 | **P1** | 変数数を後から増やせるか | 固定 `ZddManager(n)` / 動的追加 | **固定**。動的追加は一意化表の再構築が必要で複雑 | |
 | B8 | **P1** | `Complement()` の全体集合 | マネージャの全変数 2^N / `Support` のみ | **マネージャの全変数**。`ComplementWithin(items)` を別途用意 | |
 | B9 | **P1** | 列挙時の配列アロケーション | (a) 毎回 `new int[]`（安全、GC 圧） / (b) バッファ使い回し（速いが LINQ で壊れる） | (a) を既定、`EnumerateInto(buffer)` として (b) も提供 | |
-| B10 | **P1** | 重み型の扱い | `long` 固定 / `double` 固定 / ジェネリック `IWeightOps<T>` | ジェネリック（`long`/`double`/`BigInteger` の実装を同梱）。ns2.0 でも struct 制約で devirtualize される | |
+| B10 | **P1** | 重み型の扱い | `long` 固定 / `double` 固定 / ジェネリック `IWeightOps<T>` | ジェネリック（`long`/`double`/`BigInteger` の実装を同梱）。net10 では **`static abstract` インタフェースメンバ**で定義でき、ダミーインスタンスが不要 | |
 | B11 | **P1** | 上限超過時の挙動 | 例外 / `TryBuild` で false / コールバックで中断 | `ZddResourceLimitException` を既定、`TryBuild` も提供、`CancellationToken` を構築 API に通す | |
 | B12 | **P1** | `IDdSpec` の戻り値の型 | 生の `int`（TdZdd 互換、`0`=⊥ `-1`=⊤）/ 型安全な `DdLevel` struct | **生の `int`**（C++ スペックの移植性を優先）。定数 `DdResult.False/True` とアナライザで誤用を防ぐ | |
-| B13 | **P1** | フロンティア状態の表現 | `int[]` のみ / `byte`/`short` パックも用意 | v0.2 は `int[]`、**v0.3（M3-2）で圧縮**（数千辺想定のため前倒し、P2→P1 に昇格） | |
+| B13 | **P1** | フロンティア状態の表現 | `int[]` のみ / `byte`/`short` パック / **`[InlineArray]`** | v0.2 は `int[]`、**v0.3（M3-2）で圧縮**（数千辺想定のため前倒し、P2→P1 に昇格）。net10 の `[InlineArray]` で固定長状態をインライン格納できる | |
 | B14 | **P2** | ノード GC を v1.0 に含めるか | 含める / v1.1 送り | 含める（M5-3）。ただし「1 問題ごとにマネージャを捨てる」使い方なら不要 | |
 | B15 | **P2** | 動的変数順序変更（sifting） | 実装する / しない | **しない**。ZDD ではフロンティア法の辺順序最適化のほうが遥かに効く | |
-| B16 | **P2** | 進捗通知の API | `IProgress<T>` / デリゲート / イベント | デリゲート（`IProgress<T>` は ns2.0 でも使えるがボクシングとスレッド跨ぎのコストがある） | |
+| B16 | **P2** | 進捗通知の API | `IProgress<T>` / デリゲート / イベント | デリゲート（`IProgress<T>` は `SynchronizationContext` へのポストが挟まり、構築ループから高頻度で呼ぶには重い） | |
 
 ---
 

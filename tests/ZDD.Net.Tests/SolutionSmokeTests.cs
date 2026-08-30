@@ -29,20 +29,6 @@ namespace ZDD.Net.Tests
             }
         }
 
-        [Fact]
-        public void TestProjectResolvesTheExpectedLibraryAsset()
-        {
-            // ZDD.Net.Tests runs against the net10.0 build; ZDD.Net.Tests.NetStandard
-            // compiles these same sources against the netstandard2.0 build. If this ever
-            // fails, the multi-targeting is silently collapsing to a single asset and the
-            // #if NET branches are no longer being covered.
-#if ZDD_TESTS_NETSTANDARD_ASSET
-            Assert.Equal("netstandard2.0", AssemblyMarker.TargetFrameworkMoniker);
-#else
-            Assert.Equal("net10.0", AssemblyMarker.TargetFrameworkMoniker);
-#endif
-        }
-
         private static bool IsFrameworkAssembly(string name) =>
             name == "netstandard"
             || name == "mscorlib"

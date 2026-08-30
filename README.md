@@ -2,8 +2,8 @@
 
 C# ネイティブ実装の ZDD（Zero-suppressed Decision Diagram）／フロンティア法ライブラリ。
 
-- 100% managed C#（P/Invoke なし）
-- ターゲット: `netstandard2.0` + `net10.0`
+- 100% managed C#（P/Invoke なし・NativeAOT 対応・外部 NuGet 依存ゼロ）
+- ターゲット: `net10.0`
 - 構成: Core（ZDD エンジン）／ Frontier（フロンティア法フレームワーク）／ Graphs（グラフ問題 API）
 
 ## ステータス

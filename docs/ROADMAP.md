@@ -32,8 +32,8 @@ Core レイヤは下から積むため、序盤の PR は `internal` のコー�
 - [ ] 再帰していないか（§PLAN 4.5 — 深い ZDD でスタックオーバーフロー即死）
 - [ ] hot path でアロケーションしていないか
 - [ ] `IDdSpec` を interface 型で受けていないか（struct ジェネリック制約になっているか）
-- [ ] `netstandard2.0` でビルドが通るか（`Span`/`ArrayPool`/`HashCode` を無条件に使っていないか）
 - [ ] `PackageReference` を増やしていないか（**外部依存ゼロが方針**）
+- [ ] AOT / トリミング警告を出していないか（リフレクション・動的コード生成を使っていないか）
 - [ ] 総当たり照合テストが追加されているか
 
 ---
@@ -42,10 +42,10 @@ Core レイヤは下から積むため、序盤の PR は `internal` のコー�
 
 | ID | タイトル | 内容 | 受け入れ条件 | 目安 | 依存 |
 |---|---|---|---|---|---|
-| **M0-1** | ソリューション骨格と共通ビルド設定 | `ZDD.Net.sln`、`src/ZDD.Net`（`netstandard2.0;net10.0`）、`tests/ZDD.Net.Tests`（xUnit）、`Directory.Build.props`、`Directory.Packages.props`、`.editorconfig`、`InternalsVisibleTo` | 両 TFM でビルド成功、ダミーテスト 1 本が通る | 設定のみ | — |
+| **M0-1** | ソリューション骨格と共通ビルド設定 | `ZDD.Net.sln`、`src/ZDD.Net`（`net10.0`）、`tests/ZDD.Net.Tests`（xUnit）、`Directory.Build.props`、`Directory.Packages.props`、`.editorconfig`、`InternalsVisibleTo` | ビルド成功、スモークテストが通る | 設定のみ | — |
 | **M0-2** | 開発環境セットアップ | `scripts/setup-dev-env.sh`（`apt-get install dotnet-sdk-10.0`）、`.claude/settings.json` の SessionStart フック、`global.json` | 新規セッションで `dotnet build` が通る | 設定のみ | M0-1 |
 | **M0-3** | CI ワークフロー | GitHub Actions: ubuntu/windows × 全 TFM の build + test、カバレッジ収集、PR テンプレート（レビュー観点チェックリスト入り） | PR で CI が回りグリーン | 設定のみ | M0-1 |
-| **M0-4** | 内部ユーティリティ（polyfill） | `Internal/BitOps`（`Log2`/`PopCount`/`RoundUpPow2`）、`Internal/Hashing`（64bit mix・FNV）、`Internal/SimpleArrayPool`、`Internal/NullableAttributes`、`Internal/ThrowHelper` | 単体テスト。**ns2.0/net10 で同一結果**（`#if NET` 分岐の等価性テスト） | 〜250 | M0-1 |
+| **M0-4** | 内部ユーティリティ | `Internal/Hashing`（一意化表向けの 64bit mix。`System.HashCode` は hot path には汎用すぎる）、`Internal/ThrowHelper` | 単体テスト（分布・衝突率の確認） | 〜120 | M0-1 |
 
 ---
 
@@ -122,7 +122,7 @@ Core レイヤは下から積むため、序盤の PR は `internal` のコー�
 | ID | タイトル | 内容 | 受け入れ条件 | 目安 | 依存 |
 |---|---|---|---|---|---|
 | **M4-1** | キャッシュ調整 | 演算キャッシュのサイズ自動調整、キー分布の改善、ヒット率の計測 | 代表ベンチで 10% 以上改善 | 〜200 | M3-11 |
-| **M4-2** | net10 高速パス | `Span`/`ref`/`Unsafe`/`Intrinsics` による `#if NET` 実装 | **ns2.0 と結果が完全一致**、net10 で改善 | 〜300 | M4-1 |
+| **M4-2** | SIMD・低レベル最適化 | 状態比較とハッシュの `System.Runtime.Intrinsics` 化、`ref`/`Unsafe` による境界チェック除去 | 結果が完全一致し、代表ベンチで改善 | 〜300 | M4-1 |
 | **M4-3** | 並列フロンティア構築 | レベル内展開の `Parallel.For` 化、パーティション別状態表 | **決定的な結果**（並列でもノード ID が一致）、4 コアで 2.5 倍以上 | 〜400 | M4-2 |
 | **M4-4** | 連結部分グラフ | `ConnectedSubgraphSpec(terminals)` | 小グラフで総当たり照合 | 〜300 | M3-11 |
 | **M4-5** | シュタイナー木 | `SteinerTreeSpec` | 既知の最小シュタイナー木と一致 | 〜250 | M4-4 |
