@@ -179,7 +179,9 @@ namespace ZDD.Net.Core
         /// <see cref="Bottom"/> であってはならない。
         /// </param>
         /// <exception cref="InvalidOperationException">
-        /// ノード数が上限（<see cref="CapacityLimit"/>）に達している場合。
+        /// ID 空間を使い切っている場合。上限は <see cref="CapacityLimit"/> だが、これは
+        /// 予約済み終端 2 個を含めた ID の個数なので、実ノード数（<see cref="Count"/>）の上限は
+        /// <c><see cref="CapacityLimit"/> - <see cref="FirstNodeId"/></c> になる。
         /// </exception>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int Add(int level, int lo, int hi)
@@ -243,7 +245,8 @@ namespace ZDD.Net.Core
             if (capacity >= _capacityLimit)
             {
                 ThrowHelper.ThrowInvalidOperationException(
-                    $"The node table has reached its limit of {_capacityLimit} nodes. " +
+                    $"The node table has run out of ids: its limit of {_capacityLimit} ids " +
+                    $"(including the {FirstNodeId} reserved terminals) is exhausted. " +
                     "Node ids are 32bit by design (docs/PLAN.md §4.1), so the diagram cannot grow any further.");
             }
 

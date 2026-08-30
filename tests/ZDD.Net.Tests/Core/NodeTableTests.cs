@@ -253,6 +253,9 @@ namespace ZDD.Net.Tests.Core
 
             Assert.Contains("4", exception.Message, StringComparison.Ordinal);
 
+            // 上限は「終端 2 個を含む ID の個数」なので、実ノード数の上限はそれより 2 小さい。
+            Assert.Equal(table.CapacityLimit - NodeTable.FirstNodeId, table.Count);
+
             // 例外を投げた後も表は壊れていない（件数が進んでいない）。
             Assert.Equal(2, table.Count);
             Assert.Equal(4, table.NextId);
