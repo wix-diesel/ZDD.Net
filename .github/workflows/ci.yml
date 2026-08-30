@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        tfm: [net10.0]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore ZDD.Net.sln
+
+      - name: Build
+        run: dotnet build ZDD.Net.sln --no-restore --configuration Release -f ${{ matrix.tfm }}
+
+      - name: Test
+        run: >
+          dotnet test tests/ZDD.Net.Tests/ZDD.Net.Tests.csproj
+          --no-restore
+          --configuration Release
+          -f ${{ matrix.tfm }}
+          --collect:"XPlat Code Coverage"
+          --results-directory ./coverage
+          --logger trx
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-${{ matrix.os }}-${{ matrix.tfm }}
+          path: ./coverage
+          retention-days: 14
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ matrix.os }}-${{ matrix.tfm }}
+          path: "**/*.trx"
+          retention-days: 14
