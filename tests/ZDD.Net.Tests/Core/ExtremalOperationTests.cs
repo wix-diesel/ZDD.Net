@@ -263,6 +263,9 @@ namespace ZDD.Net.Tests.Core
             Assert.Equal(powerSet, ~manager.Empty);
             Assert.Equal(manager.Empty, ~powerSet);
 
+            // 商の f / ∅ も同じ全体集合を指す（冪集合の組み立てはマネージャの 1 箇所にまとめてある）。
+            Assert.Equal(powerSet, manager.Singleton(0) / manager.Empty);
+
             // 全体集合はマネージャの変数の個数で決まるので、補の大きさもそれで決まる。
             Assert.Equal((1 << VariableCount) - 1, ZddFamilies.ToBruteForce(~manager.Base).Count);
 

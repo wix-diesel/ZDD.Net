@@ -57,6 +57,22 @@ namespace ZDD.Net.Core
         private OperationCache? _cache;
 
         /// <summary>
+        /// 冪集合 <c>2^U</c> の根ノード ID。<see cref="NodeTable.Bottom"/> なら未計算。
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// 変数の個数は固定で、一意化表は同じ族に必ず同じ ID を返すので、この値はマネージャの一生を
+        /// 通じて変わらない。<see cref="NodeTable.Bottom"/> を「未計算」の番兵に使えるのは、
+        /// <c>2^U</c> が少なくとも ∅ を含む＝空の族には決してならないからである。
+        /// </para>
+        /// <para>
+        /// <b>ノード ID の意味が変わる操作をしたら捨てること</b>。将来の M5-3（ノード GC）が
+        /// ノード表を組み替えるときは、<see cref="OperationCache.Clear"/> と同じくここも戻す。
+        /// </para>
+        /// </remarks>
+        private int _powerSetRoot;
+
+        /// <summary>
         /// 反復実装が使う作業領域の貸出枠。演算のたびに作り直さず、ここに置いて使い回す。
         /// 添字は<b>入れ子の深さ</b>で、深さ 0 が普通の演算、深さ 1 以上は
         /// 「演算の合成の途中で別の演算を呼んだ」ぶん（積 → 和、商 → 交わり）。
@@ -155,6 +171,7 @@ namespace ZDD.Net.Core
         {
             _table = null;
             _cache = null;
+            _powerSetRoot = NodeTable.Bottom;
             _workspaces = Array.Empty<OperationWorkspace?>();
             _workspaceDepth = 0;
         }
@@ -300,11 +317,20 @@ namespace ZDD.Net.Core
         /// ノードは変数の個数ぶんだけで、族としての大きさ（2^n 個の集合）とは無関係に小さい。
         /// <see cref="ZddOperation.Quotient"/>（<c>f / ∅</c>）と <see cref="ZddOperation.Complement"/> が
         /// 同じ全体集合を指すように、組み立てはここ 1 箇所に置く。
+        /// <b>1 度組み立てたら覚えておく</b>（<see cref="_powerSetRoot"/>）。既存ノードなら一意化表を
+        /// 引くだけとはいえ、変数 10 万のマネージャでは補を 1 回取るたびに 10 万回引くことになる。
         /// </remarks>
         /// <exception cref="ObjectDisposedException">このマネージャが破棄済みの場合。</exception>
         internal int PowerSetRoot()
         {
+            // 破棄済みならここで例外になる。覚えた値を返すときも、この検査は先に通す。
             UniqueTable table = Table;
+
+            if (_powerSetRoot != NodeTable.Bottom)
+            {
+                return _powerSetRoot;
+            }
+
             int result = NodeTable.Top;
 
             for (int level = 1; level <= _variableCount; level++)
@@ -312,6 +338,7 @@ namespace ZDD.Net.Core
                 result = table.GetNode(level, result, result);
             }
 
+            _powerSetRoot = result;
             return result;
         }
 
