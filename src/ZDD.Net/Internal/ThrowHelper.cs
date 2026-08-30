@@ -69,6 +69,12 @@ namespace ZDD.Net.Internal
         [DoesNotReturn]
         [StackTraceHidden]
         [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void ThrowArgumentException(string paramName, string message) =>
+            throw new ArgumentException(message, paramName);
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public static void ThrowInvalidOperationException(string message) =>
             throw new InvalidOperationException(message);
 
