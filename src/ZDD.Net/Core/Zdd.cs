@@ -103,6 +103,65 @@ namespace ZDD.Net.Core
         public int[] Support() => Manager.CollectSupport(_id);
 
         /// <summary>
+        /// 和 <c>F ∪ G</c>。どちらか一方にでも属する集合を持つ族を返す。
+        /// </summary>
+        /// <param name="g">相手の族。この族と同じマネージャに属していなければならない。</param>
+        /// <remarks>
+        /// 実装は明示スタックによる反復で、再帰しない（docs/PLAN.md §4.5）。
+        /// 途中結果はマネージャの演算キャッシュに載るので、同じ組合せを繰り返しても安い。
+        /// </remarks>
+        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="g"/> が別のマネージャに属する、または <c>default(Zdd)</c> の場合。
+        /// </exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public Zdd Union(Zdd g) => Manager.Union(this, g);
+
+        /// <summary>
+        /// 積 <c>F ∩ G</c>。両方に属する集合だけを持つ族を返す。
+        /// </summary>
+        /// <param name="g">相手の族。この族と同じマネージャに属していなければならない。</param>
+        /// <remarks>
+        /// 実装は明示スタックによる反復で、再帰しない（docs/PLAN.md §4.5）。
+        /// </remarks>
+        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="g"/> が別のマネージャに属する、または <c>default(Zdd)</c> の場合。
+        /// </exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public Zdd Intersect(Zdd g) => Manager.Intersect(this, g);
+
+        /// <summary>
+        /// 差 <c>F ∖ G</c>。この族のうち <paramref name="g"/> に属さない集合だけを返す。
+        /// </summary>
+        /// <param name="g">相手の族。この族と同じマネージャに属していなければならない。</param>
+        /// <remarks>
+        /// 集合ごとの差ではなく<b>族としての差</b>である（集合 <c>{0, 1}</c> から <c>{0}</c> を
+        /// 引くような操作ではない）。実装は明示スタックによる反復で、再帰しない。
+        /// </remarks>
+        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="g"/> が別のマネージャに属する、または <c>default(Zdd)</c> の場合。
+        /// </exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public Zdd Difference(Zdd g) => Manager.Difference(this, g);
+
+        /// <summary>
+        /// 対称差 <c>F △ G</c>。ちょうど一方にだけ属する集合を持つ族を返す。
+        /// </summary>
+        /// <param name="g">相手の族。この族と同じマネージャに属していなければならない。</param>
+        /// <remarks>
+        /// <c>(F ∪ G) ∖ (F ∩ G)</c> と同じ族だが、こちらは 1 回の走査で求める。
+        /// 実装は明示スタックによる反復で、再帰しない。
+        /// </remarks>
+        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="g"/> が別のマネージャに属する、または <c>default(Zdd)</c> の場合。
+        /// </exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public Zdd SymmetricDifference(Zdd g) => Manager.SymmetricDifference(this, g);
+
+        /// <summary>
         /// この族のすべての集合について、<paramref name="item"/> の有無を反転した族を返す。
         /// </summary>
         /// <param name="item">0 以上 <see cref="ZddManager.VariableCount"/> 未満の item index。</param>
@@ -178,6 +237,26 @@ namespace ZDD.Net.Core
         /// <param name="left">左辺。</param>
         /// <param name="right">右辺。</param>
         public static bool operator !=(Zdd left, Zdd right) => !left.Equals(right);
+
+        /// <summary>和 <c>F ∪ G</c>。<see cref="Union"/> と同じ。</summary>
+        /// <param name="left">左辺。</param>
+        /// <param name="right">右辺。</param>
+        public static Zdd operator |(Zdd left, Zdd right) => left.Manager.Union(left, right);
+
+        /// <summary>積 <c>F ∩ G</c>。<see cref="Intersect"/> と同じ。</summary>
+        /// <param name="left">左辺。</param>
+        /// <param name="right">右辺。</param>
+        public static Zdd operator &(Zdd left, Zdd right) => left.Manager.Intersect(left, right);
+
+        /// <summary>差 <c>F ∖ G</c>。<see cref="Difference"/> と同じ。</summary>
+        /// <param name="left">左辺。</param>
+        /// <param name="right">右辺。</param>
+        public static Zdd operator -(Zdd left, Zdd right) => left.Manager.Difference(left, right);
+
+        /// <summary>対称差 <c>F △ G</c>。<see cref="SymmetricDifference"/> と同じ。</summary>
+        /// <param name="left">左辺。</param>
+        /// <param name="right">右辺。</param>
+        public static Zdd operator ^(Zdd left, Zdd right) => left.Manager.SymmetricDifference(left, right);
 
         /// <summary>デバッグ用の短い表現。族の中身は展開しない。</summary>
         public override string ToString()

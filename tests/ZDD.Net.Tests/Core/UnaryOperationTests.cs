@@ -100,7 +100,8 @@ namespace ZDD.Net.Tests.Core
 
                 for (int item = 0; item < VariableCount; item++)
                 {
-                    // 和は演算としてはまだ無い（M1-7）ので、素朴表現の側で合わせる。
+                    // 単項演算の検証に二項演算（M1-7）を持ち込まないよう、合成は素朴表現の側で行う。
+                    // ZDD の演算だけで書いた同じ確認は BinaryOperationTests にある。
                     BruteForceFamily without = ZddFamilies.ToBruteForce(zdd.OffSet(item));
                     BruteForceFamily with = ZddFamilies.ToBruteForce(zdd.OnSet(item).Change(item));
 

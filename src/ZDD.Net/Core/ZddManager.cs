@@ -150,6 +150,27 @@ namespace ZDD.Net.Core
             _workspaceInUse = false;
         }
 
+        /// <summary>和 <c>f ∪ g</c>。どちらか一方にでも属する集合を持つ族を返す。</summary>
+        /// <param name="f">左の族。このマネージャに属していなければならない。</param>
+        /// <param name="g">右の族。このマネージャに属していなければならない。</param>
+        internal Zdd Union(in Zdd f, in Zdd g) => ApplyBinary(ZddOperation.Union, f, g);
+
+        /// <summary>積 <c>f ∩ g</c>。両方に属する集合だけを持つ族を返す。</summary>
+        /// <param name="f">左の族。このマネージャに属していなければならない。</param>
+        /// <param name="g">右の族。このマネージャに属していなければならない。</param>
+        internal Zdd Intersect(in Zdd f, in Zdd g) => ApplyBinary(ZddOperation.Intersect, f, g);
+
+        /// <summary>差 <c>f ∖ g</c>。<paramref name="f"/> のうち <paramref name="g"/> に無い集合を返す。</summary>
+        /// <param name="f">左の族。このマネージャに属していなければならない。</param>
+        /// <param name="g">右の族。このマネージャに属していなければならない。</param>
+        internal Zdd Difference(in Zdd f, in Zdd g) => ApplyBinary(ZddOperation.Difference, f, g);
+
+        /// <summary>対称差 <c>f △ g</c>。ちょうど一方にだけ属する集合を返す。</summary>
+        /// <param name="f">左の族。このマネージャに属していなければならない。</param>
+        /// <param name="g">右の族。このマネージャに属していなければならない。</param>
+        internal Zdd SymmetricDifference(in Zdd f, in Zdd g) =>
+            ApplyBinary(ZddOperation.SymmetricDifference, f, g);
+
         /// <summary>
         /// 各集合の <paramref name="item"/> の有無を反転した族を返す。
         /// </summary>
@@ -184,6 +205,21 @@ namespace ZDD.Net.Core
             TuneCache();
 
             return new Zdd(this, UnaryOperations.Apply(this, op, f.Id, item));
+        }
+
+        /// <summary>
+        /// 二項演算の共通の入口。両オペランドがこのマネージャのものであることを確かめ、
+        /// キャッシュを整えてから <see cref="BinaryOperations.Apply"/> に渡す。
+        /// </summary>
+        private Zdd ApplyBinary(ZddOperation op, in Zdd f, in Zdd g)
+        {
+            EnsureOwns(f, nameof(f));
+            EnsureOwns(g, nameof(g));
+
+            // 破棄済みならここで ObjectDisposedException になる（表もキャッシュも触るため）。
+            TuneCache();
+
+            return new Zdd(this, BinaryOperations.Apply(this, op, f.Id, g.Id));
         }
 
         /// <summary>
