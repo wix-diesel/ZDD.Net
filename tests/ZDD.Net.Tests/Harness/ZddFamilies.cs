@@ -51,7 +51,8 @@ namespace ZDD.Net.Tests.Harness
             {
                 int bit = 1 << item;
 
-                foreach (Group group in levels[item].Values.ToList())
+                // 書き込む先は次の段 levels[item + 1] なので、列挙中の辞書は変わらない。
+                foreach (Group group in levels[item].Values)
                 {
                     group.LoKey = Register(levels[item + 1], group.Masks.Where(mask => (mask & bit) == 0));
                     group.HiKey = Register(

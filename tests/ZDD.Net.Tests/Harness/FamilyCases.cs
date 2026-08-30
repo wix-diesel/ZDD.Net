@@ -33,19 +33,19 @@ namespace ZDD.Net.Tests.Harness
         private const int TargetSetCount = 32;
 
         /// <summary>
-        /// 変数の個数に見合った既定の密度。変数が少ないうちは冪集合の半分ほど、
-        /// 多くなったら <see cref="TargetSetCount"/> 個前後に落ち着くようにする。
+        /// 変数の個数に見合った既定の密度。族の大きさが <see cref="TargetSetCount"/> 個前後に
+        /// 落ち着くように選ぶ。ただし変数が少ないうちは冪集合の半分を上限にする。
         /// </summary>
         /// <remarks>
-        /// 一定の密度にすると、変数が 1〜2 個のときはほぼ空の族しか出ず、
-        /// 変数が多いときは族が大きくなりすぎる。どちらも照合の役に立たない。
+        /// 密度を一定にすると、変数が 1〜2 個のときはほぼ空の族しか出ず、変数が多いときは
+        /// 族が指数的に大きくなる。どちらも照合の役に立たない（後者は実行時間だけが伸びる）。
         /// </remarks>
         public static double DefaultDensity(int variableCount)
         {
             ArgumentOutOfRangeException.ThrowIfNegative(variableCount);
             ArgumentOutOfRangeException.ThrowIfGreaterThan(variableCount, BruteForceFamily.MaxPowerSetVariableCount);
 
-            return Math.Clamp((double)TargetSetCount / (1 << variableCount), 0.02, 0.5);
+            return Math.Min(0.5, (double)TargetSetCount / (1 << variableCount));
         }
 
         /// <summary>変数 <paramref name="variableCount"/> 個の部分集合を、ビットマスクで全部返す。</summary>
