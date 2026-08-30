@@ -36,6 +36,7 @@ jobs:
         run: >
           dotnet test tests/ZDD.Net.Tests/ZDD.Net.Tests.csproj
           --no-restore
+          --no-build
           --configuration Release
           -f ${{ matrix.tfm }}
           --collect:"XPlat Code Coverage"
