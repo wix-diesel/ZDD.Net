@@ -55,9 +55,14 @@ namespace ZDD.Net.Core
 
         /// <summary>
         /// 反復実装が使う作業領域の貸出枠。演算のたびに作り直さず、ここに 1 個だけ置いて使い回す。
-        /// 貸出中は <see langword="null"/> になる（<see cref="RentWorkspace"/> 参照）。
+        /// <b>貸出中も参照は手放さない</b>（貸出中かどうかは <see cref="_workspaceInUse"/> が持つ）。
+        /// 手放してしまうと、入れ子で借りた使い捨ての作業領域が枠に居座り、
+        /// 大きく育った本来の作業領域のほうが捨てられてしまう。
         /// </summary>
         private OperationWorkspace? _workspace;
+
+        /// <summary><see cref="_workspace"/> が貸出中かどうか。</summary>
+        private bool _workspaceInUse;
 
         /// <summary>変数の個数を指定してマネージャを作る。</summary>
         /// <param name="variableCount">
@@ -142,6 +147,7 @@ namespace ZDD.Net.Core
             _table = null;
             _cache = null;
             _workspace = null;
+            _workspaceInUse = false;
         }
 
         /// <summary>
@@ -184,31 +190,38 @@ namespace ZDD.Net.Core
         /// 反復実装の作業領域を借りる。使い終わったら必ず <see cref="ReturnWorkspace"/> で返す。
         /// </summary>
         /// <remarks>
-        /// 枠は 1 個だけで、貸出中にもう一度借りると新しい作業領域を作って返す
+        /// 枠は 1 個だけで、それが貸出中のときにもう一度借りると<b>使い捨ての</b>作業領域を作って返す
         /// （演算の中から別の演算を呼ぶ形になっても、同じ作業領域を 2 箇所で使うことはない）。
-        /// 返すのは 1 個だけなので、入れ子の内側で作られた分はそのまま捨てられる。
+        /// 枠に置いてある作業領域は貸出中も差し替えないので、入れ子の内側で作られた使い捨ての分に
+        /// 押し出されることはなく、育った配列がそのまま次の演算に引き継がれる。
         /// </remarks>
+        /// <exception cref="ObjectDisposedException">このマネージャが破棄済みの場合。</exception>
         internal OperationWorkspace RentWorkspace()
         {
-            OperationWorkspace? workspace = _workspace;
-            if (workspace is null)
+            // 破棄後に貸出枠を作り直さないための番。演算の入口が先に弾くので通常は到達しない。
+            EnsureNotDisposed();
+
+            if (_workspaceInUse)
             {
                 return new OperationWorkspace();
             }
 
-            _workspace = null;
+            OperationWorkspace workspace = _workspace ??= new OperationWorkspace();
+            _workspaceInUse = true;
             return workspace;
         }
 
-        /// <summary>借りた作業領域を返す。中身は次の演算のために空にされる。</summary>
+        /// <summary>
+        /// 借りた作業領域を返す。中身は次の演算のために空にされる。
+        /// 入れ子で借りた使い捨ての分は、空にしたうえで GC に任せる。
+        /// </summary>
         internal void ReturnWorkspace(OperationWorkspace workspace)
         {
             workspace.Reset();
 
-            // 破棄済みマネージャに貸出枠を作り直さないよう、表が生きているときだけ受け取る。
-            if (_workspace is null && _table is not null)
+            if (ReferenceEquals(workspace, _workspace))
             {
-                _workspace = workspace;
+                _workspaceInUse = false;
             }
         }
 

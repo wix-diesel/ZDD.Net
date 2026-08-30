@@ -554,6 +554,33 @@ namespace ZDD.Net.Tests.Core
         }
 
         [Fact]
+        public void TheReusedWorkspaceIsNotPushedOutByANestedRental()
+        {
+            using ZddManager manager = new ZddManager(3);
+
+            OperationWorkspace outer = manager.RentWorkspace();
+            OperationWorkspace inner = manager.RentWorkspace();
+
+            // 入れ子の内側は使い捨て。先に返っても、育っている外側を押しのけてはならない。
+            manager.ReturnWorkspace(inner);
+            manager.ReturnWorkspace(outer);
+
+            Assert.Same(outer, manager.RentWorkspace());
+        }
+
+        [Fact]
+        public void ReturningAWorkspaceToADisposedManagerDoesNotReviveIt()
+        {
+            ZddManager manager = new ZddManager(3);
+            OperationWorkspace workspace = manager.RentWorkspace();
+
+            manager.Dispose();
+            manager.ReturnWorkspace(workspace);
+
+            Assert.Throws<ObjectDisposedException>(() => manager.RentWorkspace());
+        }
+
+        [Fact]
         public void AReturnedWorkspaceIsEmpty()
         {
             using ZddManager manager = new ZddManager(3);
