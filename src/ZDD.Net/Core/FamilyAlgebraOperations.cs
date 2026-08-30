@@ -105,7 +105,7 @@ namespace ZDD.Net.Core
                         // 子は必ず計算済み。合成を積んだ直後に子を積んでいるので（LIFO）、
                         // 子の部分問題がすべて片付くまで、この項目は取り出されない。
                         // 分解はノード表を読むだけなので、積んだときと同じ答が出る。
-                        Split(nodes, f, g, out int level, out int f0, out int f1, out int g0, out int g1);
+                        NodePair.Split(nodes, f, g, out int level, out int f0, out int f1, out int g0, out int g1);
 
                         int lo = ProductOf(work, f0, g0);
 
@@ -145,7 +145,15 @@ namespace ZDD.Net.Core
                     }
 
                     // 4) 1 段降りる。自分を先に積み、その上に未計算の子を積む。
-                    Split(nodes, f, g, out _, out int childF0, out int childF1, out int childG0, out int childG1);
+                    NodePair.Split(
+                        nodes,
+                        f,
+                        g,
+                        out _,
+                        out int childF0,
+                        out int childF1,
+                        out int childG0,
+                        out int childG1);
 
                     work.PushCombine(key);
                     PushProduct(work, childF0, childG0);
@@ -271,7 +279,7 @@ namespace ZDD.Net.Core
                     if (OperationWorkspace.IsCombine(entry))
                     {
                         // 子は必ず計算済み。分解はノード表を読むだけなので、積んだときと同じ形になる。
-                        Split(nodes, f, g, out int level, out int f0, out int f1, out int g0, out int g1);
+                        NodePair.Split(nodes, f, g, out int level, out int f0, out int f1, out int g0, out int g1);
 
                         int combined;
                         if (IsAboveDivisor(nodes, f, g))
@@ -322,7 +330,15 @@ namespace ZDD.Net.Core
                     }
 
                     // 4) 1 段降りる。自分を先に積み、その上に未計算の子を積む。
-                    Split(nodes, f, g, out _, out int childF0, out int childF1, out int childG0, out int childG1);
+                    NodePair.Split(
+                        nodes,
+                        f,
+                        g,
+                        out _,
+                        out int childF0,
+                        out int childF1,
+                        out int childG0,
+                        out int childG1);
 
                     work.PushCombine(key);
 
@@ -461,67 +477,6 @@ namespace ZDD.Net.Core
         }
 
         // ---- 共通の道具 ----
-
-        /// <summary>
-        /// 部分問題 <c>(f, g)</c> を、両者の最上位 item のうち根側のレベルで 1 段分解する。
-        /// </summary>
-        /// <param name="nodes">ノード表。</param>
-        /// <param name="f">左オペランドのノード ID。</param>
-        /// <param name="g">右オペランドのノード ID。</param>
-        /// <param name="level">分解したレベル（1 以上）。</param>
-        /// <param name="f0"><paramref name="f"/> のうち item を含まない側。</param>
-        /// <param name="f1"><paramref name="f"/> のうち item を含む側から、item を除いたもの。</param>
-        /// <param name="g0"><paramref name="g"/> のうち item を含まない側。</param>
-        /// <param name="g1"><paramref name="g"/> のうち item を含む側から、item を除いたもの。</param>
-        /// <remarks>
-        /// 片方だけが上（根側）にあるときは、下の族はその item に一度も言及していない
-        /// ＝ どの集合も item を含まないので、0-枝がその族自身、1-枝が ∅ になる。
-        /// ノード表への <c>ref</c> は持ち出さない（<see cref="UniqueTable.GetNode"/> が
-        /// 表を伸ばすと古い配列を指しうるため、必要な値をここで読み切る）。
-        /// </remarks>
-        private static void Split(
-            NodeTable nodes,
-            int f,
-            int g,
-            out int level,
-            out int f0,
-            out int f1,
-            out int g0,
-            out int g1)
-        {
-            Debug.Assert(
-                !NodeTable.IsTerminal(f) || !NodeTable.IsTerminal(g),
-                "A pair of terminals is always settled by the base case and never reaches Split.");
-
-            int fLevel = NodeTable.IsTerminal(f) ? 0 : nodes[f].Level;
-            int gLevel = NodeTable.IsTerminal(g) ? 0 : nodes[g].Level;
-
-            level = Math.Max(fLevel, gLevel);
-
-            if (fLevel == level)
-            {
-                ref ZddNode node = ref nodes[f];
-                f0 = node.Lo;
-                f1 = node.Hi;
-            }
-            else
-            {
-                f0 = f;
-                f1 = NodeTable.Bottom;
-            }
-
-            if (gLevel == level)
-            {
-                ref ZddNode node = ref nodes[g];
-                g0 = node.Lo;
-                g1 = node.Hi;
-            }
-            else
-            {
-                g0 = g;
-                g1 = NodeTable.Bottom;
-            }
-        }
 
         /// <summary>
         /// 合成の途中で別の演算（和・交わり）を 1 回かける。呼ばれた側は自分の作業領域を借りるので、

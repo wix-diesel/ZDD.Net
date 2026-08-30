@@ -105,6 +105,10 @@ namespace ZDD.Net.Core
         /// 片方だけが上にある分解も「上の族を降ろす」形が同じになる。
         /// <see cref="ZddOperation.Quotient"/> / <see cref="ZddOperation.Remainder"/> は
         /// そもそも非可換（<c>f / g</c> と <c>g / f</c> は別物）。
+        /// <see cref="ZddOperation.Meet"/> も M1-9 で確かめて加えた: 1-枝は <c>f₁ ⊓ g₁</c>、
+        /// 0-枝は残り 3 通りの和で、どちらも左右の入れ替えで同じ部分問題の集まりになる。
+        /// 一方 <see cref="ZddOperation.SupersetsOf"/> 以下 4 つのふるいは、
+        /// 左を右でふるいにかける演算なので当然に非可換。
         /// </para>
         /// </remarks>
         public static bool IsCommutative(ZddOperation op) =>

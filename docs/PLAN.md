@@ -280,6 +280,17 @@ public readonly struct Zdd : IEquatable<Zdd>
 エラーにする実装もあるが、`f % ∅ == f` と合わせれば `f == f/g*g + f%g` はそのまま成り立つ
 （`2^U * ∅ == ∅` のため）。
 
+**包含系の別名**: `Restrict` / `Permit` は SAPPOROBDD 由来の名前、`SupersetsOf` / `SubsetsOf` は
+「何が残るか」をそのまま言い表した .NET 的な名前で、**同じ実装を指す**。
+どちらの語彙で探しても見つかるように両方を公開する。
+否定版（`NonSubsetsOf` / `NonSupersetsOf`）は差を取らずに 1 回の走査で求めるが、
+`f.NonSupersetsOf(g) == f - f.Restrict(g)`、`f.NonSubsetsOf(g) == f - f.Permit(g)` が成り立つ。
+
+**ふるいの境界**: 右オペランドが ∅ のとき「∃ b」は偽、「∀ b」は空虚に真になるので、
+`f.Restrict(∅) == f.Permit(∅) == ∅` かつ `f.NonSubsetsOf(∅) == f.NonSupersetsOf(∅) == f`。
+`{∅}` は `Restrict` の単位元（∅ はどの集合にも含まれる）で、
+`f.Permit({∅})` は `f` が空集合を持つときだけ `{∅}` になる。
+
 ### 5.3 問い合わせ・列挙
 
 | API | 備考 |
