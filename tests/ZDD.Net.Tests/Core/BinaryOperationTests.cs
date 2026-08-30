@@ -106,7 +106,7 @@ namespace ZDD.Net.Tests.Core
         // ---- 代数法則 ----
 
         [Fact]
-        public void UnionAndIntersectAreCommutative()
+        public void UnionIntersectAndSymmetricDifferenceAreCommutative()
         {
             foreach ((Zdd f, Zdd g) in Pairs(seed: 11))
             {
@@ -117,7 +117,7 @@ namespace ZDD.Net.Tests.Core
         }
 
         [Fact]
-        public void UnionAndIntersectAreAssociative()
+        public void UnionIntersectAndSymmetricDifferenceAreAssociative()
         {
             foreach ((Zdd f, Zdd g, Zdd h) in Triples(seed: 22))
             {
