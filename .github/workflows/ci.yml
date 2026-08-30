@@ -11,12 +11,7 @@ permissions:
 
 jobs:
   build-test:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-        tfm: [net10.0]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
       - name: チェックアウト
         uses: actions/checkout@v4
@@ -46,7 +41,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: coverage-${{ matrix.os }}-${{ matrix.tfm }}
+          name: coverage
           path: ./coverage
           retention-days: 14
 
@@ -54,6 +49,6 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: test-results-${{ matrix.os }}-${{ matrix.tfm }}
+          name: test-results
           path: "**/*.trx"
           retention-days: 14
