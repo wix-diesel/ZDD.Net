@@ -366,8 +366,29 @@ namespace ZDD.Net.Tests.Core
             // 10 万段すべてで枝が分かれる族。集合は 2^100000 個あるが、ノードは 10 万個しかない。
             Zdd powerSet = PowerSetOf(manager);
 
-            Assert.Equal(BigInteger.Pow(2, VariableCount), powerSet.Count);
             Assert.Equal(double.PositiveInfinity, powerSet.CountApprox);
+
+            // 深いまま厳密にも数える。上位 60 段だけが分岐し、その下は 1 本鎖なので 2^60 個。
+            // 2^100000 を BigInteger で組み上げるのは、深さの回帰テストとしては高くつくだけで
+            // 何も足さない（鎖の Count == 1 と合わせて経路は同じ）。
+            const int FreeItems = 60;
+
+            // item 60 以降は 1 本鎖（chain の下半分と同じノードが共有される）。
+            Zdd tail = manager.Base;
+            for (int item = VariableCount - 1; item >= FreeItems; item--)
+            {
+                tail = manager.CreateNode(item, lo: manager.Empty, hi: tail);
+            }
+
+            // その上の item 0〜59 は「入れても入れなくてもよい」。
+            Zdd mixed = tail;
+            for (int item = FreeItems - 1; item >= 0; item--)
+            {
+                mixed = manager.CreateNode(item, mixed, mixed);
+            }
+
+            Assert.Equal(BigInteger.Pow(2, FreeItems), mixed.Count);
+            Assert.Equal(Math.Pow(2, FreeItems), mixed.CountApprox);
 
             // 利用者の評価器も同じ走査に乗るので、同じく深さで落ちない。
             int[] counters = new int[3];

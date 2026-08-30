@@ -1,4 +1,5 @@
 using System;
+using ZDD.Net.Internal;
 
 namespace ZDD.Net.Core
 {
@@ -169,7 +170,15 @@ namespace ZDD.Net.Core
                     }
                 }
 
-                work.TryGetResult(rootId, out int slot);
+                if (!work.TryGetResult(rootId, out int slot))
+                {
+                    // 根は非終端なので必ず合成を通っている。ここに来るのは走査が壊れたときだけで、
+                    // 見つからないときの TryGetResult は 0（＝値表の先頭）を返すため、
+                    // 確かめずに読むと「別のノードの値」を静かに返してしまう。
+                    ThrowHelper.ThrowInvalidOperationException(
+                        $"The evaluation of node {rootId} finished without producing a value.");
+                }
+
                 return values[slot];
             }
             finally
@@ -194,7 +203,14 @@ namespace ZDD.Net.Core
                 return childId == NodeTable.Top ? trueValue : falseValue;
             }
 
-            work.TryGetResult(childId, out int slot);
+            if (!work.TryGetResult(childId, out int slot))
+            {
+                // 子は親の合成より先に片付いているはず。見つからないときの TryGetResult は
+                // 0（＝値表の先頭）を返すので、確かめずに読むと誤った値で計算が進んでしまう。
+                ThrowHelper.ThrowInvalidOperationException(
+                    $"The child node {childId} was evaluated after its parent instead of before it.");
+            }
+
             return values[slot];
         }
     }
