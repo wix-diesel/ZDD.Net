@@ -162,6 +162,89 @@ namespace ZDD.Net.Core
         public Zdd SymmetricDifference(Zdd g) => Manager.SymmetricDifference(this, g);
 
         /// <summary>
+        /// 積 <c>F * G</c>。両方から 1 つずつ集合を採り、その和を集めた族
+        /// <c>{ a ∪ b : a ∈ F, b ∈ G }</c> を返す（直積結合・join）。
+        /// </summary>
+        /// <param name="g">相手の族。この族と同じマネージャに属していなければならない。</param>
+        /// <returns>
+        /// 集合の個数は掛け算にならない。<c>a ∪ b</c> が同じになる組は 1 つに潰れるので、
+        /// 結果は高々 <c>|F| × |G|</c> 個である。
+        /// </returns>
+        /// <remarks>
+        /// <para>
+        /// <b>境界的な入力</b>: <c>F * {∅} == F</c>（<c>{∅}</c> が単位元）、
+        /// <c>F * ∅ == ∅</c>（相手が 1 つも集合を持たないので、作れる和も無い）。
+        /// </para>
+        /// <para>
+        /// 交換則・結合則が成り立ち、<see cref="Union"/> に対して分配する。
+        /// 実装は明示スタックによる反復で、再帰しない（docs/PLAN.md §4.5）。
+        /// </para>
+        /// </remarks>
+        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="g"/> が別のマネージャに属する、または <c>default(Zdd)</c> の場合。
+        /// </exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public Zdd Product(Zdd g) => Manager.Product(this, g);
+
+        /// <summary>
+        /// 商 <c>F / G</c>。<c>G</c> のどの集合とも重ならず、どれと足しても <c>F</c> に入る集合
+        /// <c>{ a : ∀ b ∈ G, a ∩ b = ∅ かつ a ∪ b ∈ F }</c> を返す。
+        /// </summary>
+        /// <param name="g">割る族。この族と同じマネージャに属していなければならない。</param>
+        /// <returns>
+        /// <c>F</c> から <c>G</c> を「くくり出した」残りの族。<c>F / G * G</c> は <c>F</c> の部分族で、
+        /// くくり出せなかったぶんが <see cref="Remainder"/> になる。
+        /// </returns>
+        /// <remarks>
+        /// <para>
+        /// <b>境界的な入力</b>:
+        /// </para>
+        /// <list type="bullet">
+        /// <item><description>
+        /// <c>F / {∅} == F</c>。<c>a ∪ ∅ = a</c> なので、条件は「<c>a ∈ F</c>」だけになる。
+        /// </description></item>
+        /// <item><description>
+        /// <c>F / ∅</c> は<b>全体集合の冪集合 2^U</b>（<see cref="ZddManager.VariableCount"/> 個の
+        /// item の全部分集合）。「∀ b ∈ ∅」は空虚に真なので、定義どおりならすべての部分集合が商に入る。
+        /// エラーにする流儀もあるが、ここでは定義に従う。<c>F % ∅ == F</c> と合わせて
+        /// <c>F == F / G * G + F % G</c> は保たれる（<c>2^U * ∅ == ∅</c> のため）。
+        /// </description></item>
+        /// <item><description>
+        /// <c>∅ / G == ∅</c>、および <c>F / F == {∅}</c>（<c>F</c> が ∅ でないとき）。
+        /// </description></item>
+        /// </list>
+        /// <para>
+        /// 実装は明示スタックによる反復で、再帰しない（docs/PLAN.md §4.5）。
+        /// </para>
+        /// </remarks>
+        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="g"/> が別のマネージャに属する、または <c>default(Zdd)</c> の場合。
+        /// </exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public Zdd Quotient(Zdd g) => Manager.Quotient(this, g);
+
+        /// <summary>
+        /// 剰余 <c>F % G</c>。<c>F ∖ (G * (F / G))</c>、すなわち <c>G</c> でくくり出せなかった集合を返す。
+        /// </summary>
+        /// <param name="g">割る族。この族と同じマネージャに属していなければならない。</param>
+        /// <returns>
+        /// <c>F == F / G * G + F % G</c>（<c>+</c> は <see cref="Union"/>）を満たす族。
+        /// </returns>
+        /// <remarks>
+        /// <b>境界的な入力</b>: <c>F % {∅} == ∅</c>（<c>F / {∅} * {∅} == F</c> なので割り切れる）、
+        /// <c>F % ∅ == F</c>（商が何であれ ∅ を掛ければ ∅ なので、何も引かれない）。
+        /// 実装は商・積・差の組み合わせで、いずれも反復実装であり再帰しない。
+        /// </remarks>
+        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="g"/> が別のマネージャに属する、または <c>default(Zdd)</c> の場合。
+        /// </exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public Zdd Remainder(Zdd g) => Manager.Remainder(this, g);
+
+        /// <summary>
         /// この族のすべての集合について、<paramref name="item"/> の有無を反転した族を返す。
         /// </summary>
         /// <param name="item">0 以上 <see cref="ZddManager.VariableCount"/> 未満の item index。</param>
@@ -257,6 +340,21 @@ namespace ZDD.Net.Core
         /// <param name="left">左辺。</param>
         /// <param name="right">右辺。</param>
         public static Zdd operator ^(Zdd left, Zdd right) => left.Manager.SymmetricDifference(left, right);
+
+        /// <summary>積 <c>F * G</c>。<see cref="Product"/> と同じ。</summary>
+        /// <param name="left">左辺。</param>
+        /// <param name="right">右辺。</param>
+        public static Zdd operator *(Zdd left, Zdd right) => left.Manager.Product(left, right);
+
+        /// <summary>商 <c>F / G</c>。<see cref="Quotient"/> と同じ。</summary>
+        /// <param name="left">割られる族。</param>
+        /// <param name="right">割る族。</param>
+        public static Zdd operator /(Zdd left, Zdd right) => left.Manager.Quotient(left, right);
+
+        /// <summary>剰余 <c>F % G</c>。<see cref="Remainder"/> と同じ。</summary>
+        /// <param name="left">割られる族。</param>
+        /// <param name="right">割る族。</param>
+        public static Zdd operator %(Zdd left, Zdd right) => left.Manager.Remainder(left, right);
 
         /// <summary>デバッグ用の短い表現。族の中身は展開しない。</summary>
         public override string ToString()
