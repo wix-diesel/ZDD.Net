@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v4
+
+      - name: .NET セットアップ
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: リストア
+        run: dotnet restore ZDD.Net.sln
+
+      - name: ビルド
+        run: dotnet build ZDD.Net.sln --no-restore --configuration Release
+
+      - name: テスト
+        run: >
+          dotnet test tests/ZDD.Net.Tests/ZDD.Net.Tests.csproj
+          --no-restore
+          --no-build
+          --configuration Release
+          --collect:"XPlat Code Coverage"
+          --results-directory ./coverage
+          --logger trx
+
+      - name: カバレッジのアップロード
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: ./coverage
+          retention-days: 14
+
+      - name: テスト結果のアップロード
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: "**/*.trx"
+          retention-days: 14
