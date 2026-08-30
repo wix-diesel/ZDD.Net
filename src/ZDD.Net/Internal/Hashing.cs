@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 
@@ -67,6 +68,27 @@ namespace ZDD.Net.Internal
                 return 0;
             }
 
+            return (int)((hash * GoldenRatio64) >> (64 - bits));
+        }
+
+        /// <summary>
+        /// <see cref="IndexFor"/> と同じ Fibonacci hashing だが、<paramref name="tableSize"/> の検証を
+        /// Debug ビルドの表明に落としたもの。サイズを自分で管理していて 2 の冪であることが
+        /// 構造的に保証されている表（一意化表・演算キャッシュ）の hot path 用。
+        /// </summary>
+        /// <param name="hash">撹拌済みの 64bit ハッシュ値。</param>
+        /// <param name="tableSize">
+        /// ハッシュ表のサイズ。<b>2 以上の 2 の冪</b>でなければならない（検証されない）。
+        /// サイズ 1 の表は <see cref="IndexFor"/> を使うこと。
+        /// </param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int IndexForPowerOfTwo(ulong hash, int tableSize)
+        {
+            Debug.Assert(
+                tableSize > 1 && BitOperations.IsPow2(tableSize),
+                $"'{nameof(tableSize)}' must be a power of two greater than one, but was {tableSize}.");
+
+            int bits = BitOperations.TrailingZeroCount(tableSize);
             return (int)((hash * GoldenRatio64) >> (64 - bits));
         }
     }

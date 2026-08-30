@@ -123,6 +123,22 @@ namespace ZDD.Net.Tests.Internal
         }
 
         [Theory]
+        [InlineData(2)]
+        [InlineData(1024)]
+        [InlineData(1 << 20)]
+        public void IndexForPowerOfTwoAgreesWithTheValidatingOverload(int tableSize)
+        {
+            Random random = new Random(Seed: 12345);
+
+            for (int i = 0; i < 10_000; i++)
+            {
+                ulong hash = Hashing.Mix64((ulong)random.NextInt64());
+
+                Assert.Equal(Hashing.IndexFor(hash, tableSize), Hashing.IndexForPowerOfTwo(hash, tableSize));
+            }
+        }
+
+        [Theory]
         [InlineData(0)]
         [InlineData(-1)]
         [InlineData(3)]
