@@ -33,7 +33,7 @@ namespace ZDD.Net.Core
     /// <see cref="Zdd.NodeCount"/> のような走査を含む API はノード表を参照するため保証の対象外。
     /// </para>
     /// <para>
-    /// <b>破棄</b>: <see cref="Dispose"/> はノード表と一意化表への参照を手放し、GC が回収できるようにする。
+    /// <b>破棄</b>: <see cref="Dispose"/> はノード表・一意化表・演算キャッシュへの参照を手放し、GC が回収できるようにする。
     /// アンマネージドな資源は持たないので、破棄を忘れてもリークはしない
     /// （大きな配列の回収が GC 任せになるだけ）。破棄後は、<b>表を読む操作</b>
     /// （<see cref="Empty"/> / <see cref="Base"/> / <see cref="Singleton"/> / <see cref="NodeCount"/> と、
@@ -49,6 +49,9 @@ namespace ZDD.Net.Core
 
         /// <summary>破棄されると <see langword="null"/> になる。破棄済みかどうかの判定も兼ねる。</summary>
         private UniqueTable? _table;
+
+        /// <summary>演算結果のメモ表。<see cref="_table"/> と同時に手放す。</summary>
+        private OperationCache? _cache;
 
         /// <summary>変数の個数を指定してマネージャを作る。</summary>
         /// <param name="variableCount">
@@ -70,6 +73,7 @@ namespace ZDD.Net.Core
             _table = new UniqueTable(
                 new NodeTable(NodeTable.FirstNodeId + effective.InitialNodeCapacity),
                 effective.InitialUniqueTableCapacity);
+            _cache = new OperationCache(effective.InitialCacheCapacity, effective.MaxCacheCapacity);
         }
 
         /// <summary>このマネージャが扱う変数（item）の個数。生成後は変わらない。</summary>
@@ -123,11 +127,15 @@ namespace ZDD.Net.Core
         }
 
         /// <summary>
-        /// ノード表と一意化表への参照を手放す。以後このマネージャと、これに属する
+        /// ノード表・一意化表・演算キャッシュへの参照を手放す。以後このマネージャと、これに属する
         /// <see cref="Zdd"/> への操作は <see cref="ObjectDisposedException"/> になる。
         /// 2 回目以降の呼び出しは何もしない。
         /// </summary>
-        public void Dispose() => _table = null;
+        public void Dispose()
+        {
+            _table = null;
+            _cache = null;
+        }
 
         /// <summary>
         /// このマネージャが使っている一意化表。破棄後は <see cref="ObjectDisposedException"/>。
@@ -145,6 +153,31 @@ namespace ZDD.Net.Core
                 return table!;
             }
         }
+
+        /// <summary>
+        /// このマネージャが使っている演算キャッシュ。破棄後は <see cref="ObjectDisposedException"/>。
+        /// </summary>
+        internal OperationCache Cache
+        {
+            get
+            {
+                OperationCache? cache = _cache;
+                if (cache is null)
+                {
+                    ThrowHelper.ThrowObjectDisposedException(nameof(ZddManager));
+                }
+
+                return cache!;
+            }
+        }
+
+        /// <summary>
+        /// 演算キャッシュを現在のノード数に見合うサイズへ広げる。演算の入口（M1-5 以降）で呼ぶ。
+        /// </summary>
+        /// <remarks>
+        /// 呼び忘れてもキャッシュは初期サイズのまま正しく働く（ヒット率が落ちるだけ）。
+        /// </remarks>
+        internal void TuneCache() => Cache.Tune(Table.Count);
 
         /// <summary>
         /// item index を内部の変数レベルに変換する。<c>level = VariableCount - item</c>。

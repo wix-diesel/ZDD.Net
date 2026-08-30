@@ -13,7 +13,10 @@ namespace ZDD.Net.Core
     /// 既存のマネージャには影響しない。
     /// </para>
     /// <para>
-    /// 演算キャッシュ（docs/PLAN.md §4.3）の設定は M1-4 でここに追加する。
+    /// 演算キャッシュ（docs/PLAN.md §4.3）は既定でノード数に追従して自動調整されるので、
+    /// 通常は <see cref="MaxCacheCapacity"/> の上限だけを気にすればよい。
+    /// メモリを一切使いたくない場合は <see cref="MaxCacheCapacity"/> に 0 を設定して無効化できるが、
+    /// 演算が指数時間に退化しうることに注意（<see cref="OperationCache"/> の解説を参照）。
     /// </para>
     /// </remarks>
     public sealed class ZddManagerOptions
@@ -24,8 +27,16 @@ namespace ZDD.Net.Core
         /// <summary><see cref="InitialUniqueTableCapacity"/> の既定値。</summary>
         public const int DefaultInitialUniqueTableCapacity = 1024;
 
+        /// <summary><see cref="InitialCacheCapacity"/> の既定値。</summary>
+        public const int DefaultInitialCacheCapacity = OperationCache.DefaultInitialCapacity;
+
+        /// <summary><see cref="MaxCacheCapacity"/> の既定値。</summary>
+        public const int DefaultMaxCacheCapacity = OperationCache.DefaultMaxCapacity;
+
         private int _initialNodeCapacity = DefaultInitialNodeCapacity;
         private int _initialUniqueTableCapacity = DefaultInitialUniqueTableCapacity;
+        private int _initialCacheCapacity = DefaultInitialCacheCapacity;
+        private int _maxCacheCapacity = DefaultMaxCacheCapacity;
 
         /// <summary>
         /// ノードの格納庫にあらかじめ確保しておくノード数。足りなくなれば自動で倍化されるので、
@@ -79,6 +90,62 @@ namespace ZDD.Net.Core
                 }
 
                 _initialUniqueTableCapacity = value;
+            }
+        }
+
+        /// <summary>
+        /// 演算キャッシュのエントリ数の初期値。エントリは 16 バイトで、内部で 2 の冪に切り上げられ、
+        /// <see cref="MaxCacheCapacity"/> を超えないよう丸め込まれる。
+        /// ノードが増えるとキャッシュも自動で広がるので、これは倍化を数回省くための助言でしかない。
+        /// </summary>
+        /// <value>
+        /// 0 以上。0 なら最初は表を確保せず、自動調整が働いた時点で初めて確保する。
+        /// 既定は <see cref="DefaultInitialCacheCapacity"/>。
+        /// </value>
+        /// <exception cref="System.ArgumentOutOfRangeException">
+        /// 負の値、または <see cref="OperationCache.CapacityLimit"/> を超える値を設定した場合。
+        /// </exception>
+        public int InitialCacheCapacity
+        {
+            get => _initialCacheCapacity;
+            set
+            {
+                if (value < 0 || value > OperationCache.CapacityLimit)
+                {
+                    ThrowHelper.ThrowArgumentOutOfRangeException(
+                        nameof(value),
+                        $"'{nameof(InitialCacheCapacity)}' must be between 0 and {OperationCache.CapacityLimit}, but was {value}.");
+                }
+
+                _initialCacheCapacity = value;
+            }
+        }
+
+        /// <summary>
+        /// 演算キャッシュのエントリ数の上限。自動調整はノード数の
+        /// 1/<see cref="OperationCache.NodesPerEntry"/> を狙うが、この値で頭打ちになる。
+        /// 指定値を超えないよう、内部では 2 の冪に切り下げられる。
+        /// </summary>
+        /// <value>
+        /// 0 以上 <see cref="OperationCache.CapacityLimit"/> 以下。0 でキャッシュを無効化する。
+        /// 既定は <see cref="DefaultMaxCacheCapacity"/>。
+        /// </value>
+        /// <exception cref="System.ArgumentOutOfRangeException">
+        /// 負の値、または <see cref="OperationCache.CapacityLimit"/> を超える値を設定した場合。
+        /// </exception>
+        public int MaxCacheCapacity
+        {
+            get => _maxCacheCapacity;
+            set
+            {
+                if (value < 0 || value > OperationCache.CapacityLimit)
+                {
+                    ThrowHelper.ThrowArgumentOutOfRangeException(
+                        nameof(value),
+                        $"'{nameof(MaxCacheCapacity)}' must be between 0 and {OperationCache.CapacityLimit}, but was {value}.");
+                }
+
+                _maxCacheCapacity = value;
             }
         }
 
