@@ -403,13 +403,35 @@ zdd.Subset(spec)          // 既存 ZDD をスペックで絞り込み（TdZdd �
 public interface IDdEval<TValue>
 {
     TValue EvalTerminal(bool isTrue);
-    TValue EvalNode(int level, TValue lo, TValue hi);
+    TValue EvalNode(int item, TValue lo, TValue hi);
 }
-public static TValue Evaluate<TEval, TValue>(this Zdd zdd, TEval eval) where TEval : IDdEval<TValue>;
+public static TValue Evaluate<TEval, TValue>(this in Zdd zdd, TEval eval)
+    where TEval : struct, IDdEval<TValue>;
 ```
 
 `Count` / `Probability` / `MaxWeight` などは全てこの上に実装し、
 ユーザ定義の評価（期待値、多項式、モーメント等）も同じ枠組みで書けるようにする。
+
+**`EvalNode` が受け取るのは item**（内部のレベルではない）。評価器が変数ごとの情報を引くのは
+`w[item]` のような形なので、公開する側は 0 始まりの item index で統一する（B5）。
+レベル ↔ item の変換は `ZddManager` の 1 箇所だけが行う、という約束もそのまま守れる。
+
+**`TEval` は `struct` 制約で受ける**（§10-2）。`IDdEval` を interface 型で受けると
+ノード 1 個ごとの `EvalNode` が仮想呼び出しになる。制約を `where TEval : struct, IDdEval<TValue>`
+にしておけば、interface 型で受ける書き方は**そもそもコンパイルが通らない**。
+`TValue` は型引数から推論できないので、呼び出しでは 2 つとも明示する。
+
+**走査とメモ化**: 明示スタックによるポストオーダー（再帰しない。§4.5）＋ノード ID ごとのメモ化で、
+`EvalNode` の呼び出しは**到達できるノード 1 個につき 1 回**。10^24 個の集合を持つ族でも
+ノード数ぶんの呼び出しで済む。メモ化には演算と同じ `OperationWorkspace` の途中結果表を使い、
+そこには評価値そのものではなく値表の添字を入れる（表の値は結果ノード ID 用の `int` 固定のため）。
+演算キャッシュは `int` しか覚えられないので、メモ化は評価 1 回のうちに閉じる。
+
+**濃度の 3 つの入口**: `Count`（`BigInteger`、厳密）/ `CountApprox`（`double`、速いが
+2^53 を超えると丸め、`double.MaxValue` を超えると `+∞` に飽和する）/
+`CountBySize()`（要素数別の分布）。分布の配列の長さは**族に属する最大の集合の要素数 + 1**で、
+空の族では長さ 0 になる。マネージャの変数の個数に合わせないのは、変数 10 万のマネージャで
+小さな族を数えるときにノードごとに 10 万要素の配列を作らないため。
 
 ---
 
