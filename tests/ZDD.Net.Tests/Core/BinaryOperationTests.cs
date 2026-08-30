@@ -159,8 +159,21 @@ namespace ZDD.Net.Tests.Core
             }
         }
 
-        // ド・モルガン則（~(f|g) == ~f & ~g）は Complement が入る M1-10 で追加する。
-        // 補は「全体集合の冪集合との差」なので、この PR の Difference が土台になる。
+        [Fact]
+        public void DeMorgansLawsHold()
+        {
+            // M1-7 の時点では補（M1-10）が無かったので、この 2 式だけ持ち越されていた。
+            // 補は「全体集合の冪集合との差」なので、土台は Difference である。
+            foreach ((Zdd f, Zdd g) in Pairs(seed: 60))
+            {
+                Assert.Equal(~(f | g), ~f & ~g);
+                Assert.Equal(~(f & g), ~f | ~g);
+
+                // 差と対称差も補で書き直せる。
+                Assert.Equal(f - g, f & ~g);
+                Assert.Equal(f ^ g, (f & ~g) | (g & ~f));
+            }
+        }
 
         [Fact]
         public void TheEmptyFamilyIsTheIdentityOfUnionAndTheZeroOfIntersect()

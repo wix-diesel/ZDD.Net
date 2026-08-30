@@ -291,6 +291,19 @@ public readonly struct Zdd : IEquatable<Zdd>
 `{∅}` は `Restrict` の単位元（∅ はどの集合にも含まれる）で、
 `f.Permit({∅})` は `f` が空集合を持つときだけ `{∅}` になる。
 
+**ヒッティング集合は極小化しない**: `HittingSets()` が返すのは
+`{ a ⊆ U : ∀ b ∈ F, a ∩ b ≠ ∅ }`、すなわち**交わる集合すべて**（上に閉じた族）である。
+極小なものだけが要るときは `HittingSets().Minimal()` と書く。したがって Berge の双対定理は
+`F.Minimal().HittingSets().Minimal().HittingSets().Minimal() == F.Minimal()` の形になる。
+結果は元の族に対して指数的に大きくなりうる。
+
+**極大・極小とヒッティング集合の境界**: `∅.Maximal() == ∅.Minimal() == ∅`、
+`{∅}.Minimal() == {∅}` で、`F` が空集合を持てば `F.Minimal() == {∅}`。
+`∅.HittingSets() == 2^U`（条件が空虚に真）、空集合を持つ族の `HittingSets()` は ∅
+（∅ と交われる集合は無い）。`HittingSets()` と `Complement()` の全体集合 `U` はどちらも
+**マネージャの全変数**であって `Support()` ではない（B8）。族が一度も使っていない item も
+候補に自由に入れてよいためで、同じ内容の族でも変数の個数が違えば答えが変わる。
+
 ### 5.3 問い合わせ・列挙
 
 | API | 備考 |

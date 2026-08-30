@@ -436,6 +436,117 @@ namespace ZDD.Net.Core
         /// <param name="item">0 以上 <see cref="ZddManager.VariableCount"/> 未満の item index。</param>
         public Zdd Subset0(int item) => Manager.OffSet(this, item);
 
+        /// <summary>
+        /// この族のすべての集合について、<paramref name="items"/> の有無をまとめて反転した族を返す
+        /// （<see cref="Change"/> の一般化）。
+        /// </summary>
+        /// <param name="items">
+        /// 反転する item index の並び。それぞれ 0 以上 <see cref="ZddManager.VariableCount"/> 未満。
+        /// 空なら族はそのまま返る。
+        /// </param>
+        /// <returns>
+        /// <c>{ s △ items : s ∈ this }</c>。<b>集合の個数は変わらない</b>。
+        /// 同じ item を 2 度渡すと反転が 2 回かかって打ち消し合うので、その item は元のままになる。
+        /// </returns>
+        /// <remarks>
+        /// <see cref="Change"/> を順に掛けるだけで、item どうしの順序は結果に影響しない。
+        /// 実装は明示スタックによる反復で、再帰しない（docs/PLAN.md §4.5）。
+        /// </remarks>
+        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// <paramref name="items"/> に範囲外の item がある場合（族は 1 つも反転されない）。
+        /// </exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public Zdd Flip(params ReadOnlySpan<int> items) => Manager.Flip(this, items);
+
+        /// <summary>
+        /// 包含関係で<b>極大</b>な集合だけを残した族を返す
+        /// （<c>{ a ∈ F : a ⊊ b となる b ∈ F が無い }</c>）。
+        /// </summary>
+        /// <returns>
+        /// 元の族の部分族で、必ず<b>反鎖</b>（どの 2 つも包含関係にない）になる。
+        /// したがって <c>F.Maximal().Maximal() == F.Maximal()</c>。
+        /// </returns>
+        /// <remarks>
+        /// <b>境界的な入力</b>: <c>∅.Maximal() == ∅</c>、<c>{∅}.Maximal() == {∅}</c>。
+        /// 実装は明示スタックによる反復で、再帰しない（docs/PLAN.md §4.5）。
+        /// </remarks>
+        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public Zdd Maximal() => Manager.Maximal(this);
+
+        /// <summary>
+        /// 包含関係で<b>極小</b>な集合だけを残した族を返す
+        /// （<c>{ a ∈ F : b ⊊ a となる b ∈ F が無い }</c>）。
+        /// </summary>
+        /// <returns>
+        /// 元の族の部分族で、必ず<b>反鎖</b>（どの 2 つも包含関係にない）になる。
+        /// したがって <c>F.Minimal().Minimal() == F.Minimal()</c>。
+        /// </returns>
+        /// <remarks>
+        /// 「冗長な解を落とす」定番の操作で、極小カットや極小頂点被覆を取り出すのに使う。
+        /// <b>境界的な入力</b>: <c>∅.Minimal() == ∅</c>、<c>{∅}.Minimal() == {∅}</c>。
+        /// <c>F</c> が空集合を持つなら、<c>F.Minimal() == {∅}</c>（∅ はどの集合にも真に含まれる）。
+        /// 実装は明示スタックによる反復で、再帰しない（docs/PLAN.md §4.5）。
+        /// </remarks>
+        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public Zdd Minimal() => Manager.Minimal(this);
+
+        /// <summary>
+        /// この族のどの集合とも交わる集合をすべて集めた族（ブロッキング集合族／横断超グラフ）を返す
+        /// （<c>{ a ⊆ U : ∀ b ∈ F, a ∩ b ≠ ∅ }</c>）。
+        /// </summary>
+        /// <returns>
+        /// 全体集合 <c>U</c> は所有マネージャの<b>全変数</b>（<see cref="ZddManager.VariableCount"/>）で、
+        /// <see cref="Support"/> ではない。この族が使っていない item も候補に自由に入れてよいため。
+        /// </returns>
+        /// <remarks>
+        /// <para>
+        /// <b>極小なものだけが要るなら <c>HittingSets().Minimal()</c></b> と書く。この演算が返すのは
+        /// 「交わる集合すべて」なので、上位集合もすべて含んだ上に閉じた族になる。
+        /// 反鎖どうしの双対（Berge の定理）は極小化を挟んで
+        /// <c>F.Minimal().HittingSets().Minimal().HittingSets().Minimal() == F.Minimal()</c> の形になる。
+        /// </para>
+        /// <para>
+        /// <b>結果が指数的に大きくなりうる</b>。横断超グラフの大きさは元の族に対して指数的になりうるので、
+        /// 大きな族に無条件で掛けてよい演算ではない。
+        /// </para>
+        /// <para>
+        /// <b>境界的な入力</b>: <c>∅.HittingSets() == 2^U</c>（条件が空虚に真）、
+        /// <c>{∅}.HittingSets() == ∅</c>（∅ と交われる集合は無い）。空集合を含む族はすべて後者になる。
+        /// </para>
+        /// <para>
+        /// 実装は明示スタックによる反復で、再帰しない（docs/PLAN.md §4.5）。
+        /// </para>
+        /// </remarks>
+        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public Zdd HittingSets() => Manager.HittingSets(this);
+
+        /// <summary><see cref="HittingSets"/> の別名（ブロッキング集合族）。同じ演算を指す。</summary>
+        public Zdd Blocking() => Manager.HittingSets(this);
+
+        /// <summary>
+        /// 補 <c>2^U ∖ F</c>。全体集合 <c>U</c> の部分集合のうち、この族に属さないものを集めた族を返す。
+        /// </summary>
+        /// <returns>
+        /// 全体集合 <c>U</c> は所有マネージャの<b>全変数</b>（<see cref="ZddManager.VariableCount"/>）で、
+        /// <see cref="Support"/> ではない（docs/OPEN-QUESTIONS.md B8）。したがって同じ内容の族でも、
+        /// 変数の個数が違うマネージャでは補が違う。一部の item だけを全体集合と見る補
+        /// （<c>ComplementWithin(items)</c>）は別の API として用意する予定である。
+        /// </returns>
+        /// <remarks>
+        /// <b>集合ごとの補ではなく族としての補</b>である（各集合を <c>U ∖ s</c> に置き換える操作ではない）。
+        /// <c>~~F == F</c>、<c>~∅ == 2^U</c>、<c>~2^U == ∅</c>。
+        /// <see cref="Union"/> / <see cref="Intersect"/> との間にド・モルガン則
+        /// （<c>~(F ∪ G) == ~F ∩ ~G</c>、<c>~(F ∩ G) == ~F ∪ ~G</c>）が成り立つ。
+        /// 実装は冪集合との <see cref="Difference"/> で、反復であり再帰しない。
+        /// </remarks>
+        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public Zdd Complement() => Manager.Complement(this);
+
         /// <summary>2 つのハンドルが同じマネージャの同じ族を指すかどうか。</summary>
         /// <param name="other">比較相手。</param>
         public bool Equals(Zdd other) => ReferenceEquals(_manager, other._manager) && _id == other._id;
@@ -491,6 +602,10 @@ namespace ZDD.Net.Core
         /// <param name="left">割られる族。</param>
         /// <param name="right">割る族。</param>
         public static Zdd operator %(Zdd left, Zdd right) => left.Manager.Remainder(left, right);
+
+        /// <summary>補 <c>2^U ∖ F</c>。<see cref="Complement"/> と同じ。</summary>
+        /// <param name="operand">補を取る族。</param>
+        public static Zdd operator ~(Zdd operand) => operand.Manager.Complement(operand);
 
         /// <summary>デバッグ用の短い表現。族の中身は展開しない。</summary>
         public override string ToString()

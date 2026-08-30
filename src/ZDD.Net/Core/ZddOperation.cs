@@ -11,8 +11,10 @@ namespace ZDD.Net.Core
     /// <see cref="OperationCache"/> が使うため固定する。
     /// </para>
     /// <para>
-    /// ここには M1-5 〜 M1-10 で実装する演算をあらかじめ並べてある。演算そのものは
-    /// 後続の PR で入るので、この時点で使われるのは <see cref="OperationCache"/> のテストだけ。
+    /// ここに並ぶのは M1-5 〜 M1-10 の演算で、いずれも実装済みである
+    /// （<see cref="UnaryOperations"/> / <see cref="BinaryOperations"/> /
+    /// <see cref="FamilyAlgebraOperations"/> / <see cref="ContainmentOperations"/> /
+    /// <see cref="ExtremalOperations"/>）。
     /// </para>
     /// </remarks>
     internal enum ZddOperation
