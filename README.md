@@ -32,10 +32,11 @@ Core の家族代数を直接組み合わせて構築する必要がある。
 
 ## インストール
 
-NuGet パッケージは `v0.1.0` のような正式版タグ（サフィックスなし）から生成される。
+NuGet パッケージは `v0.1.0-preview.1` のようなプレリリースタグから生成される
+（v1.0 に達するまではプレリリース版として `--prerelease` が要る）。
 
 ```sh
-dotnet add package ZDD.Net
+dotnet add package ZDD.Net --prerelease
 ```
 
 ## 最小サンプル
