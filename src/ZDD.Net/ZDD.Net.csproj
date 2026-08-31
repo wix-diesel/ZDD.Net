@@ -11,11 +11,16 @@
     <IsPackable>true</IsPackable>
     <PackageId>ZDD.Net</PackageId>
     <Description>Zero-suppressed decision diagrams and frontier-based search, implemented natively in C# with no external dependencies.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="ZDD.Net.Tests" />
     <InternalsVisibleTo Include="ZDD.Net.Benchmarks" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
 </Project>

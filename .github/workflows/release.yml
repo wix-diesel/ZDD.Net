@@ -1,0 +1,101 @@
+name: Release
+
+# v0.1.0-preview.1 のような "vX.Y.Z-suffix" 形式のタグを打つと、そのタグからバージョンを
+# 起こして dotnet pack し、.nupkg を生成する。v1.0 までは常にプレリリース版として扱う
+# 方針（docs/PLAN.md §13）なので、タグに付いたサフィックス（-preview.1 等）がそのまま
+# パッケージのプレリリースラベルになる。
+#
+# NuGet.org への実公開は任意。リポジトリの Secrets に NUGET_API_KEY を設定した場合のみ
+# 公開ステップが実行される（未設定なら .nupkg の生成とアーティファクトのアップロードだけ行う)。
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+-*"
+
+permissions:
+  contents: read
+
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v7
+
+      - name: .NET セットアップ
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: タグからバージョンを決定
+        id: version
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF#refs/tags/}"
+          # "v0.1.0-preview.1" -> version="0.1.0-preview.1"
+          version="${tag#v}"
+          version_prefix="${version%%-*}"
+          version_suffix="${version#*-}"
+          if [ "$version_prefix" = "$version" ]; then
+            echo "error: tag '$tag' has no prerelease suffix (expected vX.Y.Z-suffix)" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "version_prefix=$version_prefix" >> "$GITHUB_OUTPUT"
+          echo "version_suffix=$version_suffix" >> "$GITHUB_OUTPUT"
+
+      - name: リストア
+        run: dotnet restore ZDD.Net.sln
+
+      - name: ビルド
+        run: dotnet build ZDD.Net.sln --no-restore --configuration Release
+
+      - name: テスト
+        run: >
+          dotnet test tests/ZDD.Net.Tests/ZDD.Net.Tests.csproj
+          --no-restore
+          --no-build
+          --configuration Release
+
+      - name: パッケージの作成
+        run: >
+          dotnet pack src/ZDD.Net/ZDD.Net.csproj
+          --no-restore
+          --configuration Release
+          --output ./artifacts
+          -p:VersionPrefix=${{ steps.version.outputs.version_prefix }}
+          -p:VersionSuffix=${{ steps.version.outputs.version_suffix }}
+
+      - name: 生成されたバージョンの確認
+        # プレリリース版数がちゃんと .nupkg のファイル名に付いていることを確かめる
+        # （完了条件: 「生成された .nupkg にプレリリース版数が付く」）。
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(./artifacts/ZDD.Net.*.nupkg)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "error: no .nupkg produced" >&2
+            exit 1
+          fi
+          for f in "${files[@]}"; do
+            echo "$f"
+          done
+          echo "${files[@]}" | grep -q -- "-${{ steps.version.outputs.version_suffix }}"
+
+      - name: .nupkg のアップロード
+        uses: actions/upload-artifact@v7
+        with:
+          name: nuget-packages
+          path: ./artifacts/*.nupkg
+          retention-days: 90
+
+      - name: NuGet.org への公開
+        # NUGET_API_KEY が設定されていないリポジトリでは何もしない（実公開は任意）。
+        if: ${{ env.NUGET_API_KEY != '' }}
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: >
+          dotnet nuget push ./artifacts/*.nupkg
+          --api-key "$NUGET_API_KEY"
+          --source https://api.nuget.org/v3/index.json
+          --skip-duplicate
