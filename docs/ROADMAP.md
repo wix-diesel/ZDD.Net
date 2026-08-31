@@ -68,7 +68,7 @@ Core レイヤは下から積むため、序盤の PR は `internal` のコー�
 | [x] | **M1-10** | 極大・極小 | `Maximal` / `Minimal` / `HittingSets` / `Complement`（`Flip` も同時に追加） | 総当たり照合＋ド・モルガン則（`Complement` が要るため M1-7 から持ち越し） | 〜300 | M1-9 |
 | [x] | **M1-11** | プロパティテスト | CsCheck による全演算のランダム検証、シュリンク付き（`tests/ZDD.Net.Tests.Properties`） | CI に組み込み、シード固定で再現可能 | テストのみ | M1-10 |
 | [x] | **M1-12** | ボトムアップ評価基盤 | `IDdEval<TValue>`、`Evaluate<TEval,TValue>`（反復・メモ化、`struct` 制約）、`Count`(BigInteger) / `CountApprox`(double) / `CountBySize` | 既知の族で濃度が一致 | 〜300 | M1-7 |
-| [ ] | **M1-13** | 列挙とメンバシップ | `GetEnumerator()`（遅延・明示スタック・辞書順オプション）、`Contains(set)`、`IsSubsetOf`、`Overlaps` | 列挙数と `Count` が一致（変数 ≤ 16 全網羅） | 〜300 | M1-12 |
+| [x] | **M1-13** | 列挙とメンバシップ | `GetEnumerator()`（遅延・明示スタック・辞書順オプション）、`Contains(set)`、`IsSubsetOf`、`Overlaps` | 列挙数と `Count` が一致（変数 ≤ 16 全網羅） | 〜300 | M1-12 |
 | [ ] | **M1-14** | ランキング／サンプリング | `ElementAt(BigInteger)`（unranking）、`IndexOf(set)`（ranking）、`Sample(Random)`、`Sample(n)` | 全走査で列挙と一致。一様性のカイ二乗検定 | 〜300 | M1-13 |
 | [ ] | **M1-15** | 重み最適化 | `MaxWeight` / `MinWeight` / `TopK` / `Probability` / `ExpectedValue` / `ItemFrequency`、`IWeightOps<T>` 戦略 | 総当たり照合（小規模での最適解一致） | 〜350 | M1-12 |
 | [ ] | **M1-16** | 可視化・統計・ストレス | `ToDot()`、`ZddStatistics`、**深い ZDD（変数 10 万）でスタックオーバーフローしない回帰テスト**、`samples/Zdd.Cli` の最小版 | 変数 10 万のテストが CI で通る | 〜250 | M1-15 |
