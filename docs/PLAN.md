@@ -238,6 +238,10 @@ public readonly struct Zdd : IEquatable<Zdd>, IEnumerable<int[]>
     public bool Contains(IEnumerable<int> set);
     public bool IsSubsetOf(Zdd g);
     public bool Overlaps(Zdd g);
+    public int[] ElementAt(BigInteger index, ZddEnumerationOrder order = default);   // unranking
+    public BigInteger IndexOf(IEnumerable<int> set, ZddEnumerationOrder order = default);  // ranking（無ければ -1）
+    public int[] Sample(Random rng);        // 一様ランダムに 1 個
+    public int[][] Sample(int n, Random rng);  // 一様ランダムに n 個（復元抽出）
     // 演算子: | & - ^ * / % ~
 }
 ```
@@ -344,6 +348,26 @@ public readonly struct Zdd : IEquatable<Zdd>, IEnumerable<int[]>
 差や交わりの ZDD を組み立てない。どちらも分解すると合成が 1 種類しか出てこない
 （`Overlaps` は ∨ だけの木、`IsSubsetOf` は ∧ だけの木）ので、答は到達できる終端条件の
 ∨／∧ そのものであり、決着する値が 1 つ出た時点で打ち切ってよい。
+
+**順位づけは「ノードごとの部分濃度」の上に乗る**。`Count` が根の値 1 つを返すのに対し、
+`ElementAt` は経路上のノードごとに「0-枝の先に集合がいくつあるか」を問うので、
+ノード ID → `BigInteger` の**表**が要る（`CardinalityTable`）。表さえあれば、`k` 番目の集合は
+根から 1 本の経路を降りるだけで出る: `k < |lo|` なら 0-枝、そうでなければ `k -= |lo|` して 1-枝。
+手間は「濃度の走査（`Count` と同じ）＋ O(変数数)」で、10^20 番目でも変わらない。
+表は**呼び出しごとに作って捨てる**（マネージャに覚えさせると、ノード ID の意味が変わる操作の
+たびに捨てる約束が増える。M5-3）。まとめて引く `Sample(n, rng)` は表を 1 本だけ作って n 回引く。
+
+**`ElementAt` の順序は列挙と一致する**。同じ `ZddEnumerationOrder` を渡す限り
+`ElementAt(k) == Sets(order).ElementAt(k)` で、一致しないと利用者は順位づけを信用できない。
+`Lexicographic` では空集合が最小なので、ノードごとに「0-枝の連なりの先が ⊤ か」も要る。
+これも濃度と同じ 1 回の走査で `hasEmptySet(n) = hasEmptySet(n.Lo)` として求めておく
+（毎回 0-枝を辿り直すと O(変数数^2) になる）。`IndexOf` はその逆写像で、族に属さない集合には
+順位が無いので **-1 を返す**（`IList.IndexOf` と同じ流儀。範囲外の item は渡し間違いなので例外）。
+
+**一様サンプリングで剰余は使わない**。`Sample` は `ElementAt` に `[0, Count)` の一様乱数を
+食わせるだけだが、`rng` の返すビットの剰余を取ると必ず偏る（範囲が 2 の冪でない限り）。
+`Count - 1` を表せるビット数ぶんだけ引いて、範囲外なら捨てて引き直す**棄却法**を使う。
+1 回で当たる確率は必ず 1/2 より大きいので、桁数がいくら大きくても引き直しの期待回数は 2 未満。
 
 ---
 
