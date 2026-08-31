@@ -1,134 +1,97 @@
 namespace ZDD.Net.Core
 {
     /// <summary>
-    /// 演算キャッシュ（<see cref="OperationCache"/>）のエントリを識別する演算の種別。
-    /// キャッシュは 1 本の表を全演算で共有するため、この値がキーの一部になる。
+    /// Identifies the kind of operation for an entry in the operation cache
+    /// (<see cref="OperationCache"/>), which shares one table across all operations.
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <b>値を変えてはならない理由は無い</b>: キャッシュはプロセス内の一時表なので、
-    /// 永続化された値ではない。ただし <see cref="None"/> = 0 だけは「空きエントリ」の番兵として
-    /// <see cref="OperationCache"/> が使うため固定する。
-    /// </para>
-    /// <para>
-    /// ここに並ぶのは M1-5 〜 M1-13 の演算で、いずれも実装済みである
-    /// （<see cref="UnaryOperations"/> / <see cref="BinaryOperations"/> /
-    /// <see cref="FamilyAlgebraOperations"/> / <see cref="ContainmentOperations"/> /
-    /// <see cref="ExtremalOperations"/> / <see cref="QueryOperations"/>）。
-    /// </para>
-    /// <para>
-    /// <b>キャッシュに載らない演算もここに並ぶ</b>: <see cref="IsSubsetOf"/> /
-    /// <see cref="Overlaps"/> は族ではなく真偽を返すので <see cref="OperationCache"/> には入らないが、
-    /// 部分問題のキーは同じ <see cref="OperationKey"/> で作る。詰め方と正規化を演算ごとに
-    /// 書き分けないための決めごとで、種別の値はそこでも要る。
-    /// </para>
-    /// </remarks>
+    /// <remarks><see cref="None"/> = 0 is fixed, used as the "empty slot" sentinel; other values may change.</remarks>
     internal enum ZddOperation
     {
-        /// <summary>演算ではない。空きエントリを表す番兵としてのみ使う。</summary>
+        /// <summary>Not an operation; used only as the empty-slot sentinel.</summary>
         None = 0,
 
-        // ---- 二項演算 ----
+        // ---- Binary operations ----
 
-        /// <summary>和 <c>f ∪ g</c>（M1-7）。</summary>
+        /// <summary>Union <c>f &#8746; g</c>.</summary>
         Union,
 
-        /// <summary>積 <c>f ∩ g</c>（M1-7）。</summary>
+        /// <summary>Intersection <c>f &#8745; g</c>.</summary>
         Intersect,
 
-        /// <summary>差 <c>f ∖ g</c>（M1-7）。</summary>
+        /// <summary>Difference <c>f &#8726; g</c>.</summary>
         Difference,
 
-        /// <summary>対称差 <c>f ⊕ g</c>（M1-7）。</summary>
+        /// <summary>Symmetric difference <c>f &#8853; g</c>.</summary>
         SymmetricDifference,
 
-        /// <summary>族の積 <c>f * g</c>（M1-8）。</summary>
+        /// <summary>Family product <c>f * g</c>.</summary>
         Product,
 
-        /// <summary>商 <c>f / g</c>（M1-8）。</summary>
+        /// <summary>Quotient <c>f / g</c>.</summary>
         Quotient,
 
-        /// <summary>剰余 <c>f % g</c>（M1-8）。</summary>
+        /// <summary>Remainder <c>f % g</c>.</summary>
         Remainder,
 
-        /// <summary>両者の要素の共通部分から成る族 <c>f ⊓ g</c>（M1-9）。</summary>
+        /// <summary>Family of pairwise intersections <c>f &#8851; g</c>.</summary>
         Meet,
 
-        /// <summary><c>g</c> のいずれかを含む要素だけを残す（M1-9）。</summary>
+        /// <summary>Elements that contain at least one member of <c>g</c>.</summary>
         SupersetsOf,
 
-        /// <summary><c>g</c> のいずれかに含まれる要素だけを残す（M1-9）。</summary>
+        /// <summary>Elements contained in at least one member of <c>g</c>.</summary>
         SubsetsOf,
 
-        /// <summary><c>g</c> のどれの部分集合でもない要素だけを残す（M1-9）。</summary>
+        /// <summary>Elements that are not a subset of any member of <c>g</c>.</summary>
         NonSubsetsOf,
 
-        /// <summary><c>g</c> のどれの上位集合でもない要素だけを残す（M1-9）。</summary>
+        /// <summary>Elements that are not a superset of any member of <c>g</c>.</summary>
         NonSupersetsOf,
 
-        // ---- 族を作らない問い合わせ（M1-13）----
+        // ---- Queries that don't build a family ----
 
-        /// <summary><c>f</c> のどの集合も <c>g</c> に属するか（M1-13）。</summary>
+        /// <summary>Whether every set in <c>f</c> belongs to <c>g</c>.</summary>
         IsSubsetOf,
 
-        /// <summary><c>f</c> と <c>g</c> に共通の集合があるか（M1-13）。</summary>
+        /// <summary>Whether <c>f</c> and <c>g</c> share any set.</summary>
         Overlaps,
 
-        // ---- 単項演算（item を取るもの・取らないもの） ----
+        // ---- Unary operations (with or without an item) ----
 
-        /// <summary>各要素の <c>item</c> の有無を反転する（M1-5）。</summary>
+        /// <summary>Flips membership of <c>item</c> in every element.</summary>
         Change,
 
-        /// <summary><c>item</c> を含む要素を選び、そこから <c>item</c> を除く（M1-5）。</summary>
+        /// <summary>Selects elements containing <c>item</c>, then removes it.</summary>
         OnSet,
 
-        /// <summary><c>item</c> を含まない要素だけを残す（M1-5）。</summary>
+        /// <summary>Keeps only elements that don't contain <c>item</c>.</summary>
         OffSet,
 
-        /// <summary>包含関係で極大な要素だけを残す（M1-10）。</summary>
+        /// <summary>Elements maximal under inclusion.</summary>
         Maximal,
 
-        /// <summary>包含関係で極小な要素だけを残す（M1-10）。</summary>
+        /// <summary>Elements minimal under inclusion.</summary>
         Minimal,
 
-        /// <summary>ヒッティング集合の族（M1-10）。</summary>
+        /// <summary>The family of hitting sets.</summary>
         HittingSets,
 
-        /// <summary>補（<c>2^V ∖ f</c>）（M1-10）。</summary>
+        /// <summary>Complement, <c>2^V &#8726; f</c>.</summary>
         Complement,
     }
 
     /// <summary>
-    /// <see cref="ZddOperation"/> の性質を問い合わせる述語。キャッシュのキー生成
-    /// （可換演算のオペランド正規化）と、引数の取り違えを Debug ビルドで捕まえるために使う。
+    /// Predicates about <see cref="ZddOperation"/>, used for cache-key normalization of commutative
+    /// operations and for Debug-build argument checks.
     /// </summary>
     internal static class ZddOperations
     {
-        /// <summary>
-        /// オペランドを入れ替えても結果が変わらない二項演算かどうか。
-        /// </summary>
+        /// <summary>Whether swapping the operands of this binary operation leaves the result unchanged.</summary>
         /// <remarks>
-        /// <para>
-        /// 可換な演算では <c>(op, f, g)</c> と <c>(op, g, f)</c> を同じキーに正規化できる。
-        /// 二項演算の再帰は左右のオペランドがしばしば入れ替わった形で同じ部分問題に到達するため、
-        /// この正規化だけでヒット率が実質的に上がる。
-        /// </para>
-        /// <para>
-        /// 数学的に可換でも、<b>実装の分解が本当に対称</b>でなければここに入れてはならない
-        /// （誤って可換とみなすと<b>誤った結果を返す</b>ので、疑わしいものは非可換側に置く）。
-        /// <see cref="ZddOperation.Product"/> は M1-8 で対称であることを確かめて加えた:
-        /// レベルが揃った分解は <c>f₀ * g₀</c> と 3 項の和のどちらも左右の入れ替えで不変で、
-        /// 片方だけが上にある分解も「上の族を降ろす」形が同じになる。
-        /// <see cref="ZddOperation.Quotient"/> / <see cref="ZddOperation.Remainder"/> は
-        /// そもそも非可換（<c>f / g</c> と <c>g / f</c> は別物）。
-        /// <see cref="ZddOperation.Meet"/> も M1-9 で確かめて加えた: 1-枝は <c>f₁ ⊓ g₁</c>、
-        /// 0-枝は残り 3 通りの和で、どちらも左右の入れ替えで同じ部分問題の集まりになる。
-        /// 一方 <see cref="ZddOperation.SupersetsOf"/> 以下 4 つのふるいは、
-        /// 左を右でふるいにかける演算なので当然に非可換。
-        /// <see cref="ZddOperation.Overlaps"/> は M1-13 で確かめて加えた: 終端の場合分けも
-        /// 分解（0-枝どうし・1-枝どうしの 2 つの部分問題）も左右の入れ替えで同じになる。
-        /// <see cref="ZddOperation.IsSubsetOf"/> は「左が右に含まれるか」なので当然に非可換。
-        /// </para>
+        /// Lets the cache normalize <c>(op, f, g)</c> and <c>(op, g, f)</c> to the same key. An
+        /// operation belongs here only if its recursive decomposition is genuinely symmetric, not
+        /// merely mathematically commutative — misclassifying one here silently returns wrong
+        /// results, so anything doubtful stays on the non-commutative side.
         /// </remarks>
         public static bool IsCommutative(ZddOperation op) =>
             op is ZddOperation.Union
@@ -138,9 +101,7 @@ namespace ZDD.Net.Core
                 or ZddOperation.Meet
                 or ZddOperation.Overlaps;
 
-        /// <summary>
-        /// 単項演算（第 2 オペランドが別の族ではなく item、あるいは何も取らないもの）かどうか。
-        /// </summary>
+        /// <summary>Whether this is a unary operation (second operand is an item index, or there is none).</summary>
         public static bool IsUnary(ZddOperation op) =>
             op is ZddOperation.Change
                 or ZddOperation.OnSet

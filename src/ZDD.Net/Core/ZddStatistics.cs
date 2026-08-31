@@ -5,29 +5,14 @@ using System.Text;
 namespace ZDD.Net.Core
 {
     /// <summary>
-    /// <see cref="ZddManager"/> の内部の表がいまどうなっているかの一覧
-    /// （<see cref="ZddManager.GetStatistics"/> が返す）。
+    /// A point-in-time snapshot of a <see cref="ZddManager"/>'s internal tables
+    /// (returned by <see cref="ZddManager.GetStatistics"/>), useful for diagnosing
+    /// whether slowness comes from family size or table sizing.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// <b>何のためにあるか</b>: ZDD の性能問題は「族が本当に大きい」のか
-    /// 「表の設定が合っていないだけ」なのかで対処が正反対になるのに、外からは同じ
-    /// 「遅い・メモリを食う」に見える。この型はその切り分けのための覗き窓で、
-    /// たとえば <see cref="CacheHitRate"/> が低いまま <see cref="CacheCapacity"/> が
-    /// 上限に張り付いていれば <see cref="ZddManagerOptions.MaxCacheCapacity"/> を、
-    /// <see cref="UniqueTableCollisions"/> だけが突出していれば
-    /// <see cref="ZddManagerOptions.InitialUniqueTableCapacity"/> を疑えばよい、と読める。
-    /// </para>
-    /// <para>
-    /// <b>その瞬間の写し</b>: 値は <see cref="ZddManager.GetStatistics"/> を呼んだ時点のもので、
-    /// 以後マネージャが変わってもこのインスタンスは変わらない。2 時点で取って差を見る使い方ができる。
-    /// </para>
-    /// <para>
-    /// <b>積算値と現在値が混ざっている</b>: 表の大きさ（<see cref="NodeCount"/> /
-    /// <see cref="CacheCapacity"/> など）は現在値、キャッシュと一意化表のカウンタ
-    /// （<see cref="CacheLookups"/> / <see cref="UniqueTableCollisions"/> など）は
-    /// マネージャを作ってからの積算値である。
-    /// </para>
+    /// Table sizes (<see cref="NodeCount"/>, <see cref="CacheCapacity"/>, etc.) are current
+    /// values; cache and unique-table counters (<see cref="CacheLookups"/>,
+    /// <see cref="UniqueTableCollisions"/>, etc.) are cumulative since the manager was created.
     /// </remarks>
     public readonly struct ZddStatistics : IEquatable<ZddStatistics>
     {
@@ -56,93 +41,61 @@ namespace ZDD.Net.Core
         }
 
         /// <summary>
-        /// いま確保されている非終端ノードの総数。予約済みの終端 ⊥ / ⊤ は数えない。
+        /// Number of non-terminal nodes currently allocated, across every family the
+        /// manager owns (not just one family; see <see cref="Zdd.NodeCount"/> for that).
         /// </summary>
-        /// <remarks>
-        /// マネージャが作ったすべての族が共有している合計であって、族 1 つぶんではない
-        /// （族ごとの数は <see cref="Zdd.NodeCount"/>）。
-        /// </remarks>
         public long NodeCount { get; }
 
         /// <summary>
-        /// <see cref="NodeCount"/> がこれまでに到達した最大値。
+        /// Highest value <see cref="NodeCount"/> has reached. Currently always equal to
+        /// <see cref="NodeCount"/>, since node GC does not exist yet.
         /// </summary>
-        /// <remarks>
-        /// ノードを解放する手段がまだ無い（ノード GC は M5-3）ので、現状は常に
-        /// <see cref="NodeCount"/> と等しい。「途中で一度どこまで膨らんだか」を
-        /// GC が入ったあとも同じ名前で読めるようにするために先に置いてある。
-        /// </remarks>
         public long PeakNodeCount { get; }
 
-        /// <summary>
-        /// ノードの格納庫がいま確保している枠の数（予約済みの終端 2 個を含む）。
-        /// 使い切ると倍化される。
-        /// </summary>
+        /// <summary>Number of slots currently allocated in the node store, including the 2 reserved terminals.</summary>
         public long NodeTableCapacity { get; }
 
-        /// <summary>
-        /// ノードの格納庫の使用率（0.0 〜 1.0）。<c>(NodeCount + 終端 2 個) / NodeTableCapacity</c>。
-        /// </summary>
-        /// <remarks>
-        /// 倍化の直後に 0.5 まで落ちて、そこから 1.0 へ向かう鋸歯になる。1.0 に近ければ
-        /// 次の演算で倍化（＝一括のコピー）が起きうる、という意味しか持たない。
-        /// </remarks>
+        /// <summary>Node store load factor (0.0-1.0): <c>(NodeCount + 2 terminals) / NodeTableCapacity</c>.</summary>
         public double NodeTableLoadFactor =>
             NodeTableCapacity == 0 ? 0.0 : (double)(NodeCount + NodeTable.FirstNodeId) / NodeTableCapacity;
 
-        /// <summary>一意化表のスロット配列の大きさ（2 の冪）。</summary>
+        /// <summary>Slot-array size of the unique table (a power of two).</summary>
         public int UniqueTableCapacity { get; }
 
         /// <summary>
-        /// 一意化表の負荷率（0.0 〜 1.0）。<c>NodeCount / UniqueTableCapacity</c> で、
-        /// <see cref="UniqueTable.MaxLoadFactorPercent"/>% を超えると倍化される。
+        /// Unique-table load factor (0.0-1.0): <c>NodeCount / UniqueTableCapacity</c>. Doubles
+        /// once this exceeds <see cref="UniqueTable.MaxLoadFactorPercent"/>%.
         /// </summary>
         public double UniqueTableLoadFactor =>
             UniqueTableCapacity == 0 ? 0.0 : (double)NodeCount / UniqueTableCapacity;
 
         /// <summary>
-        /// 一意化表の線形探索が「別のキーが入っていたスロット」を読み飛ばした延べ回数。
+        /// Total number of slots skipped by the unique table's linear probing while
+        /// searching. High values with a low load factor point to poor hash distribution.
         /// </summary>
-        /// <remarks>
-        /// ノード 1 個あたり（<c>UniqueTableCollisions / NodeCount</c>）で見るのが分かりやすい。
-        /// 負荷率が低いのにこれが大きいなら、ハッシュの散り具合の問題である。
-        /// </remarks>
         public long UniqueTableCollisions { get; }
 
-        /// <summary>
-        /// 演算キャッシュのいまのエントリ数（0 か 2 の冪）。0 ならキャッシュは効いていない。
-        /// </summary>
+        /// <summary>Current entry count of the operation cache (0 or a power of two); 0 means the cache is inactive.</summary>
         public int CacheCapacity { get; }
 
-        /// <summary>
-        /// 演算キャッシュが広がれるエントリ数の上限
-        /// （<see cref="ZddManagerOptions.MaxCacheCapacity"/> を 2 の冪に切り下げたもの）。
-        /// </summary>
+        /// <summary>Ceiling the operation cache can grow to (<see cref="ZddManagerOptions.MaxCacheCapacity"/>, rounded down to a power of two).</summary>
         public int MaxCacheCapacity { get; }
 
-        /// <summary>演算キャッシュを引いた延べ回数。</summary>
+        /// <summary>Total number of operation-cache lookups.</summary>
         public long CacheLookups { get; }
 
-        /// <summary>そのうち当たった回数。</summary>
+        /// <summary>Of those, how many hit.</summary>
         public long CacheHits { get; }
 
-        /// <summary>そのうち外れた回数。</summary>
+        /// <summary>Of those, how many missed.</summary>
         public long CacheMisses => CacheLookups - CacheHits;
 
-        /// <summary>演算キャッシュのヒット率（0.0 〜 1.0）。一度も引いていなければ 0。</summary>
-        /// <remarks>
-        /// キャッシュは lossy なので、これが低くても答は変わらない（同じ部分問題をもう一度
-        /// 計算するだけ）。ただし計算量は跳ね上がりうる（<see cref="OperationCache"/> の解説）。
-        /// </remarks>
+        /// <summary>Operation-cache hit rate (0.0-1.0); 0 if never queried.</summary>
+        /// <remarks>The cache is lossy, so a low rate never affects correctness — only how much work is redone.</remarks>
         public double CacheHitRate => CacheLookups == 0 ? 0.0 : (double)CacheHits / CacheLookups;
 
-        /// <summary>
-        /// 書き込みのときに、別の <c>(演算, オペランド)</c> のエントリを上書きした回数。
-        /// </summary>
-        /// <remarks>
-        /// キャッシュは direct-mapped で衝突したら無条件に上書きするので、これが
-        /// <see cref="CacheLookups"/> に対して大きいなら表が小さすぎる。
-        /// </remarks>
+        /// <summary>Number of times a write overwrote a different <c>(operation, operands)</c> entry.</summary>
+        /// <remarks>The cache is direct-mapped and overwrites unconditionally on collision; a high value relative to <see cref="CacheLookups"/> means the table is too small.</remarks>
         public long CacheOverwrites { get; }
 
         /// <inheritdoc/>
@@ -178,23 +131,18 @@ namespace ZDD.Net.Core
             return hash.ToHashCode();
         }
 
-        /// <summary>2 つの統計が同じ値かどうか。</summary>
-        /// <param name="left">左辺。</param>
-        /// <param name="right">右辺。</param>
+        /// <summary>Whether two statistics snapshots hold the same values.</summary>
+        /// <param name="left">The left-hand operand.</param>
+        /// <param name="right">The right-hand operand.</param>
         public static bool operator ==(ZddStatistics left, ZddStatistics right) => left.Equals(right);
 
-        /// <summary>2 つの統計が違う値かどうか。</summary>
-        /// <param name="left">左辺。</param>
-        /// <param name="right">右辺。</param>
+        /// <summary>Whether two statistics snapshots hold different values.</summary>
+        /// <param name="left">The left-hand operand.</param>
+        /// <param name="right">The right-hand operand.</param>
         public static bool operator !=(ZddStatistics left, ZddStatistics right) => !left.Equals(right);
 
-        /// <summary>
-        /// 人が読むための複数行の要約。項目名は英語、数値は不変カルチャで整形する。
-        /// </summary>
-        /// <remarks>
-        /// 出力の形は<b>約束しない</b>（デバッグ表示であって解析用の形式ではない）。
-        /// 機械的に読むなら個々のプロパティを使うこと。
-        /// </remarks>
+        /// <summary>A multi-line human-readable summary. Labels are in English, numbers use the invariant culture.</summary>
+        /// <remarks>The output format is not a stable contract; read the properties directly for programmatic use.</remarks>
         public override string ToString()
         {
             StringBuilder text = new StringBuilder();

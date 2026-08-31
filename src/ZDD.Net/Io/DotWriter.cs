@@ -8,72 +8,54 @@ using ZDD.Net.Internal;
 namespace ZDD.Net.Io
 {
     /// <summary>
-    /// 族を Graphviz の DOT 形式で書き出す（<see cref="Zdd.ToDot"/> / <see cref="Zdd.WriteDot"/> の中身）。
+    /// Writes a family as a Graphviz DOT graph. Backs <see cref="Zdd.ToDot"/> / <see cref="Zdd.WriteDot"/>.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>ZDD は目で見ないとデバッグできない</b>（docs/PLAN.md §14-10）。共有された部分グラフや
-    /// ゼロサプレス規則で消えた段は、数値だけ眺めていても分からない。DOT は
-    /// <c>dot -Tsvg</c> に流すだけで絵になるので、依存を増やさずに「見る」手段を用意できる。
+    /// Convention: non-terminal nodes are circles labeled by the branching item (<c>x0</c>,
+    /// <c>x1</c>, ...); terminals are boxes (⊥ = ∅, ⊤ = <c>{∅}</c>); the 0-edge is dashed, the
+    /// 1-edge is solid; same-item nodes share a rank, root-side ranks first; an unlabeled marker
+    /// node points at the root.
     /// </para>
     /// <para>
-    /// <b>絵の約束</b>:
-    /// </para>
-    /// <list type="bullet">
-    /// <item><description>非終端ノードは円、ラベルは分岐する item（<c>x0</c>, <c>x1</c>, …）</description></item>
-    /// <item><description>終端は角丸でない箱で、⊥ が空の族 ∅、⊤ が <c>{∅}</c></description></item>
-    /// <item><description>0-枝（item を含まない側）は<b>破線</b>、1-枝（含む側）は<b>実線</b></description></item>
-    /// <item><description>同じ item のノードは <c>rank=same</c> で同じ段に並ぶ。段は根側が上</description></item>
-    /// <item><description>根の位置が分かるよう、根には印だけの無地のノードから矢印を引く</description></item>
-    /// </list>
-    /// <para>
-    /// <b>再帰しない</b>（docs/PLAN.md §4.5）。ZDD の深さは変数の個数そのもので、10 万規模の族を
-    /// 素直な再帰で辿ると <c>StackOverflowException</c> になり、.NET ではこれを catch できずに
-    /// プロセスが即死する。走査は <c>int</c> 配列の明示スタックで行う。
-    /// </para>
-    /// <para>
-    /// <b>出力は決定的</b>: ノードは (段, ノード ID) の順に並べ、改行は環境に依らず <c>\n</c> に固定する。
-    /// 同じ族からは常に同じ文字列が出るので、スナップショットとして突き合わせられる。
-    /// </para>
-    /// <para>
-    /// <b>費用</b>: 出力そのものは <see cref="TextWriter"/> へ流すので溜め込まないが、
-    /// 段ごとに並べるために到達ノードの一覧は一度メモリに載せる（ノード数に比例）。
+    /// The traversal is iterative (explicit stack) to avoid stack overflow on deep diagrams.
+    /// Output is deterministic: nodes are ordered by (level, id) and lines always use <c>\n</c>.
     /// </para>
     /// </remarks>
     internal static class DotWriter
     {
-        /// <summary>明示スタックの初期段数。足りなくなれば倍化する。</summary>
+        /// <summary>Initial depth of the explicit stack; doubles on demand.</summary>
         private const int InitialStackCapacity = 32;
 
-        /// <summary>終端 ⊥ に与える DOT のノード名。実ノードは <c>n</c> + ID なので衝突しない。</summary>
+        /// <summary>DOT node name for terminal ⊥. Real nodes use <c>n</c> + id, so no collision.</summary>
         private const string BottomName = "bottom";
 
-        /// <summary>終端 ⊤ に与える DOT のノード名。</summary>
+        /// <summary>DOT node name for terminal ⊤.</summary>
         private const string TopName = "top";
 
-        /// <summary>根の位置を指す印のノード名。</summary>
+        /// <summary>DOT node name for the marker that points at the root.</summary>
         private const string RootName = "root";
 
-        /// <summary>族の DOT 表現を文字列にして返す。</summary>
-        /// <param name="zdd">書き出す族。</param>
+        /// <summary>Returns the family's DOT representation as a string.</summary>
+        /// <param name="zdd">Family to write.</param>
         public static string Write(in Zdd zdd)
         {
-            // 改行は Write(zdd, writer) が \n を直に書くので、StringWriter の NewLine には依らない。
+            // Newlines come directly from Write(zdd, writer); StringWriter.NewLine is unused.
             using StringWriter writer = new StringWriter(CultureInfo.InvariantCulture);
             Write(zdd, writer);
             return writer.ToString();
         }
 
-        /// <summary>族の DOT 表現を <paramref name="writer"/> へ流す。</summary>
-        /// <param name="zdd">書き出す族。</param>
-        /// <param name="writer">書き出し先。</param>
+        /// <summary>Writes the family's DOT representation to <paramref name="writer"/>.</summary>
+        /// <param name="zdd">Family to write.</param>
+        /// <param name="writer">Destination writer.</param>
         public static void Write(in Zdd zdd, TextWriter writer)
         {
             ThrowHelper.ThrowIfNull(writer, nameof(writer));
 
             ZddManager manager = zdd.Manager;
 
-            // 破棄済みならここで ObjectDisposedException になる。
+            // Throws ObjectDisposedException here if disposed.
             NodeTable nodes = manager.Table.Nodes;
 
             int rootId = zdd.Id;
@@ -92,10 +74,7 @@ namespace ZDD.Net.Io
             writer.Write("}\n");
         }
 
-        /// <summary>
-        /// 根から到達できる非終端ノードを「段が根側のものから、同じ段では ID の小さいものから」
-        /// の順に並べて返す。終端に着くかどうかも同時に調べる。
-        /// </summary>
+        /// <summary>Collects non-terminal nodes reachable from the root, ordered root-side-first then by ascending id, and notes which terminals are reached.</summary>
         private static int[] CollectByLevel(
             ZddManager manager,
             NodeTable nodes,
@@ -137,9 +116,7 @@ namespace ZDD.Net.Io
 
             int[] ids = found.ToArray();
 
-            // 並べ替えの鍵は「根側の段が先、同じ段なら ID の小さい順」。上位 32bit に
-            // 段の深さ（根側ほど小さい）、下位 32bit に ID を詰めれば、long 1 本の昇順で済む。
-            // ID は非負なので、そのまま下位に置いても順序は狂わない。
+            // Sort key: root-side depth first, then ascending id — packed into one long each.
             long[] keys = new long[ids.Length];
             for (int i = 0; i < ids.Length; i++)
             {
@@ -151,7 +128,7 @@ namespace ZDD.Net.Io
             return ids;
         }
 
-        /// <summary>子を 1 つ見る。終端なら印を立て、未訪問の非終端なら積む。</summary>
+        /// <summary>Visits one child: marks the terminal reached, or pushes an unvisited non-terminal.</summary>
         private static void Visit(
             NodeTable nodes,
             HashSet<int> visited,
@@ -244,7 +221,7 @@ namespace ZDD.Net.Io
                     hi = node.Hi;
                 }
 
-                // 0-枝は破線、1-枝は実線。実線は DOT の既定だが、対であることが読み取れるよう明示する。
+                // Solid is DOT's default, but state it explicitly to make the pairing visible.
                 WriteEdge(writer, id, lo, "dashed");
                 WriteEdge(writer, id, hi, "solid");
             }
@@ -263,10 +240,7 @@ namespace ZDD.Net.Io
             writer.Write("];\n");
         }
 
-        /// <summary>
-        /// 同じ item のノードを <c>rank=same</c> で束ねる。<paramref name="ids"/> は段ごとに
-        /// 並んでいるので、段が変わる境目で区切るだけで済む。終端は最下段にまとめる。
-        /// </summary>
+        /// <summary>Groups same-item nodes with <c>rank=same</c>; terminals are grouped in the last rank.</summary>
         private static void WriteRanks(
             TextWriter writer,
             NodeTable nodes,
@@ -316,7 +290,7 @@ namespace ZDD.Net.Io
             writer.Write(" }\n");
         }
 
-        /// <summary>ノード ID を DOT のノード名に写す。終端だけ名前を固定する。</summary>
+        /// <summary>Maps a node id to its DOT node name. Only terminals get fixed names.</summary>
         private static void WriteName(TextWriter writer, int id)
         {
             switch (id)

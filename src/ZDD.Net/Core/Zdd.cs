@@ -10,27 +10,14 @@ using ZDD.Net.Io;
 namespace ZDD.Net.Core
 {
     /// <summary>
-    /// 集合の族（family of sets）を表す値型ハンドル。所有する <see cref="ZddManager"/> への参照と
-    /// ノード ID だけを持ち、大きさは 16 バイト。族の実体はマネージャ側のノード表にある。
+    /// A value-type handle representing a family of sets. Holds only a reference to the owning
+    /// <see cref="ZddManager"/> and a node ID (16 bytes); the family itself lives in the manager's node table.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// <b>値型である理由</b>: 族は演算のたびに大量に生まれるので、ハンドルがクラスだと
-    /// 演算 1 回ごとにヒープ割り当てが発生する。マネージャ参照を持たせているのは、
-    /// <c>a | b</c> のような演算子が書ける・別マネージャの族を混ぜた誤用を検出できるため
-    /// （docs/OPEN-QUESTIONS.md B4）。
-    /// </para>
-    /// <para>
-    /// <b>等値</b>: ZDD は正準形なので「族が等しい ⇔ ノード ID が等しい」が成り立つ。
-    /// よって等値比較は所有マネージャの参照一致とノード ID の一致だけで、族の走査は要らない。
-    /// 別のマネージャで作った同じ内容の族は<b>等しくない</b>（ノード ID が別物のため）。
-    /// </para>
-    /// <para>
-    /// <b><c>default(Zdd)</c></b>: どのマネージャにも属さない無効なハンドルで、
-    /// <see cref="IsDefault"/> が <see langword="true"/> を返す。族としての操作は
-    /// <see cref="InvalidOperationException"/> になる。等値比較と <see cref="GetHashCode"/> だけは
-    /// 例外を投げずに使える（コレクションに入れても壊れないようにするため）。
-    /// </para>
+    /// Since ZDDs are canonical, two families are equal iff their node IDs are equal (within the
+    /// same manager) — no traversal needed. <c>default(Zdd)</c> is an invalid handle belonging to
+    /// no manager (<see cref="IsDefault"/> is <see langword="true"/>); only equality and
+    /// <see cref="GetHashCode"/> work on it without throwing.
     /// </remarks>
     public readonly struct Zdd : IEquatable<Zdd>, IEnumerable<int[]>
     {
@@ -43,10 +30,8 @@ namespace ZDD.Net.Core
             _id = id;
         }
 
-        /// <summary>この族を所有するマネージャ。</summary>
-        /// <exception cref="InvalidOperationException">
-        /// <c>default(Zdd)</c> の場合（どのマネージャにも属さないため）。
-        /// </exception>
+        /// <summary>The manager that owns this family.</summary>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
         public ZddManager Manager
         {
             get
@@ -56,13 +41,11 @@ namespace ZDD.Net.Core
             }
         }
 
-        /// <summary>
-        /// <c>default(Zdd)</c>（どのマネージャにも属さない無効なハンドル）かどうか。
-        /// </summary>
+        /// <summary>Whether this is <c>default(Zdd)</c>, an invalid handle belonging to no manager.</summary>
         public bool IsDefault => _manager is null;
 
-        /// <summary>この族が空の族 ∅ かどうか。</summary>
-        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
+        /// <summary>Whether this family is the empty family &#8709;.</summary>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
         public bool IsEmpty
         {
             get
@@ -72,8 +55,8 @@ namespace ZDD.Net.Core
             }
         }
 
-        /// <summary>この族が <c>{∅}</c>（空集合だけを持つ族）かどうか。</summary>
-        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
+        /// <summary>Whether this family is <c>{&#8709;}</c> (contains only the empty set).</summary>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
         public bool IsBase
         {
             get
@@ -84,611 +67,323 @@ namespace ZDD.Net.Core
         }
 
         /// <summary>
-        /// この族の根から到達できる非終端ノードの個数。終端 ⊥ / ⊤ は数えないので、
-        /// <see cref="ZddManager.Empty"/> と <see cref="ZddManager.Base"/> はともに 0 になる。
+        /// The number of non-terminal nodes reachable from this family's root. Terminals are not
+        /// counted, so <see cref="ZddManager.Empty"/> and <see cref="ZddManager.Base"/> are both 0.
         /// </summary>
-        /// <remarks>
-        /// 呼ぶたびに族を走査する（<see cref="ZddManager.NodeCount"/> と違い、キャッシュした値ではない）。
-        /// 走査は明示スタックで、再帰しない（docs/PLAN.md §4.5）。
-        /// </remarks>
-        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <remarks>Re-traverses the family on every call (unlike <see cref="ZddManager.NodeCount"/>, not cached).</remarks>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public long NodeCount => Manager.CountReachableNodes(_id);
 
-        /// <summary>
-        /// この族が実際に使っている item（変数）を昇順で返す。
-        /// 族の記述に一度も現れない item は含まれない。
-        /// </summary>
-        /// <returns>
-        /// item index の昇順配列。呼び出しごとに新しい配列を返すので、書き換えても族には影響しない。
-        /// 終端だけの族（∅ と <c>{∅}</c>）では空配列。
-        /// </returns>
-        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <summary>Returns the items (variables) actually used by this family, in ascending order.</summary>
+        /// <returns>Ascending array of item indices; a fresh array each call. Empty for &#8709; and <c>{&#8709;}</c>.</returns>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public int[] Support() => Manager.CollectSupport(_id);
 
-        /// <summary>
-        /// この族に属する集合の個数（濃度）。厳密な値を返す。
-        /// </summary>
+        /// <summary>The exact number of sets in this family (its cardinality).</summary>
         /// <remarks>
-        /// <para>
-        /// 濃度は変数の個数に対して指数的に大きくなりうる（n 変数の冪集合なら 2^n）ので、
-        /// 型は <see cref="BigInteger"/> にしてある。数え上げ自体は
-        /// <b>ノード数ぶんの足し算</b>で済むので、10^24 個の集合を持つ族でも一瞬で返る
-        /// （<see cref="CardinalityEval"/>）。
-        /// </para>
-        /// <para>
-        /// 呼ぶたびに族を走査する（値は覚えておかない）。速さが要るなら
-        /// <see cref="CountApprox"/> を使う。走査は明示スタックによる反復で、再帰しない
-        /// （docs/PLAN.md §4.5）。
-        /// </para>
+        /// Returns <see cref="BigInteger"/> since cardinality can grow exponentially (2^n for n
+        /// variables); counting itself only takes one addition per node. Re-traverses on every
+        /// call. Use <see cref="CountApprox"/> for a faster approximate value.
         /// </remarks>
-        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public BigInteger Count => this.Evaluate<CardinalityEval, BigInteger>(default);
 
-        /// <summary>
-        /// この族に属する集合の個数を <see cref="double"/> で近似した値。<see cref="Count"/> より速い。
-        /// </summary>
+        /// <summary>The number of sets in this family, approximated as a <see cref="double"/>. Faster than <see cref="Count"/>.</summary>
         /// <remarks>
-        /// <para>
-        /// 濃度が 2^53 以下なら <see cref="Count"/> と<b>厳密に一致</b>する。それを超えると
-        /// 下位の桁が丸められ、<see cref="double.MaxValue"/>（およそ 1.8 × 10^308）を超えると
-        /// <see cref="double.PositiveInfinity"/> になる（例外にはならない）。
-        /// 詳しくは <see cref="ApproximateCardinalityEval"/> を参照。
-        /// </para>
-        /// <para>
-        /// 走査の形は <see cref="Count"/> と同じで、違うのは足し算の型だけである
-        /// （<see cref="BigInteger"/> の加算は桁数に比例した時間とアロケーションを伴う。
-        /// docs/PLAN.md §10-5）。
-        /// </para>
+        /// Exact up to 2^53; beyond that low-order digits round off, and it saturates to
+        /// <see cref="double.PositiveInfinity"/> past <see cref="double.MaxValue"/> (never throws).
+        /// See <see cref="ApproximateCardinalityEval"/>.
         /// </remarks>
-        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public double CountApprox => this.Evaluate<ApproximateCardinalityEval, double>(default);
 
-        /// <summary>
-        /// この族に属する集合の個数を、集合の要素数ごとに数えた分布を返す。
-        /// </summary>
+        /// <summary>Counts the sets in this family, grouped by set size (number of elements).</summary>
         /// <returns>
-        /// 添字 <c>k</c> に「要素数 <c>k</c> の集合の個数」が入った配列。長さは
-        /// <b>この族に属する集合の最大要素数 + 1</b>で、空の族 ∅ では長さ 0、
-        /// <c>{∅}</c> では <c>[1]</c> になる。総和は <see cref="Count"/> に一致する。
-        /// 呼び出しごとに新しい配列を返すので、書き換えても族には影響しない。
+        /// Array where index <c>k</c> holds the count of sets of size <c>k</c>; length is the
+        /// largest set size in the family plus one (0 for &#8709;, <c>[1]</c> for <c>{&#8709;}</c>).
+        /// Sums to <see cref="Count"/>. A fresh array each call.
         /// </returns>
-        /// <remarks>
-        /// 冪集合なら二項係数の並び（<c>[C(n,0), C(n,1), …, C(n,n)]</c>）になる。
-        /// ノードごとに配列を 1 本作るため、時間・メモリとも
-        /// <c>O(ノード数 × 最大要素数)</c> かかる（<see cref="SizeDistributionEval"/>）。
-        /// 総数だけが要るなら <see cref="Count"/> のほうが桁違いに軽い。
-        /// </remarks>
-        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <remarks>Costs <c>O(node count &#215; max size)</c>; use <see cref="Count"/> if only the total is needed.</remarks>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public BigInteger[] CountBySize() => this.Evaluate<SizeDistributionEval, BigInteger[]>(default);
 
-        /// <summary>
-        /// 和 <c>F ∪ G</c>。どちらか一方にでも属する集合を持つ族を返す。
-        /// </summary>
-        /// <param name="g">相手の族。この族と同じマネージャに属していなければならない。</param>
-        /// <remarks>
-        /// 実装は明示スタックによる反復で、再帰しない（docs/PLAN.md §4.5）。
-        /// 途中結果はマネージャの演算キャッシュに載るので、同じ組合せを繰り返しても安い。
-        /// </remarks>
-        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
-        /// <exception cref="ArgumentException">
-        /// <paramref name="g"/> が別のマネージャに属する、または <c>default(Zdd)</c> の場合。
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <summary>Union <c>F &#8746; G</c>: sets belonging to either family.</summary>
+        /// <param name="g">The other family; must belong to the same manager.</param>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="g"/> belongs to a different manager, or is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public Zdd Union(Zdd g) => Manager.Union(this, g);
 
-        /// <summary>
-        /// 積 <c>F ∩ G</c>。両方に属する集合だけを持つ族を返す。
-        /// </summary>
-        /// <param name="g">相手の族。この族と同じマネージャに属していなければならない。</param>
-        /// <remarks>
-        /// 実装は明示スタックによる反復で、再帰しない（docs/PLAN.md §4.5）。
-        /// </remarks>
-        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
-        /// <exception cref="ArgumentException">
-        /// <paramref name="g"/> が別のマネージャに属する、または <c>default(Zdd)</c> の場合。
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <summary>Intersection <c>F &#8745; G</c>: sets belonging to both families.</summary>
+        /// <param name="g">The other family; must belong to the same manager.</param>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="g"/> belongs to a different manager, or is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public Zdd Intersect(Zdd g) => Manager.Intersect(this, g);
 
-        /// <summary>
-        /// 差 <c>F ∖ G</c>。この族のうち <paramref name="g"/> に属さない集合だけを返す。
-        /// </summary>
-        /// <param name="g">相手の族。この族と同じマネージャに属していなければならない。</param>
-        /// <remarks>
-        /// 集合ごとの差ではなく<b>族としての差</b>である（集合 <c>{0, 1}</c> から <c>{0}</c> を
-        /// 引くような操作ではない）。実装は明示スタックによる反復で、再帰しない。
-        /// </remarks>
-        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
-        /// <exception cref="ArgumentException">
-        /// <paramref name="g"/> が別のマネージャに属する、または <c>default(Zdd)</c> の場合。
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <summary>Difference <c>F &#8726; G</c>: sets in this family that are not in <paramref name="g"/>.</summary>
+        /// <param name="g">The other family; must belong to the same manager.</param>
+        /// <remarks>This is a difference of families, not a per-set difference.</remarks>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="g"/> belongs to a different manager, or is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public Zdd Difference(Zdd g) => Manager.Difference(this, g);
 
-        /// <summary>
-        /// 対称差 <c>F △ G</c>。ちょうど一方にだけ属する集合を持つ族を返す。
-        /// </summary>
-        /// <param name="g">相手の族。この族と同じマネージャに属していなければならない。</param>
-        /// <remarks>
-        /// <c>(F ∪ G) ∖ (F ∩ G)</c> と同じ族だが、こちらは 1 回の走査で求める。
-        /// 実装は明示スタックによる反復で、再帰しない。
-        /// </remarks>
-        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
-        /// <exception cref="ArgumentException">
-        /// <paramref name="g"/> が別のマネージャに属する、または <c>default(Zdd)</c> の場合。
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <summary>Symmetric difference <c>F &#9651; G</c>: sets belonging to exactly one family.</summary>
+        /// <param name="g">The other family; must belong to the same manager.</param>
+        /// <remarks>Equivalent to <c>(F &#8746; G) &#8726; (F &#8745; G)</c>, computed in a single pass.</remarks>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="g"/> belongs to a different manager, or is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public Zdd SymmetricDifference(Zdd g) => Manager.SymmetricDifference(this, g);
 
         /// <summary>
-        /// 積 <c>F * G</c>。両方から 1 つずつ集合を採り、その和を集めた族
-        /// <c>{ a ∪ b : a ∈ F, b ∈ G }</c> を返す（直積結合・join）。
+        /// Product <c>F * G</c>: the join <c>{ a &#8746; b : a &#8712; F, b &#8712; G }</c> —
+        /// one set from each family, unioned together.
         /// </summary>
-        /// <param name="g">相手の族。この族と同じマネージャに属していなければならない。</param>
-        /// <returns>
-        /// 集合の個数は掛け算にならない。<c>a ∪ b</c> が同じになる組は 1 つに潰れるので、
-        /// 結果は高々 <c>|F| × |G|</c> 個である。
-        /// </returns>
+        /// <param name="g">The other family; must belong to the same manager.</param>
+        /// <returns>At most <c>|F| &#215; |G|</c> sets, since equal unions collapse.</returns>
         /// <remarks>
-        /// <para>
-        /// <b>境界的な入力</b>: <c>F * {∅} == F</c>（<c>{∅}</c> が単位元）、
-        /// <c>F * ∅ == ∅</c>（相手が 1 つも集合を持たないので、作れる和も無い）。
-        /// </para>
-        /// <para>
-        /// 交換則・結合則が成り立ち、<see cref="Union"/> に対して分配する。
-        /// 実装は明示スタックによる反復で、再帰しない（docs/PLAN.md §4.5）。
-        /// </para>
+        /// <c>F * {&#8709;} == F</c> and <c>F * &#8709; == &#8709;</c>. Commutative, associative,
+        /// and distributes over <see cref="Union"/>.
         /// </remarks>
-        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
-        /// <exception cref="ArgumentException">
-        /// <paramref name="g"/> が別のマネージャに属する、または <c>default(Zdd)</c> の場合。
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="g"/> belongs to a different manager, or is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public Zdd Product(Zdd g) => Manager.Product(this, g);
 
         /// <summary>
-        /// 商 <c>F / G</c>。<c>G</c> のどの集合とも重ならず、どれと足しても <c>F</c> に入る集合
-        /// <c>{ a : ∀ b ∈ G, a ∩ b = ∅ かつ a ∪ b ∈ F }</c> を返す。
+        /// Quotient <c>F / G</c>: sets <c>a</c> such that for every <c>b &#8712; G</c>,
+        /// <c>a &#8745; b = &#8709;</c> and <c>a &#8746; b &#8712; F</c>.
         /// </summary>
-        /// <param name="g">割る族。この族と同じマネージャに属していなければならない。</param>
-        /// <returns>
-        /// <c>F</c> から <c>G</c> を「くくり出した」残りの族。<c>F / G * G</c> は <c>F</c> の部分族で、
-        /// くくり出せなかったぶんが <see cref="Remainder"/> になる。
-        /// </returns>
+        /// <param name="g">The family to divide by; must belong to the same manager.</param>
+        /// <returns>What remains of <c>F</c> after factoring out <c>G</c>; <c>F / G * G</c> is a subfamily of <c>F</c>.</returns>
         /// <remarks>
-        /// <para>
-        /// <b>境界的な入力</b>:
-        /// </para>
-        /// <list type="bullet">
-        /// <item><description>
-        /// <c>F / {∅} == F</c>。<c>a ∪ ∅ = a</c> なので、条件は「<c>a ∈ F</c>」だけになる。
-        /// </description></item>
-        /// <item><description>
-        /// <c>F / ∅</c> は<b>全体集合の冪集合 2^U</b>（<see cref="ZddManager.VariableCount"/> 個の
-        /// item の全部分集合）。「∀ b ∈ ∅」は空虚に真なので、定義どおりならすべての部分集合が商に入る。
-        /// エラーにする流儀もあるが、ここでは定義に従う。<c>F % ∅ == F</c> と合わせて
-        /// <c>F == F / G * G + F % G</c> は保たれる（<c>2^U * ∅ == ∅</c> のため）。
-        /// </description></item>
-        /// <item><description>
-        /// <c>∅ / G == ∅</c>、および <c>F / F == {∅}</c>（<c>F</c> が ∅ でないとき）。
-        /// </description></item>
-        /// </list>
-        /// <para>
-        /// 実装は明示スタックによる反復で、再帰しない（docs/PLAN.md §4.5）。
-        /// </para>
+        /// <c>F / {&#8709;} == F</c>. <c>F / &#8709;</c> is the full power set 2^U (vacuous
+        /// universal quantifier), which keeps <c>F == F / G * G + F % G</c> true in that case too.
+        /// <c>&#8709; / G == &#8709;</c>; <c>F / F == {&#8709;}</c> for non-empty <c>F</c>.
         /// </remarks>
-        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
-        /// <exception cref="ArgumentException">
-        /// <paramref name="g"/> が別のマネージャに属する、または <c>default(Zdd)</c> の場合。
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="g"/> belongs to a different manager, or is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public Zdd Quotient(Zdd g) => Manager.Quotient(this, g);
 
-        /// <summary>
-        /// 剰余 <c>F % G</c>。<c>F ∖ (G * (F / G))</c>、すなわち <c>G</c> でくくり出せなかった集合を返す。
-        /// </summary>
-        /// <param name="g">割る族。この族と同じマネージャに属していなければならない。</param>
-        /// <returns>
-        /// <c>F == F / G * G + F % G</c>（<c>+</c> は <see cref="Union"/>）を満たす族。
-        /// </returns>
-        /// <remarks>
-        /// <b>境界的な入力</b>: <c>F % {∅} == ∅</c>（<c>F / {∅} * {∅} == F</c> なので割り切れる）、
-        /// <c>F % ∅ == F</c>（商が何であれ ∅ を掛ければ ∅ なので、何も引かれない）。
-        /// 実装は商・積・差の組み合わせで、いずれも反復実装であり再帰しない。
-        /// </remarks>
-        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
-        /// <exception cref="ArgumentException">
-        /// <paramref name="g"/> が別のマネージャに属する、または <c>default(Zdd)</c> の場合。
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <summary>Remainder <c>F % G</c>: <c>F &#8726; (G * (F / G))</c> — sets that could not be factored out by <c>G</c>.</summary>
+        /// <param name="g">The family to divide by; must belong to the same manager.</param>
+        /// <returns>The family satisfying <c>F == F / G * G + F % G</c>.</returns>
+        /// <remarks><c>F % {&#8709;} == &#8709;</c>; <c>F % &#8709; == F</c>.</remarks>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="g"/> belongs to a different manager, or is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public Zdd Remainder(Zdd g) => Manager.Remainder(this, g);
 
         /// <summary>
-        /// Meet <c>F ⊓ G</c>。両方から 1 つずつ集合を採り、その<b>共通部分</b>を集めた族
-        /// <c>{ a ∩ b : a ∈ F, b ∈ G }</c> を返す。
+        /// Meet <c>F &#8851; G</c>: <c>{ a &#8745; b : a &#8712; F, b &#8712; G }</c> —
+        /// one set from each family, intersected together.
         /// </summary>
-        /// <param name="g">相手の族。この族と同じマネージャに属していなければならない。</param>
+        /// <param name="g">The other family; must belong to the same manager.</param>
         /// <remarks>
-        /// <para>
-        /// <see cref="Product"/> の「和を集める」を「交わりを集める」に替えたもの。
-        /// 交換則・結合則が成り立ち、<see cref="Union"/> に対して分配する。
-        /// </para>
-        /// <para>
-        /// <b>境界的な入力</b>: <c>F ⊓ ∅ == ∅</c>（相手が 1 つも集合を持たないので、作れる交わりも無い）、
-        /// <c>F ⊓ {∅} == {∅}</c>（∅ との交わりは常に ∅ なので、できるのは 1 通りだけ）。
-        /// <c>F ⊓ F</c> は <c>F</c> とは限らない（要素どうしの交わりが新しく増える）。
-        /// </para>
-        /// <para>
-        /// 実装は明示スタックによる反復で、再帰しない（docs/PLAN.md §4.5）。
-        /// </para>
+        /// Like <see cref="Product"/> but collecting intersections instead of unions. Commutative,
+        /// associative, distributes over <see cref="Union"/>. <c>F &#8851; &#8709; == &#8709;</c>;
+        /// <c>F &#8851; {&#8709;} == {&#8709;}</c>; <c>F &#8851; F</c> is not generally <c>F</c>.
         /// </remarks>
-        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
-        /// <exception cref="ArgumentException">
-        /// <paramref name="g"/> が別のマネージャに属する、または <c>default(Zdd)</c> の場合。
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="g"/> belongs to a different manager, or is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public Zdd Meet(Zdd g) => Manager.Meet(this, g);
 
-        /// <summary>
-        /// <paramref name="g"/> のいずれかを<b>含む</b>集合だけを残す
-        /// （<c>{ a ∈ F : ∃ b ∈ G, b ⊆ a }</c>）。
-        /// </summary>
-        /// <param name="g">条件を与える族。この族と同じマネージャに属していなければならない。</param>
+        /// <summary>Keeps only sets that contain (are a superset of) some set in <paramref name="g"/>.</summary>
+        /// <param name="g">The family giving the condition; must belong to the same manager.</param>
         /// <remarks>
-        /// <para>
-        /// <b>名前について</b>: SAPPOROBDD 由来の名前が <see cref="Restrict"/>、
-        /// 何が残るかをそのまま言い表した .NET 的な名前がこちら。<b>同じ演算</b>で、
-        /// どちらの名前で探しても見つかるように両方を用意してある。
-        /// </para>
-        /// <para>
-        /// 構築済みの巨大な族を後から絞り込む主要手段で、「全域木のうち、この辺集合を含むもの」の
-        /// ように使う。集合そのものは作り替えないので、結果は必ず <c>F</c> の部分族になる。
-        /// </para>
-        /// <para>
-        /// <b>境界的な入力</b>: <c>F.SupersetsOf(Base) == F</c>（∅ はどの集合にも含まれる）、
-        /// <c>F.SupersetsOf(∅) == ∅</c>（条件を満たす <c>b</c> が 1 つも無い）。
-        /// </para>
-        /// <para>
-        /// 実装は明示スタックによる反復で、再帰しない（docs/PLAN.md §4.5）。
-        /// </para>
+        /// Same operation as <see cref="Restrict"/> (SAPPOROBDD naming); both names are provided.
+        /// <c>F.SupersetsOf(Base) == F</c>; <c>F.SupersetsOf(&#8709;) == &#8709;</c>.
         /// </remarks>
-        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
-        /// <exception cref="ArgumentException">
-        /// <paramref name="g"/> が別のマネージャに属する、または <c>default(Zdd)</c> の場合。
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="g"/> belongs to a different manager, or is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public Zdd SupersetsOf(Zdd g) => Manager.SupersetsOf(this, g);
 
-        /// <summary><see cref="SupersetsOf"/> の別名（SAPPOROBDD の記法）。同じ演算を指す。</summary>
-        /// <param name="g">条件を与える族。この族と同じマネージャに属していなければならない。</param>
+        /// <summary>Alias for <see cref="SupersetsOf"/> (SAPPOROBDD naming). Same operation.</summary>
+        /// <param name="g">The family giving the condition; must belong to the same manager.</param>
         public Zdd Restrict(Zdd g) => Manager.SupersetsOf(this, g);
 
-        /// <summary>
-        /// <paramref name="g"/> のいずれかに<b>含まれる</b>集合だけを残す
-        /// （<c>{ a ∈ F : ∃ b ∈ G, a ⊆ b }</c>）。
-        /// </summary>
-        /// <param name="g">条件を与える族。この族と同じマネージャに属していなければならない。</param>
+        /// <summary>Keeps only sets that are contained in (are a subset of) some set in <paramref name="g"/>.</summary>
+        /// <param name="g">The family giving the condition; must belong to the same manager.</param>
         /// <remarks>
-        /// <para>
-        /// <b>名前について</b>: SAPPOROBDD 由来の名前が <see cref="Permit"/>、
-        /// 何が残るかをそのまま言い表した .NET 的な名前がこちら。<b>同じ演算</b>で、
-        /// どちらの名前で探しても見つかるように両方を用意してある。
-        /// </para>
-        /// <para>
-        /// 「パスのうち、使ってよい辺だけでできているもの」のように、許可された集合の範囲へ
-        /// 族を閉じ込めるのに使う。結果は必ず <c>F</c> の部分族になる。
-        /// </para>
-        /// <para>
-        /// <b>境界的な入力</b>: <c>F.SubsetsOf(∅) == ∅</c>、
-        /// <c>F.SubsetsOf(Base)</c> は <c>F</c> が空集合を含むなら <c>{∅}</c>、含まなければ ∅
-        /// （<c>a ⊆ ∅</c> を満たすのは <c>a = ∅</c> だけ）。
-        /// </para>
-        /// <para>
-        /// 実装は明示スタックによる反復で、再帰しない（docs/PLAN.md §4.5）。
-        /// </para>
+        /// Same operation as <see cref="Permit"/> (SAPPOROBDD naming); both names are provided.
+        /// <c>F.SubsetsOf(&#8709;) == &#8709;</c>; <c>F.SubsetsOf(Base)</c> is <c>{&#8709;}</c> if
+        /// <c>F</c> contains &#8709;, else &#8709;.
         /// </remarks>
-        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
-        /// <exception cref="ArgumentException">
-        /// <paramref name="g"/> が別のマネージャに属する、または <c>default(Zdd)</c> の場合。
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="g"/> belongs to a different manager, or is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public Zdd SubsetsOf(Zdd g) => Manager.SubsetsOf(this, g);
 
-        /// <summary><see cref="SubsetsOf"/> の別名（SAPPOROBDD の記法）。同じ演算を指す。</summary>
-        /// <param name="g">条件を与える族。この族と同じマネージャに属していなければならない。</param>
+        /// <summary>Alias for <see cref="SubsetsOf"/> (SAPPOROBDD naming). Same operation.</summary>
+        /// <param name="g">The family giving the condition; must belong to the same manager.</param>
         public Zdd Permit(Zdd g) => Manager.SubsetsOf(this, g);
 
-        /// <summary>
-        /// <paramref name="g"/> のどれの<b>部分集合でもない</b>集合だけを残す
-        /// （<c>{ a ∈ F : ∀ b ∈ G, a ⊄ b }</c>）。
-        /// </summary>
-        /// <param name="g">条件を与える族。この族と同じマネージャに属していなければならない。</param>
-        /// <returns>
-        /// <see cref="SubsetsOf"/> の否定版で、<c>F.NonSubsetsOf(G) == F - F.SubsetsOf(G)</c> が成り立つ。
-        /// 差を取らずに 1 回の走査で求めるので、中間の族を作らずに済む。
-        /// </returns>
-        /// <remarks>
-        /// <b>境界的な入力</b>: <c>F.NonSubsetsOf(∅) == F</c>（「∀ b ∈ ∅」は空虚に真）、
-        /// <c>F.NonSubsetsOf(F) == ∅</c>。実装は明示スタックによる反復で、再帰しない。
-        /// </remarks>
-        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
-        /// <exception cref="ArgumentException">
-        /// <paramref name="g"/> が別のマネージャに属する、または <c>default(Zdd)</c> の場合。
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <summary>Keeps only sets that are not a subset of any set in <paramref name="g"/>.</summary>
+        /// <param name="g">The family giving the condition; must belong to the same manager.</param>
+        /// <returns>The negation of <see cref="SubsetsOf"/>: <c>F.NonSubsetsOf(G) == F - F.SubsetsOf(G)</c>, computed in one pass.</returns>
+        /// <remarks><c>F.NonSubsetsOf(&#8709;) == F</c>; <c>F.NonSubsetsOf(F) == &#8709;</c>.</remarks>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="g"/> belongs to a different manager, or is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public Zdd NonSubsetsOf(Zdd g) => Manager.NonSubsetsOf(this, g);
 
-        /// <summary>
-        /// <paramref name="g"/> のどれの<b>上位集合でもない</b>集合だけを残す
-        /// （<c>{ a ∈ F : ∀ b ∈ G, b ⊄ a }</c>）。
-        /// </summary>
-        /// <param name="g">条件を与える族。この族と同じマネージャに属していなければならない。</param>
-        /// <returns>
-        /// <see cref="SupersetsOf"/> の否定版で、<c>F.NonSupersetsOf(G) == F - F.SupersetsOf(G)</c> が
-        /// 成り立つ。「この辺集合を 1 つも丸ごとは含まない解」を取り出すのに使う。
-        /// </returns>
-        /// <remarks>
-        /// <b>境界的な入力</b>: <c>F.NonSupersetsOf(∅) == F</c>、
-        /// <c>F.NonSupersetsOf(Base) == ∅</c>（∅ はどの集合にも含まれてしまう）。
-        /// 実装は明示スタックによる反復で、再帰しない。
-        /// </remarks>
-        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
-        /// <exception cref="ArgumentException">
-        /// <paramref name="g"/> が別のマネージャに属する、または <c>default(Zdd)</c> の場合。
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <summary>Keeps only sets that are not a superset of any set in <paramref name="g"/>.</summary>
+        /// <param name="g">The family giving the condition; must belong to the same manager.</param>
+        /// <returns>The negation of <see cref="SupersetsOf"/>: <c>F.NonSupersetsOf(G) == F - F.SupersetsOf(G)</c>.</returns>
+        /// <remarks><c>F.NonSupersetsOf(&#8709;) == F</c>; <c>F.NonSupersetsOf(Base) == &#8709;</c>.</remarks>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="g"/> belongs to a different manager, or is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public Zdd NonSupersetsOf(Zdd g) => Manager.NonSupersetsOf(this, g);
 
-        /// <summary>
-        /// この族のすべての集合について、<paramref name="item"/> の有無を反転した族を返す。
-        /// </summary>
-        /// <param name="item">0 以上 <see cref="ZddManager.VariableCount"/> 未満の item index。</param>
+        /// <summary>Toggles membership of <paramref name="item"/> in every set of this family.</summary>
+        /// <param name="item">Item index, between 0 and <see cref="ZddManager.VariableCount"/> (exclusive).</param>
         /// <returns>
-        /// <c>{ s △ {item} : s ∈ this }</c>。たとえば <c>{∅, {1}}</c> に <c>Change(1)</c> をかけると
-        /// <c>{{1}, ∅}</c>、すなわち同じ族に戻る。<b>集合の個数は変わらない</b>ので、
-        /// <c>Change(i)</c> を 2 回かければ必ず元の族になる。
+        /// <c>{ s &#9651; {item} : s &#8712; this }</c>. The set count is unchanged, and applying
+        /// <see cref="Change"/> twice with the same item restores the original family.
         /// </returns>
-        /// <remarks>
-        /// 実装は明示スタックによる反復で、再帰しない（docs/PLAN.md §4.5）。
-        /// 途中結果はマネージャの演算キャッシュに載るので、同じ族に同じ演算を繰り返しても安い。
-        /// </remarks>
-        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
-        /// <exception cref="ArgumentOutOfRangeException"><paramref name="item"/> が範囲外の場合。</exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="item"/> is out of range.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public Zdd Change(int item) => Manager.Change(this, item);
 
-        /// <summary>
-        /// <paramref name="item"/> を含む集合だけを取り出し、そこから <paramref name="item"/> を
-        /// 除いた族を返す（Minato の <c>Subset1</c>）。
-        /// </summary>
-        /// <param name="item">0 以上 <see cref="ZddManager.VariableCount"/> 未満の item index。</param>
+        /// <summary>Keeps only sets containing <paramref name="item"/>, then removes it from each (Minato's <c>Subset1</c>).</summary>
+        /// <param name="item">Item index, between 0 and <see cref="ZddManager.VariableCount"/> (exclusive).</param>
         /// <returns>
-        /// <c>{ s ∖ {item} : s ∈ this, item ∈ s }</c>。<see cref="OffSet"/> と対になっていて、
-        /// <c>OffSet(i)</c> と <c>OnSet(i).Change(i)</c> は元の族を重複なく 2 つに分ける。
+        /// <c>{ s &#8726; {item} : s &#8712; this, item &#8712; s }</c>. Paired with <see cref="OffSet"/>:
+        /// <c>OffSet(i)</c> and <c>OnSet(i).Change(i)</c> partition the original family.
         /// </returns>
-        /// <remarks>
-        /// 実装は明示スタックによる反復で、再帰しない（docs/PLAN.md §4.5）。
-        /// </remarks>
-        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
-        /// <exception cref="ArgumentOutOfRangeException"><paramref name="item"/> が範囲外の場合。</exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="item"/> is out of range.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public Zdd OnSet(int item) => Manager.OnSet(this, item);
 
-        /// <summary><see cref="OnSet"/> の別名（Minato の記法）。</summary>
-        /// <param name="item">0 以上 <see cref="ZddManager.VariableCount"/> 未満の item index。</param>
+        /// <summary>Alias for <see cref="OnSet"/> (Minato's naming).</summary>
+        /// <param name="item">Item index, between 0 and <see cref="ZddManager.VariableCount"/> (exclusive).</param>
         public Zdd Subset1(int item) => Manager.OnSet(this, item);
 
-        /// <summary>
-        /// <paramref name="item"/> を含まない集合だけを残した族を返す（Minato の <c>Subset0</c>）。
-        /// </summary>
-        /// <param name="item">0 以上 <see cref="ZddManager.VariableCount"/> 未満の item index。</param>
-        /// <returns><c>{ s : s ∈ this, item ∉ s }</c>。集合そのものは変わらない。</returns>
-        /// <remarks>
-        /// 実装は明示スタックによる反復で、再帰しない（docs/PLAN.md §4.5）。
-        /// </remarks>
-        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
-        /// <exception cref="ArgumentOutOfRangeException"><paramref name="item"/> が範囲外の場合。</exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <summary>Keeps only sets that do not contain <paramref name="item"/> (Minato's <c>Subset0</c>).</summary>
+        /// <param name="item">Item index, between 0 and <see cref="ZddManager.VariableCount"/> (exclusive).</param>
+        /// <returns><c>{ s : s &#8712; this, item &#8713; s }</c>.</returns>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="item"/> is out of range.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public Zdd OffSet(int item) => Manager.OffSet(this, item);
 
-        /// <summary><see cref="OffSet"/> の別名（Minato の記法）。</summary>
-        /// <param name="item">0 以上 <see cref="ZddManager.VariableCount"/> 未満の item index。</param>
+        /// <summary>Alias for <see cref="OffSet"/> (Minato's naming).</summary>
+        /// <param name="item">Item index, between 0 and <see cref="ZddManager.VariableCount"/> (exclusive).</param>
         public Zdd Subset0(int item) => Manager.OffSet(this, item);
 
-        /// <summary>
-        /// この族のすべての集合について、<paramref name="items"/> の有無をまとめて反転した族を返す
-        /// （<see cref="Change"/> の一般化）。
-        /// </summary>
-        /// <param name="items">
-        /// 反転する item index の並び。それぞれ 0 以上 <see cref="ZddManager.VariableCount"/> 未満。
-        /// 空なら族はそのまま返る。
-        /// </param>
+        /// <summary>Toggles membership of each item in <paramref name="items"/> across every set (a batched <see cref="Change"/>).</summary>
+        /// <param name="items">Item indices to toggle, each between 0 and <see cref="ZddManager.VariableCount"/> (exclusive). Empty leaves the family unchanged.</param>
         /// <returns>
-        /// <c>{ s △ items : s ∈ this }</c>。<b>集合の個数は変わらない</b>。
-        /// 同じ item を 2 度渡すと反転が 2 回かかって打ち消し合うので、その item は元のままになる。
+        /// <c>{ s &#9651; items : s &#8712; this }</c>. Set count is unchanged; an item listed
+        /// twice cancels out and stays as-is.
         /// </returns>
-        /// <remarks>
-        /// <see cref="Change"/> を順に掛けるだけで、item どうしの順序は結果に影響しない。
-        /// 実装は明示スタックによる反復で、再帰しない（docs/PLAN.md §4.5）。
-        /// </remarks>
-        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
-        /// <exception cref="ArgumentOutOfRangeException">
-        /// <paramref name="items"/> に範囲外の item がある場合（族は 1 つも反転されない）。
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="items"/> contains an out-of-range item (nothing is toggled).</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public Zdd Flip(params ReadOnlySpan<int> items) => Manager.Flip(this, items);
 
-        /// <summary>
-        /// 包含関係で<b>極大</b>な集合だけを残した族を返す
-        /// （<c>{ a ∈ F : a ⊊ b となる b ∈ F が無い }</c>）。
-        /// </summary>
-        /// <returns>
-        /// 元の族の部分族で、必ず<b>反鎖</b>（どの 2 つも包含関係にない）になる。
-        /// したがって <c>F.Maximal().Maximal() == F.Maximal()</c>。
-        /// </returns>
-        /// <remarks>
-        /// <b>境界的な入力</b>: <c>∅.Maximal() == ∅</c>、<c>{∅}.Maximal() == {∅}</c>。
-        /// 実装は明示スタックによる反復で、再帰しない（docs/PLAN.md §4.5）。
-        /// </remarks>
-        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <summary>Keeps only the sets that are maximal under inclusion (<c>{ a &#8712; F : no b &#8712; F has a &#8842; b }</c>).</summary>
+        /// <returns>A subfamily of <c>F</c> that is always an antichain, so <c>F.Maximal().Maximal() == F.Maximal()</c>.</returns>
+        /// <remarks><c>&#8709;.Maximal() == &#8709;</c>; <c>{&#8709;}.Maximal() == {&#8709;}</c>.</remarks>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public Zdd Maximal() => Manager.Maximal(this);
 
-        /// <summary>
-        /// 包含関係で<b>極小</b>な集合だけを残した族を返す
-        /// （<c>{ a ∈ F : b ⊊ a となる b ∈ F が無い }</c>）。
-        /// </summary>
-        /// <returns>
-        /// 元の族の部分族で、必ず<b>反鎖</b>（どの 2 つも包含関係にない）になる。
-        /// したがって <c>F.Minimal().Minimal() == F.Minimal()</c>。
-        /// </returns>
+        /// <summary>Keeps only the sets that are minimal under inclusion (<c>{ a &#8712; F : no b &#8712; F has b &#8842; a }</c>).</summary>
+        /// <returns>A subfamily of <c>F</c> that is always an antichain, so <c>F.Minimal().Minimal() == F.Minimal()</c>.</returns>
         /// <remarks>
-        /// 「冗長な解を落とす」定番の操作で、極小カットや極小頂点被覆を取り出すのに使う。
-        /// <b>境界的な入力</b>: <c>∅.Minimal() == ∅</c>、<c>{∅}.Minimal() == {∅}</c>。
-        /// <c>F</c> が空集合を持つなら、<c>F.Minimal() == {∅}</c>（∅ はどの集合にも真に含まれる）。
-        /// 実装は明示スタックによる反復で、再帰しない（docs/PLAN.md §4.5）。
+        /// Common way to drop redundant solutions (e.g. minimal cuts, minimal vertex covers).
+        /// <c>&#8709;.Minimal() == &#8709;</c>; <c>{&#8709;}.Minimal() == {&#8709;}</c>; if <c>F</c>
+        /// contains &#8709;, <c>F.Minimal() == {&#8709;}</c>.
         /// </remarks>
-        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public Zdd Minimal() => Manager.Minimal(this);
 
         /// <summary>
-        /// この族のどの集合とも交わる集合をすべて集めた族（ブロッキング集合族／横断超グラフ）を返す
-        /// （<c>{ a ⊆ U : ∀ b ∈ F, a ∩ b ≠ ∅ }</c>）。
+        /// Returns the hitting-set family (blocking sets / transversal hypergraph):
+        /// all sets that intersect every set in this family (<c>{ a &#8838; U : &#8704; b &#8712; F, a &#8745; b &#8800; &#8709; }</c>).
         /// </summary>
-        /// <returns>
-        /// 全体集合 <c>U</c> は所有マネージャの<b>全変数</b>（<see cref="ZddManager.VariableCount"/>）で、
-        /// <see cref="Support"/> ではない。この族が使っていない item も候補に自由に入れてよいため。
-        /// </returns>
+        /// <returns>The universe <c>U</c> is all of the manager's variables (<see cref="ZddManager.VariableCount"/>), not just <see cref="Support"/>.</returns>
         /// <remarks>
-        /// <para>
-        /// <b>極小なものだけが要るなら <c>HittingSets().Minimal()</c></b> と書く。この演算が返すのは
-        /// 「交わる集合すべて」なので、上位集合もすべて含んだ上に閉じた族になる。
-        /// 反鎖どうしの双対（Berge の定理）は極小化を挟んで
-        /// <c>F.Minimal().HittingSets().Minimal().HittingSets().Minimal() == F.Minimal()</c> の形になる。
-        /// </para>
-        /// <para>
-        /// <b>結果が指数的に大きくなりうる</b>。横断超グラフの大きさは元の族に対して指数的になりうるので、
-        /// 大きな族に無条件で掛けてよい演算ではない。
-        /// </para>
-        /// <para>
-        /// <b>境界的な入力</b>: <c>∅.HittingSets() == 2^U</c>（条件が空虚に真）、
-        /// <c>{∅}.HittingSets() == ∅</c>（∅ と交われる集合は無い）。空集合を含む族はすべて後者になる。
-        /// </para>
-        /// <para>
-        /// 実装は明示スタックによる反復で、再帰しない（docs/PLAN.md §4.5）。
-        /// </para>
+        /// Includes every superset of a valid hitting set, so it's upward-closed; use
+        /// <c>HittingSets().Minimal()</c> for minimal ones. The result can be exponentially larger
+        /// than the input. <c>&#8709;.HittingSets() == 2^U</c> (vacuously true); any family
+        /// containing &#8709; produces <c>&#8709;.HittingSets() == &#8709;</c>.
         /// </remarks>
-        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public Zdd HittingSets() => Manager.HittingSets(this);
 
-        /// <summary><see cref="HittingSets"/> の別名（ブロッキング集合族）。同じ演算を指す。</summary>
+        /// <summary>Alias for <see cref="HittingSets"/> (blocking sets). Same operation.</summary>
         public Zdd Blocking() => Manager.HittingSets(this);
 
-        /// <summary>
-        /// 補 <c>2^U ∖ F</c>。全体集合 <c>U</c> の部分集合のうち、この族に属さないものを集めた族を返す。
-        /// </summary>
-        /// <returns>
-        /// 全体集合 <c>U</c> は所有マネージャの<b>全変数</b>（<see cref="ZddManager.VariableCount"/>）で、
-        /// <see cref="Support"/> ではない（docs/OPEN-QUESTIONS.md B8）。したがって同じ内容の族でも、
-        /// 変数の個数が違うマネージャでは補が違う。一部の item だけを全体集合と見る補
-        /// （<c>ComplementWithin(items)</c>）は別の API として用意する予定である。
-        /// </returns>
+        /// <summary>Complement <c>2^U &#8726; F</c>: subsets of the universe <c>U</c> not in this family.</summary>
+        /// <returns>The universe <c>U</c> is all of the manager's variables (<see cref="ZddManager.VariableCount"/>), not just <see cref="Support"/>.</returns>
         /// <remarks>
-        /// <b>集合ごとの補ではなく族としての補</b>である（各集合を <c>U ∖ s</c> に置き換える操作ではない）。
-        /// <c>~~F == F</c>、<c>~∅ == 2^U</c>、<c>~2^U == ∅</c>。
-        /// <see cref="Union"/> / <see cref="Intersect"/> との間にド・モルガン則
-        /// （<c>~(F ∪ G) == ~F ∩ ~G</c>、<c>~(F ∩ G) == ~F ∪ ~G</c>）が成り立つ。
-        /// 実装は冪集合との <see cref="Difference"/> で、反復であり再帰しない。
+        /// A complement of the family, not per-set (each set is not replaced by <c>U &#8726; s</c>).
+        /// <c>~~F == F</c>; <c>~&#8709; == 2^U</c>; <c>~2^U == &#8709;</c>; De Morgan's laws hold with
+        /// <see cref="Union"/>/<see cref="Intersect"/>.
         /// </remarks>
-        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public Zdd Complement() => Manager.Complement(this);
 
-        /// <summary>
-        /// この族に属する集合を 1 つずつ返す遅延列挙を始める。順序は
-        /// <see cref="ZddEnumerationOrder.Default"/>。
-        /// </summary>
-        /// <returns>
-        /// 族に属する集合の列挙子。集合は<b>昇順に並んだ item index の <c>int[]</c></b> で、
-        /// <b>1 つ返すたびに新しい配列</b>が作られる（<see cref="Sets"/> を参照）。
-        /// </returns>
+        /// <summary>Starts a lazy enumeration of this family's sets in <see cref="ZddEnumerationOrder.Default"/> order.</summary>
+        /// <returns>Enumerator yielding each set as an ascending <c>int[]</c> of item indices, a fresh array per set.</returns>
         /// <remarks>
-        /// <para>
-        /// <b><see cref="Count"/> と計算量が違う</b>。数え上げはノード数に比例するので 10^24 個でも
-        /// 一瞬だが、列挙は<b>返す集合の個数</b>に比例する。だからこそ遅延で、
-        /// <c>foreach</c> の途中で <c>break</c> したり <c>Take(10)</c> で打ち切ったりすれば、
-        /// 族がどれだけ大きくてもそこまでしか辿らない。
-        /// </para>
-        /// <para>
-        /// <b><see cref="System.Collections.Generic.ICollection{T}"/> は実装しない</b>
-        /// （docs/PLAN.md §8）。族の要素数は <c>int</c> に収まらないためで、個数が要るときは
-        /// LINQ の <c>Count()</c> ではなく <see cref="Count"/>（<see cref="BigInteger"/>）を使う。
-        /// </para>
+        /// Unlike <see cref="Count"/> (proportional to node count), enumeration cost is
+        /// proportional to the number of sets returned — hence lazy, so <c>break</c> or
+        /// <c>Take(n)</c> bounds the work regardless of family size.
+        /// <see cref="System.Collections.Generic.ICollection{T}"/> is intentionally not implemented,
+        /// since set counts don't fit in <c>int</c>; use <see cref="Count"/> for that.
         /// </remarks>
-        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public IEnumerator<int[]> GetEnumerator() => Sets().GetEnumerator();
 
         /// <inheritdoc cref="GetEnumerator"/>
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
-        /// <summary>
-        /// この族に属する集合を、指定した順序で 1 つずつ返す遅延列挙を作る。
-        /// </summary>
-        /// <param name="order">
-        /// 集合を返す順序。既定は <see cref="ZddEnumerationOrder.Default"/>
-        /// （0-枝優先の深さ優先＝指示ベクトルの辞書順）。
-        /// </param>
-        /// <returns>族に属する集合を <paramref name="order"/> の順に返す遅延列挙。</returns>
+        /// <summary>Creates a lazy enumeration of this family's sets in the given order.</summary>
+        /// <param name="order">Order to yield sets in. Defaults to <see cref="ZddEnumerationOrder.Default"/>.</param>
+        /// <returns>A lazy enumeration yielding sets in <paramref name="order"/>.</returns>
         /// <remarks>
-        /// <para>
-        /// <b>返る配列は毎回新しい</b>。バッファを使い回すと <c>ToList()</c> した全要素が
-        /// 同じ配列を指すという静かな罠になるので、既定は安全側に倒してある。
-        /// 返された <c>int[]</c> は呼び出し側のもので、書き換えても列挙には影響しない。
-        /// </para>
-        /// <para>
-        /// <b>遅延である</b>。ここでは何も辿らず、列挙が進むたびに 1 つ分だけ走査する
-        /// （引数の検査だけはこの場で行う）。同じ戻り値を 2 度 <c>foreach</c> すれば 2 度走査され、
-        /// 族は不変なので同じ並びが 2 度返る。
-        /// </para>
-        /// <para>
-        /// <b>計算量</b>: 集合 1 つあたり、その集合の要素数と辿った 0-枝のぶん。
-        /// 族全体を列挙する手間は「集合の個数 × 変数の個数」で抑えられる。
-        /// </para>
+        /// Each yielded array is freshly allocated, so collecting results (e.g. via <c>ToList()</c>)
+        /// is safe. Nothing is traversed until enumeration proceeds; re-enumerating re-traverses
+        /// and yields the same order (the family is immutable). Cost per set is proportional to
+        /// its size plus the 0-branches walked.
         /// </remarks>
-        /// <exception cref="ArgumentOutOfRangeException">
-        /// <paramref name="order"/> が定義されていない値の場合。
-        /// </exception>
-        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="order"/> is not a defined value.</exception>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public IEnumerable<int[]> Sets(ZddEnumerationOrder order = ZddEnumerationOrder.Default) =>
             SetEnumeration.Enumerate(Manager, _id, order);
 
-        /// <summary>
-        /// <paramref name="set"/> が表す集合がこの族に属するかどうかを返す。
-        /// </summary>
-        /// <param name="set">
-        /// 調べる集合の item index。順不同でよく、同じ item が重なっていても 1 つとして扱う。
-        /// 空なら「この族が空集合を要素に持つか」を問うことになる。
-        /// </param>
+        /// <summary>Returns whether the set represented by <paramref name="set"/> belongs to this family.</summary>
+        /// <param name="set">Item indices of the set to check, any order, duplicates ignored. Empty asks whether the family contains the empty set.</param>
         /// <remarks>
-        /// 族を作らず、根から終端まで 1 本の経路を降りるだけなので O(変数の個数)
-        /// （<paramref name="set"/> を昇順に並べるぶん、要素数 k に対して O(k log k) が加わる）。
-        /// 列挙と整合する: <see cref="Sets"/> が返した集合は必ず <see langword="true"/> になる。
+        /// Walks a single root-to-terminal path without building any family, so O(variable count)
+        /// (plus O(k log k) to sort <paramref name="set"/>). Consistent with <see cref="Sets"/>:
+        /// any set it yields returns <see langword="true"/> here.
         /// </remarks>
-        /// <exception cref="ArgumentNullException"><paramref name="set"/> が <see langword="null"/> の場合。</exception>
-        /// <exception cref="ArgumentOutOfRangeException">
-        /// <paramref name="set"/> に 0 以上 <see cref="ZddManager.VariableCount"/> 未満でない値が含まれる場合。
-        /// </exception>
-        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <exception cref="ArgumentNullException"><paramref name="set"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="set"/> contains a value outside 0 to <see cref="ZddManager.VariableCount"/> (exclusive).</exception>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public bool Contains(IEnumerable<int> set)
         {
             ThrowHelper.ThrowIfNull(set, nameof(set));
@@ -698,80 +393,42 @@ namespace ZDD.Net.Core
         }
 
         /// <inheritdoc cref="Contains(IEnumerable{int})"/>
-        /// <param name="items">
-        /// 調べる集合の item index。順不同でよく、同じ item が重なっていても 1 つとして扱う。
-        /// 空なら「この族が空集合を要素に持つか」を問うことになる。
-        /// </param>
+        /// <param name="items">Item indices of the set to check, any order, duplicates ignored. Empty asks whether the family contains the empty set.</param>
         public bool Contains(params ReadOnlySpan<int> items) => Manager.Contains(this, items);
 
-        /// <summary>
-        /// この族の <paramref name="index"/> 番目（0 始まり）の集合を返す（unranking）。
-        /// </summary>
-        /// <param name="index">
-        /// 取り出す集合の順位。0 以上 <see cref="Count"/> 未満。族の濃度は <see cref="BigInteger"/> なので、
-        /// 順位も <see cref="BigInteger"/> で受ける（<c>long</c> に収まらない族があるため）。
-        /// </param>
-        /// <param name="order">
-        /// 順位の数え方。既定は <see cref="ZddEnumerationOrder.Default"/>。
-        /// </param>
-        /// <returns>
-        /// 昇順に並んだ item index の <c>int[]</c>。呼び出しごとに新しい配列を返す。
-        /// </returns>
+        /// <summary>Returns the <paramref name="index"/>-th (0-based) set in this family (unranking).</summary>
+        /// <param name="index">Rank of the set to retrieve, between 0 and <see cref="Count"/> (exclusive); a <see cref="BigInteger"/> since some families exceed <c>long</c>.</param>
+        /// <param name="order">Ranking order. Defaults to <see cref="ZddEnumerationOrder.Default"/>.</param>
+        /// <returns>Ascending array of item indices; a fresh array each call.</returns>
         /// <remarks>
-        /// <para>
-        /// <b>これが「10^20 個の解から k 番目を取り出す」機能である</b>（docs/PLAN.md §5.3）。
-        /// 列挙（<see cref="Sets"/>）は先頭から順に舐めるので k 番目を得るには k 回ぶん辿るが、
-        /// こちらはノードごとの部分濃度を先に求めておき、根から<b>1 本の経路を降りるだけ</b>で答を出す。
-        /// 手間は「濃度の走査（ノード数ぶんの足し算。<see cref="Count"/> と同じ）＋ O(変数の個数)」。
-        /// </para>
-        /// <para>
-        /// <b>順序は列挙と一致する</b>。同じ <paramref name="order"/> を渡す限り、
-        /// <c>ElementAt(k)</c> は <c>Sets(order).ElementAt(k)</c> と必ず同じ集合を返す。
-        /// </para>
-        /// <para>
-        /// <b>濃度の表は呼び出しごとに作って捨てる</b>。連続して何度も引くなら
-        /// <see cref="Sample(int, Random)"/> のように<b>まとめて頼む</b> API のほうが速い
-        /// （表を 1 本だけ作って使い回すため）。
-        /// </para>
+        /// Precomputes per-node subfamily counts, then walks a single root-to-terminal path — no
+        /// need to enumerate the first k sets. Cost is one cardinality pass (like <see cref="Count"/>)
+        /// plus O(variable count). For repeated lookups, prefer <see cref="Sample(int, Random)"/>
+        /// or similar batched APIs that build the count table once. Order matches <see cref="Sets"/>
+        /// for the same <paramref name="order"/>.
         /// </remarks>
-        /// <exception cref="ArgumentOutOfRangeException">
-        /// <paramref name="index"/> が 0 未満または <see cref="Count"/> 以上の場合
-        /// （空の族ではどんな値も範囲外になる）。<paramref name="order"/> が定義されていない値の場合。
-        /// </exception>
-        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is negative or at least <see cref="Count"/>; or <paramref name="order"/> is not a defined value.</exception>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public int[] ElementAt(BigInteger index, ZddEnumerationOrder order = ZddEnumerationOrder.Default) =>
             Manager.ElementAt(this, index, order);
 
-        /// <summary>
-        /// <paramref name="set"/> が表す集合の順位を返す（ranking）。族に属さなければ <c>-1</c>。
-        /// </summary>
-        /// <param name="set">
-        /// 調べる集合の item index。順不同でよく、同じ item が重なっていても 1 つとして扱う。
-        /// 空なら「空集合の順位」を問うことになる。
-        /// </param>
-        /// <param name="order">
-        /// 順位の数え方。既定は <see cref="ZddEnumerationOrder.Default"/>。
-        /// </param>
+        /// <summary>Returns the rank of the set represented by <paramref name="set"/> (ranking), or <c>-1</c> if it is not in the family.</summary>
+        /// <param name="set">Item indices of the set to check, any order, duplicates ignored. Empty asks for the rank of the empty set.</param>
+        /// <param name="order">Ranking order. Defaults to <see cref="ZddEnumerationOrder.Default"/>.</param>
         /// <returns>
-        /// 0 以上 <see cref="Count"/> 未満の順位。族に属さない集合には順位が無いので、
-        /// そのときは <b><c>-1</c> を返す</b>（例外にはしない。<see cref="System.Collections.IList.IndexOf"/> や
-        /// <see cref="string.IndexOf(string)"/> と同じ流儀で、<see cref="Contains(IEnumerable{int})"/> が
-        /// <see langword="false"/> を返す集合がちょうどこれに当たる）。
+        /// Rank between 0 and <see cref="Count"/> (exclusive); <c>-1</c> if the set is not in the
+        /// family (never throws, following <see cref="System.Collections.IList.IndexOf"/> convention).
         /// </returns>
         /// <remarks>
-        /// <b><see cref="ElementAt"/> の逆</b>である。<c>IndexOf(ElementAt(k)) == k</c> がすべての
-        /// <c>k</c> で成り立ち、族に属する集合 <c>s</c> について <c>ElementAt(IndexOf(s))</c> は
-        /// <c>s</c> に戻る（同じ <paramref name="order"/> を渡した場合）。
-        /// 手間は <see cref="ElementAt"/> と同じで、濃度の走査 1 回＋経路 1 本。
+        /// The inverse of <see cref="ElementAt"/>: <c>IndexOf(ElementAt(k)) == k</c> for all valid
+        /// <c>k</c>, and vice versa for member sets given the same <paramref name="order"/>. Same
+        /// cost as <see cref="ElementAt"/>.
         /// </remarks>
-        /// <exception cref="ArgumentNullException"><paramref name="set"/> が <see langword="null"/> の場合。</exception>
-        /// <exception cref="ArgumentOutOfRangeException">
-        /// <paramref name="set"/> に 0 以上 <see cref="ZddManager.VariableCount"/> 未満でない値が含まれる場合。
-        /// <paramref name="order"/> が定義されていない値の場合。
-        /// </exception>
-        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <exception cref="ArgumentNullException"><paramref name="set"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="set"/> contains an out-of-range value, or <paramref name="order"/> is not a defined value.</exception>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public BigInteger IndexOf(IEnumerable<int> set, ZddEnumerationOrder order = ZddEnumerationOrder.Default)
         {
             ThrowHelper.ThrowIfNull(set, nameof(set));
@@ -781,107 +438,57 @@ namespace ZDD.Net.Core
         }
 
         /// <inheritdoc cref="IndexOf(IEnumerable{int}, ZddEnumerationOrder)"/>
-        /// <param name="items">
-        /// 調べる集合の item index。順不同でよく、同じ item が重なっていても 1 つとして扱う。
-        /// 空なら「空集合の順位」を問うことになる。
-        /// </param>
+        /// <param name="items">Item indices of the set to check, any order, duplicates ignored. Empty asks for the rank of the empty set.</param>
         /// <remarks>
-        /// 順位の数え方は <see cref="ZddEnumerationOrder.Default"/> に固定される
-        /// （<c>params</c> は最後の引数でなければならないため）。順序を選ぶときは
-        /// <see cref="IndexOf(IEnumerable{int}, ZddEnumerationOrder)"/> を使う。
+        /// Order is fixed to <see cref="ZddEnumerationOrder.Default"/> since <c>params</c> must be
+        /// the last parameter; use <see cref="IndexOf(IEnumerable{int}, ZddEnumerationOrder)"/> to choose an order.
         /// </remarks>
         public BigInteger IndexOf(params ReadOnlySpan<int> items) =>
             Manager.IndexOf(this, items, ZddEnumerationOrder.Default);
 
-        /// <summary>
-        /// この族から集合を 1 つ、<b>一様ランダム</b>に選んで返す。
-        /// </summary>
-        /// <param name="random">乱数の供給元。種を固定すれば結果は決定的になる。</param>
-        /// <returns>
-        /// 昇順に並んだ item index の <c>int[]</c>。族に属するどの集合も等しい確率で選ばれる。
-        /// </returns>
+        /// <summary>Picks one set from this family uniformly at random.</summary>
+        /// <param name="random">Random source; fix a seed for deterministic output.</param>
+        /// <returns>Ascending array of item indices, with every set in the family equally likely.</returns>
         /// <remarks>
-        /// <para>
-        /// <b>「10^20 個の解から一様に 1 つ」が ZDD の目玉機能である</b>（docs/PLAN.md §5.3）。
-        /// 解を並べることなく、<see cref="ElementAt"/> に一様乱数を食わせるだけで実現できる。
-        /// 手間は <see cref="ElementAt"/> と同じ。
-        /// </para>
-        /// <para>
-        /// <b>本当に一様である</b>。順位は <see cref="Count"/> 未満の <see cref="BigInteger"/> を
-        /// <b>棄却法</b>で作る（乱数の剰余を取る素朴なやり方は、範囲が乱数の周期の約数でない限り
-        /// 必ず偏るため）。<paramref name="random"/> が返すビットの質はそのまま結果の質になる。
-        /// </para>
+        /// Implemented by feeding a uniform random rank to <see cref="ElementAt"/>, without ever
+        /// enumerating the family. True uniformity comes from rejection sampling over the
+        /// <see cref="BigInteger"/> rank range (a naive modulo would bias unless the range divides
+        /// the RNG's period).
         /// </remarks>
-        /// <exception cref="ArgumentNullException"><paramref name="random"/> が <see langword="null"/> の場合。</exception>
-        /// <exception cref="InvalidOperationException">
-        /// <c>default(Zdd)</c> の場合、またはこの族が空（<see cref="IsEmpty"/>）で選べる集合が 1 つも無い場合。
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <exception cref="ArgumentNullException"><paramref name="random"/> is <see langword="null"/>.</exception>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>, or this family is empty.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public int[] Sample(Random random) => Manager.Sample(this, random);
 
-        /// <summary>
-        /// この族から集合を <paramref name="count"/> 個、<b>一様ランダム</b>に選んで返す。
-        /// </summary>
-        /// <param name="count">取り出す個数。0 以上。</param>
-        /// <param name="random">乱数の供給元。種を固定すれば結果は決定的になる。</param>
-        /// <returns>
-        /// <paramref name="count"/> 個の集合。<b>復元抽出</b>（重複あり）で、1 つずつ独立に引くので
-        /// <b>同じ集合が 2 度以上現れることがある</b>。重複しない <c>n</c> 個が要るなら、
-        /// 返ってきたものを呼び出し側で均すか、多めに引いて絞る。
-        /// </returns>
+        /// <summary>Picks <paramref name="count"/> sets from this family uniformly at random.</summary>
+        /// <param name="count">Number of sets to draw; 0 or more.</param>
+        /// <param name="random">Random source; fix a seed for deterministic output.</param>
+        /// <returns><paramref name="count"/> sets, drawn independently with replacement (duplicates possible).</returns>
         /// <remarks>
-        /// <c>Sample(random)</c> を <paramref name="count"/> 回呼ぶのと結果の分布は同じだが、
-        /// <b>濃度の表を 1 本だけ作って使い回す</b>ぶん速い（手間は「濃度の走査 1 回 ＋
-        /// <paramref name="count"/> × O(変数の個数)」）。
+        /// Same distribution as calling <see cref="Sample(Random)"/> <paramref name="count"/>
+        /// times, but faster since the cardinality table is built once and reused.
         /// </remarks>
-        /// <exception cref="ArgumentNullException"><paramref name="random"/> が <see langword="null"/> の場合。</exception>
-        /// <exception cref="ArgumentOutOfRangeException"><paramref name="count"/> が負の場合。</exception>
-        /// <exception cref="InvalidOperationException">
-        /// <c>default(Zdd)</c> の場合、またはこの族が空（<see cref="IsEmpty"/>）で選べる集合が 1 つも無い場合。
-        /// <paramref name="count"/> が 0 でも、空の族からは取り出せないものとして例外にする。
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <exception cref="ArgumentNullException"><paramref name="random"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="count"/> is negative.</exception>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>, or this family is empty (even when <paramref name="count"/> is 0).</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public int[][] Sample(int count, Random random) => Manager.Sample(this, count, random);
 
-        /// <summary>
-        /// この族の中で<b>重みが最大</b>の集合を、その重みとともに返す。
-        /// </summary>
-        /// <typeparam name="TWeight">重みの型。</typeparam>
-        /// <typeparam name="TOps">
-        /// 重みの演算（<see cref="IWeightOps{TWeight}"/> の実装）。
-        /// <b><c>struct</c> でなければならない</b>（docs/PLAN.md §10-2）。
-        /// </typeparam>
-        /// <param name="weights">
-        /// item ごとの重み。長さは <see cref="ZddManager.VariableCount"/> と等しいこと
-        /// （族が使っていない item のぶんも要る）。
-        /// </param>
+        /// <summary>Returns the maximum-weight set in this family, together with its weight.</summary>
+        /// <typeparam name="TWeight">The weight type.</typeparam>
+        /// <typeparam name="TOps">Weight operations (<see cref="IWeightOps{TWeight}"/> implementation); must be a <c>struct</c>.</typeparam>
+        /// <param name="weights">Per-item weights; length must equal <see cref="ZddManager.VariableCount"/>.</param>
         /// <remarks>
-        /// <para>
-        /// <b>全解を並べない</b>。ZDD は DAG なので「重みが最大の集合」は<b>最長路</b>そのもので、
-        /// ノードを 1 度ずつ見るボトムアップ DP で求まる（docs/PLAN.md §5.3）。
-        /// 集合が 10^24 個ある族でも、手間はノード数に比例する。
-        /// </para>
-        /// <para>
-        /// <b>負の重みでよい</b>。最短路のように「非負」を仮定していない（ZDD は閉路を持たないため）。
-        /// </para>
-        /// <para>
-        /// <b>同じ重みの集合が複数あるとき</b>は、既定の列挙順
-        /// （<see cref="ZddEnumerationOrder.Default"/>）で最初に来るものが返る。
-        /// </para>
-        /// <para>
-        /// <b>組み込みの重み型</b>: <see cref="Int32WeightOps"/> / <see cref="Int64WeightOps"/> /
-        /// <see cref="DoubleWeightOps"/> / <see cref="BigIntegerWeightOps"/>。
-        /// <c>int</c> / <c>long</c> / <c>double</c> は型引数を書かない短い形
-        /// （<see cref="MaxWeight(ReadOnlySpan{int})"/> など）でも呼べる。
-        /// </para>
+        /// Computed as a longest-path bottom-up DP over nodes rather than by enumerating sets, so
+        /// cost is proportional to node count regardless of family size. Negative weights are
+        /// fine (ZDDs are acyclic). Ties break toward the set that comes first under
+        /// <see cref="ZddEnumerationOrder.Default"/>. Built-in weight types:
+        /// <see cref="Int32WeightOps"/>, <see cref="Int64WeightOps"/>, <see cref="DoubleWeightOps"/>,
+        /// <see cref="BigIntegerWeightOps"/>; <c>int</c>/<c>long</c>/<c>double</c> have shorthand overloads.
         /// </remarks>
-        /// <exception cref="ArgumentException">
-        /// <paramref name="weights"/> の長さが <see cref="ZddManager.VariableCount"/> と違う場合。
-        /// </exception>
-        /// <exception cref="InvalidOperationException">
-        /// <c>default(Zdd)</c> の場合、またはこの族が空（<see cref="IsEmpty"/>）で選べる集合が 1 つも無い場合。
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <exception cref="ArgumentException"><paramref name="weights"/>'s length differs from <see cref="ZddManager.VariableCount"/>.</exception>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>, or this family is empty.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public WeightedSet<TWeight> MaxWeight<TWeight, TOps>(params ReadOnlySpan<TWeight> weights)
             where TOps : struct, IWeightOps<TWeight> =>
             Manager.MaxWeight<TWeight, TOps>(this, weights);
@@ -898,29 +505,18 @@ namespace ZDD.Net.Core
         public WeightedSet<double> MaxWeight(params ReadOnlySpan<double> weights) =>
             Manager.MaxWeight<double, DoubleWeightOps>(this, weights);
 
-        /// <summary>
-        /// この族の中で<b>重みが最小</b>の集合を、その重みとともに返す。
-        /// </summary>
-        /// <typeparam name="TWeight">重みの型。</typeparam>
-        /// <typeparam name="TOps">
-        /// 重みの演算（<see cref="IWeightOps{TWeight}"/> の実装）。<c>struct</c> でなければならない。
-        /// </typeparam>
-        /// <param name="weights">
-        /// item ごとの重み。長さは <see cref="ZddManager.VariableCount"/> と等しいこと。
-        /// </param>
+        /// <summary>Returns the minimum-weight set in this family, together with its weight.</summary>
+        /// <typeparam name="TWeight">The weight type.</typeparam>
+        /// <typeparam name="TOps">Weight operations (<see cref="IWeightOps{TWeight}"/> implementation); must be a <c>struct</c>.</typeparam>
+        /// <param name="weights">Per-item weights; length must equal <see cref="ZddManager.VariableCount"/>.</param>
         /// <remarks>
-        /// <see cref="MaxWeight{TWeight, TOps}(ReadOnlySpan{TWeight})"/> の最短路版で、費用も同じ。
-        /// 重みの符号を反転して <c>MaxWeight</c> を呼ぶのと同じ答になるが、
-        /// 反転の要らない重み型（符号を持たない利用者定義の型）でもそのまま使える。
-        /// 同点のときは既定の列挙順で最初に来るものが返る。
+        /// The shortest-path counterpart of <see cref="MaxWeight{TWeight, TOps}(ReadOnlySpan{TWeight})"/>,
+        /// same cost. Works even for weight types without a sign (not just negated max-weight).
+        /// Ties break toward the set that comes first under the default enumeration order.
         /// </remarks>
-        /// <exception cref="ArgumentException">
-        /// <paramref name="weights"/> の長さが <see cref="ZddManager.VariableCount"/> と違う場合。
-        /// </exception>
-        /// <exception cref="InvalidOperationException">
-        /// <c>default(Zdd)</c> の場合、またはこの族が空（<see cref="IsEmpty"/>）の場合。
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <exception cref="ArgumentException"><paramref name="weights"/>'s length differs from <see cref="ZddManager.VariableCount"/>.</exception>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>, or this family is empty.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public WeightedSet<TWeight> MinWeight<TWeight, TOps>(params ReadOnlySpan<TWeight> weights)
             where TOps : struct, IWeightOps<TWeight> =>
             Manager.MinWeight<TWeight, TOps>(this, weights);
@@ -937,42 +533,23 @@ namespace ZDD.Net.Core
         public WeightedSet<double> MinWeight(params ReadOnlySpan<double> weights) =>
             Manager.MinWeight<double, DoubleWeightOps>(this, weights);
 
-        /// <summary>
-        /// この族の集合を<b>重みの大きい順</b>に <paramref name="k"/> 個返す。
-        /// </summary>
-        /// <typeparam name="TWeight">重みの型。</typeparam>
-        /// <typeparam name="TOps">
-        /// 重みの演算（<see cref="IWeightOps{TWeight}"/> の実装）。<c>struct</c> でなければならない。
-        /// </typeparam>
-        /// <param name="weights">
-        /// item ごとの重み。長さは <see cref="ZddManager.VariableCount"/> と等しいこと。
-        /// </param>
-        /// <param name="k">取り出す個数。0 以上。</param>
-        /// <returns>
-        /// 重みの降順に並んだ最大 <paramref name="k"/> 個。族の濃度が <paramref name="k"/> に満たなければ、
-        /// ある分だけ返る（空の族なら長さ 0）。
-        /// </returns>
+        /// <summary>Returns the <paramref name="k"/> highest-weight sets in this family, sorted by descending weight.</summary>
+        /// <typeparam name="TWeight">The weight type.</typeparam>
+        /// <typeparam name="TOps">Weight operations (<see cref="IWeightOps{TWeight}"/> implementation); must be a <c>struct</c>.</typeparam>
+        /// <param name="weights">Per-item weights; length must equal <see cref="ZddManager.VariableCount"/>.</param>
+        /// <param name="k">Number of sets to return; 0 or more.</param>
+        /// <returns>Up to <paramref name="k"/> sets in descending weight order (fewer if the family has fewer than <paramref name="k"/> sets).</returns>
         /// <remarks>
-        /// <para>
-        /// <b>計算量は <paramref name="k"/> に比例して重くなる</b>。到達できるノード数を <c>m</c>、
-        /// 変数の個数を <c>n</c> として、時間 <c>O(m · k + k · n)</c>、メモリ <c>O(m · k)</c>。
-        /// ノード 1 個につき「上位 <paramref name="k"/> 個の表」を持つためで、
-        /// <c>k</c> を族の濃度なみに大きく取ると、圧縮された表現の利点が消える。
-        /// 上位いくつかが要るだけの用途に向く。
-        /// </para>
-        /// <para>
-        /// <b>同じ重みの集合が複数あるとき</b>、どの集合が何番目に来るかは<b>規定しない</b>。
-        /// 規定するのは重みの並びだけで、これは全列挙を降順に並べた先頭 <paramref name="k"/> 個と
-        /// 必ず一致する。返る集合はどれも族に属し、互いに異なり、
-        /// <see cref="WeightedSet{TWeight}.Weight"/> はその集合の重みそのものである。
-        /// </para>
+        /// Cost grows with <paramref name="k"/>: time <c>O(m &#183; k + k &#183; n)</c>, memory
+        /// <c>O(m &#183; k)</c> for <c>m</c> reachable nodes and <c>n</c> variables, since each node
+        /// keeps a top-k table. Best suited for small <paramref name="k"/>. When weights tie, which
+        /// set lands at which rank is unspecified, but the returned weights always match a full
+        /// sort's top <paramref name="k"/>.
         /// </remarks>
-        /// <exception cref="ArgumentException">
-        /// <paramref name="weights"/> の長さが <see cref="ZddManager.VariableCount"/> と違う場合。
-        /// </exception>
-        /// <exception cref="ArgumentOutOfRangeException"><paramref name="k"/> が負の場合。</exception>
-        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <exception cref="ArgumentException"><paramref name="weights"/>'s length differs from <see cref="ZddManager.VariableCount"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="k"/> is negative.</exception>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public WeightedSet<TWeight>[] TopK<TWeight, TOps>(ReadOnlySpan<TWeight> weights, int k)
             where TOps : struct, IWeightOps<TWeight> =>
             Manager.TopK<TWeight, TOps>(this, weights, k);
@@ -990,133 +567,78 @@ namespace ZDD.Net.Core
             Manager.TopK<double, DoubleWeightOps>(this, weights, k);
 
         /// <summary>
-        /// 各 item が独立に確率 <paramref name="probabilities"/> で選ばれるとき、
-        /// 出来上がる集合がこの族に属する確率を返す。
+        /// Returns the probability that a set formed by independently including each item with
+        /// probability <paramref name="probabilities"/> belongs to this family.
         /// </summary>
-        /// <param name="probabilities">
-        /// item ごとの確率。長さは <see cref="ZddManager.VariableCount"/> と等しく、各値は 0 以上 1 以下。
-        /// </param>
-        /// <returns>
-        /// <c>Σ_{A ∈ F} Π_{i ∈ A} p[i] · Π_{i ∉ A} (1 - p[i])</c>。0 以上 1 以下。
-        /// </returns>
+        /// <param name="probabilities">Per-item probabilities; length must equal <see cref="ZddManager.VariableCount"/>, each between 0 and 1.</param>
+        /// <returns><c>&#931;<sub>A&#8712;F</sub> &#928;<sub>i&#8712;A</sub> p[i] &#183; &#928;<sub>i&#8713;A</sub> (1 - p[i])</c>, between 0 and 1.</returns>
         /// <remarks>
-        /// <para>
-        /// <b>ネットワーク信頼性がそのまま書ける</b>（docs/PLAN.md §5.3）。族を
-        /// 「s–t を連結にする辺集合すべて」とし、各辺が確率 <c>p</c> で生きているとすると、
-        /// この値が s–t 連結確率になる。全列挙（2^辺数 通り）を避けられるのが ZDD の効き所である。
-        /// </para>
-        /// <para>
-        /// <b>宇宙はマネージャの全変数</b>（<see cref="Support"/> ではない。docs/OPEN-QUESTIONS.md B8）。
-        /// 族に一度も現れない item も「選ばれなかった」確率 <c>1 - p[i]</c> として掛かるので、
-        /// 同じ内容の族でも変数の個数が違えば答が変わる。
-        /// </para>
-        /// <para>
-        /// <b>境界</b>: 空の族は 0、<c>{∅}</c> は <c>Π (1 - p[i])</c>、冪集合 2^U は 1。
-        /// すべての <c>p[i]</c> を 1 にすると「必ず全体集合 U が選ばれる」ことになるので、
-        /// 答は <c>U</c> がこの族に属するときだけ 1、それ以外は 0 になる
-        /// （族が空でないことでは 1 にならない）。
-        /// </para>
+        /// Directly expresses network reliability (e.g. the probability that a random edge subset
+        /// keeps s and t connected), avoiding a 2^n enumeration. The universe is the manager's
+        /// full variable set, not just <see cref="Support"/>, so items unused by the family still
+        /// contribute their <c>(1 - p[i])</c> factor. Boundary cases: &#8709; gives 0, <c>{&#8709;}</c>
+        /// gives <c>&#928;(1 - p[i])</c>, and 2^U gives 1.
         /// </remarks>
-        /// <exception cref="ArgumentException">
-        /// <paramref name="probabilities"/> の長さが <see cref="ZddManager.VariableCount"/> と違う場合。
-        /// </exception>
-        /// <exception cref="ArgumentOutOfRangeException">
-        /// <paramref name="probabilities"/> に 0 未満・1 超・<see cref="double.NaN"/> が含まれる場合。
-        /// </exception>
-        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <exception cref="ArgumentException"><paramref name="probabilities"/>'s length differs from <see cref="ZddManager.VariableCount"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="probabilities"/> contains a value below 0, above 1, or <see cref="double.NaN"/>.</exception>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public double Probability(params ReadOnlySpan<double> probabilities) =>
             Manager.Probability(this, probabilities);
 
-        /// <summary>
-        /// この族から集合を 1 つ<b>一様に</b>選んだときの、その集合の重みの期待値を返す。
-        /// </summary>
-        /// <param name="weights">
-        /// item ごとの重み。長さは <see cref="ZddManager.VariableCount"/> と等しいこと。
-        /// </param>
-        /// <returns><c>(Σ_{A ∈ F} Σ_{i ∈ A} w[i]) / |F|</c>。</returns>
+        /// <summary>Returns the expected weight of a set drawn uniformly at random from this family.</summary>
+        /// <param name="weights">Per-item weights; length must equal <see cref="ZddManager.VariableCount"/>.</param>
+        /// <returns><c>(&#931;<sub>A&#8712;F</sub> &#931;<sub>i&#8712;A</sub> w[i]) / |F|</c>.</returns>
         /// <remarks>
-        /// <para>
-        /// <b>分布は族の上の一様分布</b>（<see cref="Sample(Random)"/> と同じ）で、
-        /// <see cref="Probability"/> の独立な選び方とは別物である。値も一致しない。
-        /// </para>
-        /// <para>
-        /// 期待値の線形性から <c>Σ_i w[i] · ItemFrequency()[i]</c> に等しく、実装もそう計算する。
-        /// 集合を 1 つずつ数え上げる必要は無いので、手間は <see cref="ItemFrequency"/> と同じ。
-        /// </para>
+        /// Distribution is uniform over the family (as in <see cref="Sample(Random)"/>), distinct
+        /// from <see cref="Probability"/>'s independent-item model — values do not coincide. By
+        /// linearity of expectation this equals <c>&#931;<sub>i</sub> w[i] &#183; ItemFrequency()[i]</c>,
+        /// which is how it's computed; cost matches <see cref="ItemFrequency"/>.
         /// </remarks>
-        /// <exception cref="ArgumentException">
-        /// <paramref name="weights"/> の長さが <see cref="ZddManager.VariableCount"/> と違う場合。
-        /// </exception>
-        /// <exception cref="InvalidOperationException">
-        /// <c>default(Zdd)</c> の場合、またはこの族が空（<see cref="IsEmpty"/>）で期待値が定義できない場合。
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <exception cref="ArgumentException"><paramref name="weights"/>'s length differs from <see cref="ZddManager.VariableCount"/>.</exception>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>, or this family is empty.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public double ExpectedValue(params ReadOnlySpan<double> weights) =>
             Manager.ExpectedValue(this, weights);
 
-        /// <summary>
-        /// この族から集合を 1 つ<b>一様に</b>選んだとき、item ごとにそれが含まれる確率を返す。
-        /// </summary>
+        /// <summary>Returns, for each item, the probability it appears in a set drawn uniformly at random from this family.</summary>
         /// <returns>
-        /// 長さ <see cref="ZddManager.VariableCount"/> の配列。添字 <c>i</c> は
-        /// 「item <c>i</c> を含む集合の個数 ÷ 族の濃度」で、0 以上 1 以下。
-        /// 呼び出しごとに新しい配列が返る。
+        /// Array of length <see cref="ZddManager.VariableCount"/>; index <c>i</c> is the count of
+        /// sets containing item <c>i</c> divided by the family's cardinality. A fresh array each call.
         /// </returns>
         /// <remarks>
-        /// <para>
-        /// <b>サンプリングの代わりに使える</b>。<see cref="Sample(int, Random)"/> で何度も引いて
-        /// 出現頻度を数えれば近似できるが、この API は<b>厳密な</b>確率を、ノード数に比例する手間で返す。
-        /// 「どの辺がよく使われる経路か」のような問いがそのまま解ける。
-        /// </para>
-        /// <para>
-        /// <b>個数は厳密に数える</b>。途中は <see cref="BigInteger"/> なので、
-        /// 10^24 個規模の族でも下位の桁が失われない。<see cref="double"/> にするのは最後の割り算だけ。
-        /// </para>
-        /// <para>
-        /// 族が一度も使っていない item（<see cref="Support"/> に無い item）の確率は 0 になる。
-        /// </para>
+        /// Returns the exact probability (via a <see cref="BigInteger"/> count internally, then
+        /// one division) in time proportional to node count, rather than approximating via repeated
+        /// <see cref="Sample(int, Random)"/> calls. Items outside <see cref="Support"/> get probability 0.
         /// </remarks>
-        /// <exception cref="InvalidOperationException">
-        /// <c>default(Zdd)</c> の場合、またはこの族が空（<see cref="IsEmpty"/>）で確率が定義できない場合。
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>, or this family is empty.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public double[] ItemFrequency() => Manager.ItemFrequency(this);
 
-        /// <summary>
-        /// この族の集合がすべて <paramref name="g"/> にも属するか（族としての包含 <c>F ⊆ G</c>）を返す。
-        /// </summary>
-        /// <param name="g">相手の族。このマネージャに属していなければならない。</param>
+        /// <summary>Returns whether every set in this family also belongs to <paramref name="g"/> (family inclusion <c>F &#8838; G</c>).</summary>
+        /// <param name="g">The other family; must belong to this manager.</param>
         /// <remarks>
-        /// <c>(F - G).IsEmpty</c> と同じ答だが、<b>差の族を組み立てない</b>。
-        /// 反例（<c>G</c> に無い <c>F</c> の集合）が 1 つ見つかった時点で打ち切る。
-        /// 空の族はどの族にも含まれ（<c>∅.IsSubsetOf(G)</c> は常に真）、
-        /// <c>F.IsSubsetOf(F)</c> も常に真。
+        /// Same answer as <c>(F - G).IsEmpty</c> but without building the difference family —
+        /// stops at the first counterexample. &#8709; is a subset of any family; <c>F.IsSubsetOf(F)</c> is always true.
         /// </remarks>
-        /// <exception cref="ArgumentException">
-        /// <paramref name="g"/> が別のマネージャに属する、または <c>default(Zdd)</c> の場合。
-        /// </exception>
-        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <exception cref="ArgumentException"><paramref name="g"/> belongs to a different manager, or is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public bool IsSubsetOf(Zdd g) => Manager.IsSubsetOf(this, g);
 
-        /// <summary>
-        /// この族と <paramref name="g"/> に共通の集合があるかどうかを返す。
-        /// </summary>
-        /// <param name="g">相手の族。このマネージャに属していなければならない。</param>
+        /// <summary>Returns whether this family and <paramref name="g"/> share any common set.</summary>
+        /// <param name="g">The other family; must belong to this manager.</param>
         /// <remarks>
-        /// <c>(F &amp; G) != Empty</c> と同じ答だが、<b>交わりの族を組み立てない</b>。
-        /// 共通の集合が 1 つ見つかった時点で打ち切る。どちらかが空の族なら常に偽。
+        /// Same answer as <c>(F &amp; G) != Empty</c> but without building the intersection family —
+        /// stops at the first common set found. False whenever either family is empty.
         /// </remarks>
-        /// <exception cref="ArgumentException">
-        /// <paramref name="g"/> が別のマネージャに属する、または <c>default(Zdd)</c> の場合。
-        /// </exception>
-        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <exception cref="ArgumentException"><paramref name="g"/> belongs to a different manager, or is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public bool Overlaps(Zdd g) => Manager.Overlaps(this, g);
 
-        /// <summary>2 つのハンドルが同じマネージャの同じ族を指すかどうか。</summary>
-        /// <param name="other">比較相手。</param>
+        /// <summary>Whether two handles refer to the same family in the same manager.</summary>
+        /// <param name="other">The handle to compare against.</param>
         public bool Equals(Zdd other) => ReferenceEquals(_manager, other._manager) && _id == other._id;
 
         /// <inheritdoc/>
@@ -1126,89 +648,79 @@ namespace ZDD.Net.Core
         public override int GetHashCode() =>
             HashCode.Combine(_manager is null ? 0 : RuntimeHelpers.GetHashCode(_manager), _id);
 
-        /// <summary>2 つのハンドルが同じマネージャの同じ族を指すかどうか。</summary>
-        /// <param name="left">左辺。</param>
-        /// <param name="right">右辺。</param>
+        /// <summary>Whether two handles refer to the same family in the same manager.</summary>
+        /// <param name="left">Left-hand operand.</param>
+        /// <param name="right">Right-hand operand.</param>
         public static bool operator ==(Zdd left, Zdd right) => left.Equals(right);
 
-        /// <summary>2 つのハンドルが異なる族（または異なるマネージャ）を指すかどうか。</summary>
-        /// <param name="left">左辺。</param>
-        /// <param name="right">右辺。</param>
+        /// <summary>Whether two handles refer to different families (or different managers).</summary>
+        /// <param name="left">Left-hand operand.</param>
+        /// <param name="right">Right-hand operand.</param>
         public static bool operator !=(Zdd left, Zdd right) => !left.Equals(right);
 
-        /// <summary>和 <c>F ∪ G</c>。<see cref="Union"/> と同じ。</summary>
-        /// <param name="left">左辺。</param>
-        /// <param name="right">右辺。</param>
+        /// <summary>Union <c>F &#8746; G</c>. Same as <see cref="Union"/>.</summary>
+        /// <param name="left">Left-hand operand.</param>
+        /// <param name="right">Right-hand operand.</param>
         public static Zdd operator |(Zdd left, Zdd right) => left.Manager.Union(left, right);
 
-        /// <summary>積 <c>F ∩ G</c>。<see cref="Intersect"/> と同じ。</summary>
-        /// <param name="left">左辺。</param>
-        /// <param name="right">右辺。</param>
+        /// <summary>Intersection <c>F &#8745; G</c>. Same as <see cref="Intersect"/>.</summary>
+        /// <param name="left">Left-hand operand.</param>
+        /// <param name="right">Right-hand operand.</param>
         public static Zdd operator &(Zdd left, Zdd right) => left.Manager.Intersect(left, right);
 
-        /// <summary>差 <c>F ∖ G</c>。<see cref="Difference"/> と同じ。</summary>
-        /// <param name="left">左辺。</param>
-        /// <param name="right">右辺。</param>
+        /// <summary>Difference <c>F &#8726; G</c>. Same as <see cref="Difference"/>.</summary>
+        /// <param name="left">Left-hand operand.</param>
+        /// <param name="right">Right-hand operand.</param>
         public static Zdd operator -(Zdd left, Zdd right) => left.Manager.Difference(left, right);
 
-        /// <summary>対称差 <c>F △ G</c>。<see cref="SymmetricDifference"/> と同じ。</summary>
-        /// <param name="left">左辺。</param>
-        /// <param name="right">右辺。</param>
+        /// <summary>Symmetric difference <c>F &#9651; G</c>. Same as <see cref="SymmetricDifference"/>.</summary>
+        /// <param name="left">Left-hand operand.</param>
+        /// <param name="right">Right-hand operand.</param>
         public static Zdd operator ^(Zdd left, Zdd right) => left.Manager.SymmetricDifference(left, right);
 
-        /// <summary>積 <c>F * G</c>。<see cref="Product"/> と同じ。</summary>
-        /// <param name="left">左辺。</param>
-        /// <param name="right">右辺。</param>
+        /// <summary>Product <c>F * G</c>. Same as <see cref="Product"/>.</summary>
+        /// <param name="left">Left-hand operand.</param>
+        /// <param name="right">Right-hand operand.</param>
         public static Zdd operator *(Zdd left, Zdd right) => left.Manager.Product(left, right);
 
-        /// <summary>商 <c>F / G</c>。<see cref="Quotient"/> と同じ。</summary>
-        /// <param name="left">割られる族。</param>
-        /// <param name="right">割る族。</param>
+        /// <summary>Quotient <c>F / G</c>. Same as <see cref="Quotient"/>.</summary>
+        /// <param name="left">Dividend family.</param>
+        /// <param name="right">Divisor family.</param>
         public static Zdd operator /(Zdd left, Zdd right) => left.Manager.Quotient(left, right);
 
-        /// <summary>剰余 <c>F % G</c>。<see cref="Remainder"/> と同じ。</summary>
-        /// <param name="left">割られる族。</param>
-        /// <param name="right">割る族。</param>
+        /// <summary>Remainder <c>F % G</c>. Same as <see cref="Remainder"/>.</summary>
+        /// <param name="left">Dividend family.</param>
+        /// <param name="right">Divisor family.</param>
         public static Zdd operator %(Zdd left, Zdd right) => left.Manager.Remainder(left, right);
 
-        /// <summary>補 <c>2^U ∖ F</c>。<see cref="Complement"/> と同じ。</summary>
-        /// <param name="operand">補を取る族。</param>
+        /// <summary>Complement <c>2^U &#8726; F</c>. Same as <see cref="Complement"/>.</summary>
+        /// <param name="operand">The family to complement.</param>
         public static Zdd operator ~(Zdd operand) => operand.Manager.Complement(operand);
 
-        /// <summary>
-        /// この族を Graphviz の DOT 形式で書き出す。<c>dot -Tsvg</c> に流せばそのまま絵になる。
-        /// </summary>
-        /// <returns>DOT のソース。改行は環境に依らず <c>\n</c>。</returns>
+        /// <summary>Writes this family as Graphviz DOT source, ready for <c>dot -Tsvg</c>.</summary>
+        /// <returns>DOT source, with <c>\n</c> line endings regardless of platform.</returns>
         /// <remarks>
-        /// <para>
-        /// 0-枝は破線、1-枝は実線で、終端 ⊥（∅）と ⊤（<c>{∅}</c>）は箱で描く。同じ item のノードは
-        /// 同じ段に並び、段は根側が上になる。到達できないノードと、使われていない終端は出さない。
-        /// 絵の約束の詳細は <see cref="Io.DotWriter"/> にまとめてある。
-        /// </para>
-        /// <para>
-        /// <b>大きな族では <see cref="WriteDot"/> を使うこと</b>。こちらは出力を丸ごと
-        /// 文字列に載せるので、ノード 1 個あたり数十バイトがそのままメモリに乗る。
-        /// </para>
+        /// 0-branches are dashed, 1-branches solid; terminals ⊥/⊤ are drawn as boxes, and nodes for
+        /// the same item share a rank. See <see cref="Io.DotWriter"/> for the full convention. For
+        /// large families prefer <see cref="WriteDot"/>, which streams instead of buffering the
+        /// whole string.
         /// </remarks>
-        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public string ToDot() => DotWriter.Write(this);
 
-        /// <summary>
-        /// この族の DOT 表現を <paramref name="writer"/> へ流す。巨大な族をメモリに載せずに済む。
-        /// </summary>
-        /// <param name="writer">書き出し先。</param>
+        /// <summary>Streams this family's DOT representation to <paramref name="writer"/>, avoiding buffering it all in memory.</summary>
+        /// <param name="writer">The destination writer.</param>
         /// <remarks>
-        /// 出力の内容は <see cref="ToDot"/> と同じ。走査は明示スタックで、再帰しない
-        /// （docs/PLAN.md §4.5）。ただし段ごとに並べるため、到達ノードの一覧だけは一度
-        /// メモリに載る（ノード数に比例）。
+        /// Same output as <see cref="ToDot"/>. The list of reachable nodes is still built in
+        /// memory once, to group nodes by rank (proportional to node count).
         /// </remarks>
-        /// <exception cref="ArgumentNullException"><paramref name="writer"/> が <see langword="null"/> の場合。</exception>
-        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
-        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        /// <exception cref="ArgumentNullException"><paramref name="writer"/> is <see langword="null"/>.</exception>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public void WriteDot(TextWriter writer) => DotWriter.Write(this, writer);
 
-        /// <summary>デバッグ用の短い表現。族の中身は展開しない。</summary>
+        /// <summary>A short debug representation. Does not expand the family's contents.</summary>
         public override string ToString()
         {
             if (_manager is null)
@@ -1224,10 +736,10 @@ namespace ZDD.Net.Core
             };
         }
 
-        /// <summary>所有マネージャ。<c>default(Zdd)</c> なら <see langword="null"/>。</summary>
+        /// <summary>The owning manager, or <see langword="null"/> for <c>default(Zdd)</c>.</summary>
         internal ZddManager? Owner => _manager;
 
-        /// <summary>この族の根のノード ID。<c>default(Zdd)</c> では意味を持たない。</summary>
+        /// <summary>This family's root node ID. Meaningless for <c>default(Zdd)</c>.</summary>
         internal int Id => _id;
 
         private void EnsureNotDefault()

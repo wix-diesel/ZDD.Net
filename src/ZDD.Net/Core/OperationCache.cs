@@ -7,90 +7,60 @@ using ZDD.Net.Internal;
 namespace ZDD.Net.Core
 {
     /// <summary>
-    /// 演算結果のメモ表。<c>(演算, オペランド)</c> から結果ノード ID を引く
-    /// direct-mapped lossy cache（CUDD 流）で、衝突したら無条件に上書きする。
+    /// Memo table for operation results: a direct-mapped lossy cache (CUDD-style) from
+    /// <c>(operation, operands)</c> to a result node ID, overwriting on collision.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// <b>速度のためではなく計算量のための部品</b>: ZDD の二項演算は「同じ部分問題に何度も到達する」
-    /// 再帰なので、結果を使い回さないと DAG のサイズではなく<b>パスの本数</b>に比例した時間になり、
-    /// 指数的に退化する。この表はその再訪を定数時間で潰すためのものであって、
-    /// 外すと遅くなるだけの高速化オプションではない。
-    /// </para>
-    /// <para>
-    /// <b>lossy で良い理由</b>: エントリを失っても失われるのは「計算済み」という事実だけで、
-    /// 呼び出し側は同じ部分問題をもう一度計算して同じ答えを得る。したがって
-    /// <b>キャッシュの中身は結果の正しさに一切影響しない</b>。この性質があるので、
-    /// チェーンも探索も追い出し方針も持たず、スロット 1 個だけを見て終わりにできる
-    /// （docs/PLAN.md §4.3）。サイズ変更時に中身を捨てられるのも同じ理由による。
-    /// </para>
-    /// <para>
-    /// <b>誤ヒットが起きない</b>: 添字は <c>(op, a, b)</c> の 64bit ハッシュから作るが、
-    /// エントリには <see cref="Entry.Op"/> と、2 つのオペランドを 32bit ずつ<b>そのまま</b>
-    /// 詰めた <see cref="Entry.Key"/> を保持し、ヒット判定はこの 2 つの完全一致で行う。
-    /// キーは切り詰められていないので、ハッシュが衝突しても別の部分問題の結果を返すことはない
-    /// （ヒットしないだけ）。
-    /// </para>
-    /// <para>
-    /// <b>可換演算の正規化</b>: <see cref="ZddOperations.IsCommutative"/> が真の演算では
-    /// <c>a &gt; b</c> のときオペランドを入れ替えてからキーにする。<c>f ∪ g</c> と <c>g ∪ f</c> が
-    /// 同じエントリを共有するので、実効的なヒット率が上がる。
-    /// </para>
-    /// <para>
-    /// <b>アロケーション</b>: エントリは 16 バイトの struct で、表は 1 本の配列。
-    /// 引きも書き込みも <c>ref</c> 経由で行い、hot path では一切ヒープを触らない。
-    /// <c>ArrayPool</c> は使わない（長寿命の固定配列なのでプールの利点が無い／docs/PLAN.md §4.3）。
-    /// </para>
-    /// <para>
-    /// <b>スレッド安全性</b>: <see cref="NodeTable"/> / <see cref="UniqueTable"/> と同じくスレッドセーフではない。
-    /// </para>
+    /// Without memoization, ZDD binary operations revisit the same subproblems along every path,
+    /// turning DAG-sized work into path-count-sized work — an exponential blowup. Losing an entry
+    /// only costs a recompute (same answer), so no chaining, probing, or eviction policy is needed;
+    /// entries are 16-byte structs holding the full untruncated key, so hash collisions can only
+    /// cause a miss, never a wrong hit. Not thread-safe.
     /// </remarks>
     internal sealed class OperationCache
     {
-        /// <summary>エントリ 1 個あたりが受け持つノード数。既定サイズ = ノード数 / この値。</summary>
+        /// <summary>Nodes handled per entry; default size = node count / this value.</summary>
         public const int NodesPerEntry = 4;
 
-        /// <summary>初期サイズの既定値（16 バイト × 1024 = 16 KB）。</summary>
+        /// <summary>Default initial size (16 bytes x 1024 = 16 KB).</summary>
         public const int DefaultInitialCapacity = 1024;
 
-        /// <summary>サイズ上限の既定値（16 バイト × 約 419 万 = 64 MB）。</summary>
+        /// <summary>Default max size (16 bytes x ~4.19M = 64 MB).</summary>
         public const int DefaultMaxCapacity = 1 << 22;
 
         /// <summary>
-        /// <see cref="MaxCapacity"/> に指定できる最大値（16 バイト × 約 1.34 億 = 2 GB）。
-        /// 自動調整はノード数の 1/4 を狙うので、ここへ届くにはノードだけで 8 GB 以上必要になる。
+        /// Largest value allowed for <see cref="MaxCapacity"/> (16 bytes x ~134M = 2 GB).
         /// </summary>
         public const int CapacityLimit = 1 << 27;
 
-        /// <summary>「このエントリは空き」を表す番兵。</summary>
+        /// <summary>Sentinel marking an entry as unused.</summary>
         private const int EmptyOp = (int)ZddOperation.None;
 
         private readonly int _maxCapacity;
 
-        /// <summary>長さは常に 0 か 2 の冪。0 なら常にミスする（キャッシュ無効）。</summary>
+        /// <summary>Length is always 0 or a power of two; 0 means every lookup misses (cache disabled).</summary>
         private Entry[] _entries;
 
         private long _lookups;
         private long _hits;
         private long _collisions;
 
-        /// <summary>既定のサイズでキャッシュを作る。</summary>
+        /// <summary>Creates a cache with the default sizes.</summary>
         public OperationCache()
             : this(DefaultInitialCapacity, DefaultMaxCapacity)
         {
         }
 
-        /// <summary>サイズを指定してキャッシュを作る。</summary>
+        /// <summary>Creates a cache with the given sizes.</summary>
         /// <param name="initialCapacity">
-        /// 初期エントリ数。2 の冪に切り上げたうえで <paramref name="maxCapacity"/> に丸め込まれる。
-        /// 0 なら表を確保せず、<see cref="Tune"/> が呼ばれるまで無効のまま。
+        /// Initial entry count, rounded up to a power of two and clamped to <paramref name="maxCapacity"/>.
+        /// 0 leaves the table unallocated until <see cref="Tune"/> is called.
         /// </param>
         /// <param name="maxCapacity">
-        /// エントリ数の上限。2 の冪に<b>切り下げ</b>られる（指定値を超えないため）。
-        /// 0 ならキャッシュを完全に無効化する。
+        /// Entry count ceiling, rounded down to a power of two. 0 disables the cache entirely.
         /// </param>
         /// <exception cref="ArgumentOutOfRangeException">
-        /// いずれかが負、または <paramref name="maxCapacity"/> が <see cref="CapacityLimit"/> を超える場合。
+        /// Either value is negative, or <paramref name="maxCapacity"/> exceeds <see cref="CapacityLimit"/>.
         /// </exception>
         public OperationCache(int initialCapacity, int maxCapacity)
         {
@@ -104,7 +74,6 @@ namespace ZDD.Net.Core
                     $"'{nameof(maxCapacity)}' must not exceed {CapacityLimit}, but was {maxCapacity}.");
             }
 
-            // 上限は切り下げる。切り上げると「上限」として指定した値を超えてしまう。
             _maxCapacity = maxCapacity == 0 ? 0 : 1 << BitOperations.Log2((uint)maxCapacity);
 
             uint capacity = initialCapacity == 0
@@ -114,41 +83,39 @@ namespace ZDD.Net.Core
             _entries = capacity == 0 ? Array.Empty<Entry>() : new Entry[capacity];
         }
 
-        /// <summary>現在のエントリ数（0 か 2 の冪）。</summary>
+        /// <summary>Current entry count (0 or a power of two).</summary>
         public int Capacity => _entries.Length;
 
-        /// <summary>自動調整が広げられるエントリ数の上限。0 ならキャッシュは無効。</summary>
+        /// <summary>Entry count ceiling for automatic growth; 0 means the cache is disabled.</summary>
         public int MaxCapacity => _maxCapacity;
 
-        /// <summary>引きに応えられる状態か（サイズが 0 でないか）。</summary>
+        /// <summary>Whether the cache can answer lookups (size is nonzero).</summary>
         public bool IsEnabled => _entries.Length != 0;
 
-        /// <summary>これまでの参照回数。</summary>
+        /// <summary>Total number of lookups so far.</summary>
         public long Lookups => _lookups;
 
-        /// <summary>そのうちヒットした回数。</summary>
+        /// <summary>Number of lookups that hit.</summary>
         public long Hits => _hits;
 
-        /// <summary>そのうち外れた回数。</summary>
+        /// <summary>Number of lookups that missed.</summary>
         public long Misses => _lookups - _hits;
 
         /// <summary>
-        /// 書き込み時に、別の <c>(演算, オペランド)</c> のエントリを上書きした回数。
-        /// ヒット率と併せて見ると、サイズが足りているかの目安になる。
+        /// Number of writes that overwrote a different <c>(operation, operands)</c> entry.
+        /// Together with hit rate, indicates whether the size is adequate.
         /// </summary>
         public long Collisions => _collisions;
 
-        /// <summary>ヒット率（0.0 〜 1.0）。一度も引いていなければ 0。</summary>
+        /// <summary>Hit rate (0.0-1.0); 0 if never looked up.</summary>
         public double HitRate => _lookups == 0 ? 0.0 : (double)_hits / _lookups;
 
-        /// <summary>
-        /// 二項演算の結果を引く。可換演算ならオペランドの順序は問わない。
-        /// </summary>
-        /// <param name="op">演算の種別。<see cref="ZddOperation.None"/> 不可。</param>
-        /// <param name="f">左オペランドのノード ID。</param>
-        /// <param name="g">右オペランドのノード ID。</param>
-        /// <param name="result">見つかった結果ノード ID。見つからなければ <see cref="NodeTable.Bottom"/>。</param>
-        /// <returns>エントリが見つかれば <see langword="true"/>。</returns>
+        /// <summary>Looks up the result of a binary operation; operand order doesn't matter for commutative ops.</summary>
+        /// <param name="op">The operation; must not be <see cref="ZddOperation.None"/>.</param>
+        /// <param name="f">Left operand node ID.</param>
+        /// <param name="g">Right operand node ID.</param>
+        /// <param name="result">Result node ID if found, otherwise <see cref="NodeTable.Bottom"/>.</param>
+        /// <returns><see langword="true"/> if an entry was found.</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool TryGetBinary(ZddOperation op, int f, int g, out int result)
         {
@@ -157,9 +124,7 @@ namespace ZDD.Net.Core
             return TryGet(op, f, g, out result);
         }
 
-        /// <summary>
-        /// 二項演算の結果を書き込む。同じスロットの先客は無条件に捨てられる。
-        /// </summary>
+        /// <summary>Stores the result of a binary operation, unconditionally overwriting the slot's prior occupant.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void PutBinary(ZddOperation op, int f, int g, int result)
         {
@@ -168,17 +133,14 @@ namespace ZDD.Net.Core
             Put(op, f, g, result);
         }
 
-        /// <summary>
-        /// 単項演算の結果を引く。
-        /// </summary>
-        /// <param name="op">演算の種別。<see cref="ZddOperation.None"/> 不可。</param>
-        /// <param name="f">オペランドのノード ID。</param>
+        /// <summary>Looks up the result of a unary operation.</summary>
+        /// <param name="op">The operation; must not be <see cref="ZddOperation.None"/>.</param>
+        /// <param name="f">Operand node ID.</param>
         /// <param name="item">
-        /// 演算のパラメータ（<see cref="ZddOperation.Change"/> などの item index）。
-        /// item を取らない演算では 0 を渡す。
+        /// Operation parameter (e.g. the item index for <see cref="ZddOperation.Change"/>); pass 0 if unused.
         /// </param>
-        /// <param name="result">見つかった結果ノード ID。見つからなければ <see cref="NodeTable.Bottom"/>。</param>
-        /// <returns>エントリが見つかれば <see langword="true"/>。</returns>
+        /// <param name="result">Result node ID if found, otherwise <see cref="NodeTable.Bottom"/>.</param>
+        /// <returns><see langword="true"/> if an entry was found.</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool TryGetUnary(ZddOperation op, int f, int item, out int result)
         {
@@ -186,9 +148,7 @@ namespace ZDD.Net.Core
             return TryGet(op, f, item, out result);
         }
 
-        /// <summary>
-        /// 単項演算の結果を書き込む。同じスロットの先客は無条件に捨てられる。
-        /// </summary>
+        /// <summary>Stores the result of a unary operation, unconditionally overwriting the slot's prior occupant.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void PutUnary(ZddOperation op, int f, int item, int result)
         {
@@ -197,13 +157,13 @@ namespace ZDD.Net.Core
         }
 
         /// <summary>
-        /// 全エントリを捨てる。ノード ID の意味が変わる操作（将来の M5-3 GC による
-        /// ノード表の再構成）の直後には、必ずこれを呼ばなければならない。
+        /// Discards all entries. Must be called after any operation that changes what node IDs mean
+        /// (e.g. a future node-table GC compaction).
         /// </summary>
-        /// <remarks>統計（<see cref="Lookups"/> など）は積算値なので消さない。</remarks>
+        /// <remarks>Statistics (<see cref="Lookups"/> etc.) are cumulative and not reset.</remarks>
         public void Clear() => Array.Clear(_entries);
 
-        /// <summary>統計カウンタだけを 0 に戻す。エントリには触れない。</summary>
+        /// <summary>Resets the statistics counters only; entries are untouched.</summary>
         public void ResetStatistics()
         {
             _lookups = 0;
@@ -211,17 +171,13 @@ namespace ZDD.Net.Core
             _collisions = 0;
         }
 
-        /// <summary>
-        /// ノード数に見合うサイズへ表を広げる。演算の入口（M1-5 以降）から呼ぶ。
-        /// </summary>
-        /// <param name="nodeCount">現在のノード数。</param>
-        /// <returns>実際に広げたなら <see langword="true"/>。</returns>
+        /// <summary>Grows the table to fit the current node count. Called from operation entry points.</summary>
+        /// <param name="nodeCount">Current node count.</param>
+        /// <returns><see langword="true"/> if the table actually grew.</returns>
         /// <remarks>
-        /// 狙いは <c>nodeCount / <see cref="NodesPerEntry"/></c> エントリ（docs/PLAN.md §4.3 の「ノード数の 1/4 程度」）で、
-        /// <see cref="MaxCapacity"/> で頭打ちにする。<b>縮めることはしない</b>。
-        /// 広げるときは古い表を捨てて作り直す。direct-mapped なので添字はサイズが変わると
-        /// 総入れ替えになり、再ハッシュしても大半は上書きで消えるうえ、失っても
-        /// 再計算されるだけだからである。
+        /// Targets <c>nodeCount / <see cref="NodesPerEntry"/></c> entries, capped by
+        /// <see cref="MaxCapacity"/>; never shrinks. Growing rebuilds the table from scratch
+        /// since direct-mapped slots are invalidated by any capacity change anyway.
         /// </remarks>
         public bool Tune(long nodeCount)
         {
@@ -237,7 +193,7 @@ namespace ZDD.Net.Core
                 return false;
             }
 
-            // desired < _maxCapacity <= CapacityLimit なので、切り上げても uint に収まる。
+            // desired < _maxCapacity <= CapacityLimit, so rounding up still fits in a uint.
             int grown = desired >= _maxCapacity
                 ? _maxCapacity
                 : (int)Math.Min((uint)_maxCapacity, BitOperations.RoundUpToPowerOf2((uint)desired));
@@ -246,7 +202,7 @@ namespace ZDD.Net.Core
             return true;
         }
 
-        /// <summary>可換演算なら <c>a &lt;= b</c> になるよう入れ替える。</summary>
+        /// <summary>For commutative operations, swaps operands so that <c>a &lt;= b</c>.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void Normalize(ZddOperation op, ref int a, ref int b)
         {
@@ -256,16 +212,11 @@ namespace ZDD.Net.Core
             }
         }
 
-        /// <summary>2 つのオペランドを 64bit にそのまま詰める。情報を落とさないので照合に使える。</summary>
+        /// <summary>Packs both operands into a 64-bit key without losing information.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static long KeyOf(int a, int b) => (long)(((ulong)(uint)a << 32) | (uint)b);
 
-        /// <summary>
-        /// <c>(op, a, b)</c> からスロット添字を求める。<see cref="Hashing.Combine"/> は
-        /// 3 つの <c>int</c> を混ぜる汎用の混合関数で、出力は下位ビットまで撹拌済みなので、
-        /// ここでは Fibonacci hashing ではなく素直なマスクで足りる
-        /// （サイズ 1 の表も特別扱いせずに扱える）。
-        /// </summary>
+        /// <summary>Computes the slot index for <c>(op, a, b)</c> via <see cref="Hashing.Combine"/>.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static int SlotOf(ZddOperation op, int a, int b, int capacity) =>
             (int)(Hashing.Combine((int)op, a, b) & (ulong)(capacity - 1));
@@ -284,8 +235,6 @@ namespace ZDD.Net.Core
 
             ref Entry entry = ref entries[SlotOf(op, a, b, entries.Length)];
 
-            // Op とキー全体を照合する。空きエントリは Op == EmptyOp なので、
-            // 呼び出し側の op が None でない限りここで弾かれる。
             if (entry.Op == (int)op && entry.Key == KeyOf(a, b))
             {
                 _hits++;
@@ -331,19 +280,16 @@ namespace ZDD.Net.Core
                 ZddOperations.IsUnary(op),
                 $"'{op}' is not a unary operation; use the binary entry points for it.");
 
-        /// <summary>
-        /// キャッシュの 1 エントリ。16 バイト固定（docs/PLAN.md §4.3）。
-        /// <see cref="Op"/> が <see cref="EmptyOp"/> なら未使用のスロット。
-        /// </summary>
+        /// <summary>A single cache entry, 16 bytes fixed. <see cref="Op"/> == <see cref="EmptyOp"/> means unused.</summary>
         internal struct Entry
         {
-            /// <summary>2 つのオペランドを 32bit ずつ詰めたもの。切り詰めていない。</summary>
+            /// <summary>Both operands packed 32 bits each, untruncated.</summary>
             public long Key;
 
-            /// <summary><see cref="ZddOperation"/> の値。</summary>
+            /// <summary>The <see cref="ZddOperation"/> value.</summary>
             public int Op;
 
-            /// <summary>結果のノード ID。<see cref="NodeTable.Bottom"/> も正当な値である。</summary>
+            /// <summary>Result node ID; <see cref="NodeTable.Bottom"/> is a valid value.</summary>
             public int Result;
         }
     }

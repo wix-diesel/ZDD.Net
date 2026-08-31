@@ -1,37 +1,34 @@
 namespace ZDD.Net.Core
 {
     /// <summary>
-    /// ZDD の内部ノード 1 個分。<c>int</c> 4 本 = 16 バイト固定で、
-    /// <see cref="NodeTable"/> が持つ 1 本の配列に AoS（Array of Structures）で連続確保される。
-    /// ノードは ID（配列の index）でのみ参照され、参照型としては決して扱わない。
+    /// One internal ZDD node: four <c>int</c> fields (16 bytes fixed), stored as Array-of-Structures
+    /// in <see cref="NodeTable"/>'s backing array. Nodes are referenced only by ID (array index),
+    /// never as reference types.
     /// </summary>
     /// <remarks>
-    /// フィールドを増やす・型を変える変更はノード表全体のメモリ使用量に直結する
-    /// （100 万ノードあたり 16 MB）。16 バイトであることは単体テストで固定している。
+    /// Adding fields or widening types directly increases node-table memory (16 MB per million
+    /// nodes). The 16-byte size is pinned by a unit test.
     /// </remarks>
     internal struct ZddNode
     {
         /// <summary>
-        /// このノードが対応する変数のレベル。1 = 最下位（葉側）… N = 最上位（根側）で、
-        /// TdZdd と同じ向き。終端 ⊥/⊤ のレベルは 0（どの変数にも対応しない）。
+        /// The variable level for this node: 1 = lowest (leaf side) up to N = highest (root side),
+        /// matching TdZdd's convention. Terminals ⊥/⊤ have level 0.
         /// </summary>
         public int Level;
 
-        /// <summary>
-        /// 0-枝。この変数に対応する要素を「含まない」側の子ノード ID。
-        /// </summary>
+        /// <summary>0-branch: child node ID for the side that excludes this variable's item.</summary>
         public int Lo;
 
         /// <summary>
-        /// 1-枝。この変数に対応する要素を「含む」側の子ノード ID。
-        /// ゼロサプレス削減規則により <c>Hi != <see cref="NodeTable.Bottom"/></c> でなければならない。
+        /// 1-branch: child node ID for the side that includes this variable's item.
+        /// The zero-suppression rule requires <c>Hi != <see cref="NodeTable.Bottom"/></c>.
         /// </summary>
         public int Hi;
 
         /// <summary>
-        /// 一意化表（M1-2）がチェーン法を採る場合の次エントリ ID。
-        /// オープンアドレス法では使わないため、<see cref="NodeTable"/> は
-        /// <see cref="NodeTable.NoNext"/> で初期化する。
+        /// Next-entry ID for the unique table's chaining scheme, when used. Unused under open
+        /// addressing, in which case <see cref="NodeTable"/> initializes it to <see cref="NodeTable.NoNext"/>.
         /// </summary>
         public int Next;
     }

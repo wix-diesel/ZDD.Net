@@ -3,34 +3,25 @@ using ZDD.Net.Internal;
 namespace ZDD.Net.Core
 {
     /// <summary>
-    /// <see cref="ZddManager"/> を生成するときの調整項目。既定値のままで実用上問題ないよう選んであり、
-    /// 「作る族の規模が事前に分かっている」場合にだけ触ればよい。
+    /// Tuning knobs for creating a <see cref="ZddManager"/>. The defaults work fine
+    /// in practice; only override these when the family's expected size is known in advance.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// 値は <see cref="ZddManager"/> のコンストラクタで読み取られ、その時点でマネージャ側に写し取られる。
-    /// 同じインスタンスを複数のマネージャに使い回してよく、生成後にプロパティを変えても
-    /// 既存のマネージャには影響しない。
-    /// </para>
-    /// <para>
-    /// 演算キャッシュ（docs/PLAN.md §4.3）は既定でノード数に追従して自動調整されるので、
-    /// 通常は <see cref="MaxCacheCapacity"/> の上限だけを気にすればよい。
-    /// メモリを一切使いたくない場合は <see cref="MaxCacheCapacity"/> に 0 を設定して無効化できるが、
-    /// 演算が指数時間に退化しうることに注意（<see cref="OperationCache"/> の解説を参照）。
-    /// </para>
+    /// Values are copied into the manager by its constructor, so one instance can be reused
+    /// across managers, and later changes don't affect managers already created.
     /// </remarks>
     public sealed class ZddManagerOptions
     {
-        /// <summary><see cref="InitialNodeCapacity"/> の既定値。</summary>
+        /// <summary>Default value of <see cref="InitialNodeCapacity"/>.</summary>
         public const int DefaultInitialNodeCapacity = 1024;
 
-        /// <summary><see cref="InitialUniqueTableCapacity"/> の既定値。</summary>
+        /// <summary>Default value of <see cref="InitialUniqueTableCapacity"/>.</summary>
         public const int DefaultInitialUniqueTableCapacity = 1024;
 
-        /// <summary><see cref="InitialCacheCapacity"/> の既定値。</summary>
+        /// <summary>Default value of <see cref="InitialCacheCapacity"/>.</summary>
         public const int DefaultInitialCacheCapacity = OperationCache.DefaultInitialCapacity;
 
-        /// <summary><see cref="MaxCacheCapacity"/> の既定値。</summary>
+        /// <summary>Default value of <see cref="MaxCacheCapacity"/>.</summary>
         public const int DefaultMaxCacheCapacity = OperationCache.DefaultMaxCapacity;
 
         private int _initialNodeCapacity = DefaultInitialNodeCapacity;
@@ -39,23 +30,16 @@ namespace ZDD.Net.Core
         private int _maxCacheCapacity = DefaultMaxCacheCapacity;
 
         /// <summary>
-        /// ノードの格納庫にあらかじめ確保しておくノード数。足りなくなれば自動で倍化されるので、
-        /// これは「倍化を何回か省くための助言」でしかない。
+        /// Number of node slots to preallocate. The store doubles automatically when full,
+        /// so this only saves a few resize passes.
         /// </summary>
-        /// <value>
-        /// 1 以上。既定は <see cref="DefaultInitialNodeCapacity"/>。
-        /// </value>
-        /// <exception cref="System.ArgumentOutOfRangeException">
-        /// 0 以下、または一度に確保できるノード数の上限を超える値を設定した場合。
-        /// </exception>
+        /// <value>At least 1. Defaults to <see cref="DefaultInitialNodeCapacity"/>.</value>
+        /// <exception cref="System.ArgumentOutOfRangeException">Value is not positive or exceeds the allowed maximum.</exception>
         public int InitialNodeCapacity
         {
             get => _initialNodeCapacity;
             set
             {
-                // ParamName はプロパティ名ではなく "value"（セッターの実引数名）にする。BCL の
-                // プロパティセッターと同じ規約で、CA2208 の「実在する引数名か」の検査にも通る。
-                // どのプロパティかはメッセージ側で名指しする。
                 if (value <= 0 || value > MaxInitialNodeCapacity)
                 {
                     ThrowHelper.ThrowArgumentOutOfRangeException(
@@ -68,15 +52,11 @@ namespace ZDD.Net.Core
         }
 
         /// <summary>
-        /// 一意化表のスロット配列の初期サイズ。内部で 2 の冪に切り上げられる。
-        /// ノード数が容量の 70% を超えると自動で倍化される。
+        /// Initial slot-array size of the unique table (rounded up to a power of two).
+        /// Doubles automatically once node count exceeds 70% of capacity.
         /// </summary>
-        /// <value>
-        /// 1 以上。既定は <see cref="DefaultInitialUniqueTableCapacity"/>。
-        /// </value>
-        /// <exception cref="System.ArgumentOutOfRangeException">
-        /// 0 以下、またはスロット配列の上限を超える値を設定した場合。
-        /// </exception>
+        /// <value>At least 1. Defaults to <see cref="DefaultInitialUniqueTableCapacity"/>.</value>
+        /// <exception cref="System.ArgumentOutOfRangeException">Value is not positive or exceeds the slot-array maximum.</exception>
         public int InitialUniqueTableCapacity
         {
             get => _initialUniqueTableCapacity;
@@ -94,17 +74,12 @@ namespace ZDD.Net.Core
         }
 
         /// <summary>
-        /// 演算キャッシュのエントリ数の初期値。エントリは 16 バイトで、内部で 2 の冪に切り上げられ、
-        /// <see cref="MaxCacheCapacity"/> を超えないよう丸め込まれる。
-        /// ノードが増えるとキャッシュも自動で広がるので、これは倍化を数回省くための助言でしかない。
+        /// Initial entry count of the operation cache (16 bytes per entry, rounded to a power
+        /// of two and clamped to <see cref="MaxCacheCapacity"/>). Grows automatically with node
+        /// count, so this only saves a few resize passes.
         /// </summary>
-        /// <value>
-        /// 0 以上。0 なら最初は表を確保せず、自動調整が働いた時点で初めて確保する。
-        /// 既定は <see cref="DefaultInitialCacheCapacity"/>。
-        /// </value>
-        /// <exception cref="System.ArgumentOutOfRangeException">
-        /// 負の値、または <see cref="OperationCache.CapacityLimit"/> を超える値を設定した場合。
-        /// </exception>
+        /// <value>0 or more; 0 defers allocation until auto-growth needs it. Defaults to <see cref="DefaultInitialCacheCapacity"/>.</value>
+        /// <exception cref="System.ArgumentOutOfRangeException">Value is negative or exceeds <see cref="OperationCache.CapacityLimit"/>.</exception>
         public int InitialCacheCapacity
         {
             get => _initialCacheCapacity;
@@ -122,17 +97,12 @@ namespace ZDD.Net.Core
         }
 
         /// <summary>
-        /// 演算キャッシュのエントリ数の上限。自動調整はノード数の
-        /// 1/<see cref="OperationCache.NodesPerEntry"/> を狙うが、この値で頭打ちになる。
-        /// 指定値を超えないよう、内部では 2 の冪に切り下げられる。
+        /// Upper bound on the operation cache's entry count. Auto-growth targets
+        /// 1/<see cref="OperationCache.NodesPerEntry"/> of the node count but never exceeds this,
+        /// and is rounded down to a power of two.
         /// </summary>
-        /// <value>
-        /// 0 以上 <see cref="OperationCache.CapacityLimit"/> 以下。0 でキャッシュを無効化する。
-        /// 既定は <see cref="DefaultMaxCacheCapacity"/>。
-        /// </value>
-        /// <exception cref="System.ArgumentOutOfRangeException">
-        /// 負の値、または <see cref="OperationCache.CapacityLimit"/> を超える値を設定した場合。
-        /// </exception>
+        /// <value>0 to <see cref="OperationCache.CapacityLimit"/>; 0 disables the cache. Defaults to <see cref="DefaultMaxCacheCapacity"/>.</value>
+        /// <exception cref="System.ArgumentOutOfRangeException">Value is negative or exceeds <see cref="OperationCache.CapacityLimit"/>.</exception>
         public int MaxCacheCapacity
         {
             get => _maxCacheCapacity;
@@ -150,8 +120,8 @@ namespace ZDD.Net.Core
         }
 
         /// <summary>
-        /// <see cref="InitialNodeCapacity"/> に指定できる最大値。ノード表は予約済みの終端 2 個を
-        /// 同じ配列に持つため、配列長の上限からその分を引いた値になる。
+        /// Largest value allowed for <see cref="InitialNodeCapacity"/>: the node table's
+        /// array-length limit minus the 2 reserved terminal slots.
         /// </summary>
         internal static int MaxInitialNodeCapacity => NodeTable.MaxCapacity - NodeTable.FirstNodeId;
     }

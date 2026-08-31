@@ -1,56 +1,32 @@
 namespace ZDD.Net.Core
 {
     /// <summary>
-    /// <see cref="Zdd.Sets(ZddEnumerationOrder)"/> が集合を返す順序。
+    /// The order in which <see cref="Zdd.Sets(ZddEnumerationOrder)"/> yields sets.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// どちらも<b>深さ優先の 1 回の走査</b>で出せるので、順序を選んでも計算量は変わらない
-    /// （どちらを選んでも、辿るのは根から終端 ⊤ までの経路だけである）。違うのは
-    /// 「ノードの 0-枝と 1-枝のどちらを先に辿るか」だけで、それが結果の並びを決める。
-    /// </para>
-    /// <para>
-    /// <b>2 つの「辞書順」は別物である</b>。集合 <c>{0, 2}</c> と <c>{1}</c> を比べると、
-    /// <see cref="Default"/> は「item 0 を含む方が後」なので <c>{1}</c> → <c>{0, 2}</c> の順に、
-    /// <see cref="Lexicographic"/> は「先頭要素が小さい方が先」なので <c>{0, 2}</c> → <c>{1}</c> の順に出す。
-    /// どちらも全順序で、同じ族なら何度列挙しても同じ並びになる。
-    /// </para>
+    /// Both orders are produced by a single depth-first traversal, so choosing between them
+    /// costs nothing extra; they differ only in whether a node's 0-branch or 1-branch is
+    /// visited first. Note the two "lexicographic" orders disagree: e.g. for <c>{0,2}</c> vs
+    /// <c>{1}</c>, <see cref="Default"/> yields <c>{1}</c> before <c>{0,2}</c>, while
+    /// <see cref="Lexicographic"/> yields the opposite.
     /// </remarks>
     public enum ZddEnumerationOrder
     {
-        /// <summary>
-        /// 既定。0-枝を先に辿る深さ優先の順＝<b>指示ベクトルの辞書順</b>。
-        /// </summary>
+        /// <summary>Default. Depth-first, 0-branch first — lexicographic order of the indicator vector.</summary>
         /// <remarks>
-        /// <para>
-        /// 集合を「item 0, 1, 2, … を含むか」の 0/1 列（指示ベクトル）と見たときの辞書順である。
-        /// 相異なる 2 つの集合 <c>A</c>・<c>B</c> について、食い違う item のうち最小のものを
-        /// <c>m</c> とすると、<c>m ∉ A</c> なら <c>A</c> が先に出る。
-        /// </para>
-        /// <para>
-        /// item 0 が根側に置かれている（<see cref="ZddManager"/> の item と level の対応）ため、
-        /// これは ZDD をそのまま 0-枝優先で辿った順序であり、並べ替えも先読みも要らない。
-        /// 4 変数の冪集合なら <c>{}</c>, <c>{3}</c>, <c>{2}</c>, <c>{2,3}</c>, <c>{1}</c>, … の順になる。
-        /// </para>
+        /// Treats each set as its 0/1 indicator sequence over items 0, 1, 2, …. Since item 0 sits
+        /// at the root, this is a plain 0-branch-first traversal with no sorting or lookahead needed.
         /// </remarks>
         Default = 0,
 
         /// <summary>
-        /// 集合を<b>昇順の item 列</b>と見たときの辞書順。<c>{}</c> &lt; <c>{0}</c> &lt; <c>{0,1}</c>
-        /// &lt; <c>{0,2}</c> &lt; <c>{1}</c> &lt; <c>{2}</c> の順。
+        /// Lexicographic order of the set's items in ascending order:
+        /// <c>{}</c> &lt; <c>{0}</c> &lt; <c>{0,1}</c> &lt; <c>{0,2}</c> &lt; <c>{1}</c> &lt; <c>{2}</c>.
         /// </summary>
         /// <remarks>
-        /// <para>
-        /// 列としての辞書順なので、<b>空集合が最小</b>（空列はどの列の接頭辞でもある）で、
-        /// 以降は先頭要素の小さい順に並ぶ。人が「辞書順」と言うときに期待する並びはたいていこちらで、
-        /// 出てきた <c>int[]</c> どうしを列として比べた結果と一致する。
-        /// </para>
-        /// <para>
-        /// 実装は 1-枝を先に辿る深さ優先だが、「残りが空集合」の場合だけは先に出す必要がある
-        /// （空列が最小のため）。そのためノードから 0-枝だけを辿った先の終端を先に見てから
-        /// 1-枝を降りる。走査するノードは <see cref="Default"/> と同じで、余分な計算は
-        /// この先読みだけである。
-        /// </para>
+        /// The empty set sorts first (as the prefix of every sequence), then by ascending first
+        /// element. Implemented as a 1-branch-first traversal that peeks the 0-branch's terminal
+        /// first so the "remainder is empty" case is emitted before recursing into item elements.
         /// </remarks>
         Lexicographic = 1,
     }

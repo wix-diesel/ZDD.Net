@@ -5,73 +5,40 @@ using ZDD.Net.Internal;
 namespace ZDD.Net.Core
 {
     /// <summary>
-    /// 重み最適化（<see cref="Zdd.MaxWeight{TWeight, TOps}"/> / <see cref="Zdd.MinWeight{TWeight, TOps}"/> /
-    /// <see cref="Zdd.TopK{TWeight, TOps}"/>）と、確率・期待値・頻度
-    /// （<see cref="Zdd.Probability"/> / <see cref="Zdd.ExpectedValue"/> /
-    /// <see cref="Zdd.ItemFrequency"/>）の実装。
+    /// Implements weight optimization (<see cref="Zdd.MaxWeight{TWeight, TOps}"/> /
+    /// <see cref="Zdd.MinWeight{TWeight, TOps}"/> / <see cref="Zdd.TopK{TWeight, TOps}"/>) and
+    /// probability, expected value, and item frequency (<see cref="Zdd.Probability"/> /
+    /// <see cref="Zdd.ExpectedValue"/> / <see cref="Zdd.ItemFrequency"/>).
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// <b>「全部並べてから選ぶ」ことをしない</b>のがここの要点である（docs/PLAN.md §5.3）。
-    /// ZDD は DAG なので、根から終端 ⊤ までの経路 1 本が集合 1 つに対応する。
-    /// すると「重みが最大の集合」は<b>DAG 上の最長路</b>そのもので、ノードを 1 度ずつ見る DP で求まる。
-    /// 集合が 10^24 個あっても、見るのはノードの個数ぶんだけである。
-    /// </para>
-    /// <para>
-    /// <b>確率は「族の中身」ではなく「宇宙全体」で考える</b>。<see cref="Probability"/> は
-    /// 「各 item が独立に確率 <c>p[i]</c> で選ばれたとき、出来上がった集合が族に属する確率」で、
-    /// 属さない item が<b>選ばれなかった</b>確率 <c>1 - p[i]</c> も掛かる。
-    /// 辺が確率 p で生きているときの s–t 連結確率（ネットワーク信頼性）がまさにこの形になる。
-    /// </para>
-    /// <para>
-    /// <b>期待値と頻度は「族の上の一様分布」で考える</b>。<see cref="ItemFrequency"/> は
-    /// 「族から集合を 1 つ一様に選んだとき、item <c>i</c> がそこに入っている確率」であり、
-    /// <see cref="ExpectedValue"/> はその重み付き和である。<see cref="Zdd.Sample(Random)"/> が
-    /// 返す集合の統計を、実際にサンプリングせずに求めたものだと読める。
-    /// <see cref="Probability"/> とは分布そのものが違うので、値も一致しない。
-    /// </para>
-    /// <para>
-    /// <b>再帰は書かない</b>（docs/PLAN.md §4.5）。走査は <see cref="NodeOrder"/> が作る
-    /// 「子が親より先に来る並び」の上の <c>for</c> ループで、深さ 10 万でもスタックを消費しない。
-    /// </para>
+    /// None of these enumerate the family's sets. A root-to-⊤ path corresponds to one set, so
+    /// e.g. "the maximum-weight set" is the longest path in the DAG, found by a single DP pass
+    /// over the nodes regardless of how many sets the family holds.
+    /// <see cref="Probability"/> is defined over the whole universe of variables (an absent item
+    /// contributes its "not chosen" probability too), while <see cref="ItemFrequency"/> and
+    /// <see cref="ExpectedValue"/> are defined over the uniform distribution on the family's sets
+    /// — these are different distributions and their outputs are not comparable.
+    /// Traversal uses the <see cref="NodeOrder"/> array with a plain <c>for</c> loop, not
+    /// recursion, since ZDD depth equals the variable count.
     /// </remarks>
     internal static class WeightOperations
     {
-        /// <summary>
-        /// 重みが最大（<paramref name="maximize"/>）または最小の集合を、その重みとともに返す。
-        /// </summary>
-        /// <typeparam name="TWeight">重みの型。</typeparam>
-        /// <typeparam name="TOps">
-        /// 重みの演算。<b><c>struct</c> でなければならない</b>（docs/PLAN.md §10-2）。
-        /// </typeparam>
-        /// <param name="manager">族を所有するマネージャ。</param>
-        /// <param name="rootId">族の根ノード ID。</param>
-        /// <param name="weights">item ごとの重み。長さはマネージャの変数の個数と等しいこと。</param>
-        /// <param name="maximize">最大化なら <see langword="true"/>、最小化なら <see langword="false"/>。</param>
+        /// <summary>Returns the set with maximum (<paramref name="maximize"/>) or minimum weight, together with its weight.</summary>
+        /// <typeparam name="TWeight">The weight type.</typeparam>
+        /// <typeparam name="TOps">The weight operations; must be a <c>struct</c>.</typeparam>
+        /// <param name="manager">The manager that owns the family.</param>
+        /// <param name="rootId">The family's root node ID.</param>
+        /// <param name="weights">Per-item weights; length must equal the manager's variable count.</param>
+        /// <param name="maximize"><see langword="true"/> to maximize, <see langword="false"/> to minimize.</param>
         /// <remarks>
-        /// <para>
-        /// <b>漸化式</b>: ノード <c>v</c>（item <c>i</c>）以下の部分族の最適値は
-        /// 「0-枝側の最適値」と「1-枝側の最適値 ＋ <c>w[i]</c>」の良い方。⊤ は空集合 1 つなので
-        /// <c>Zero</c>、⊥ は集合を持たないので候補にならない。どちらを選んだかを覚えておけば、
-        /// 根から 1 本降りるだけで最適集合そのものが復元できる。
-        /// </para>
-        /// <para>
-        /// <b>同点のとき</b>は 0-枝側（item を含まない側）を選ぶ。したがって同じ重みの集合が
-        /// 複数あるときに返るのは、既定の列挙順（<see cref="ZddEnumerationOrder.Default"/>）で
-        /// 最初に来るものである。
-        /// </para>
-        /// <para>
-        /// <b>計算量</b>: 到達できるノード数を <c>m</c>、変数の個数を <c>n</c> として、
-        /// 比較と加算が <c>O(m)</c> 回、復元が <c>O(n)</c>。作業メモリは <c>O(m)</c>。
-        /// </para>
+        /// DP: the optimum below node <c>v</c> (item <c>i</c>) is the better of the 0-edge
+        /// optimum and the 1-edge optimum plus <c>w[i]</c>; the chosen side is recorded to
+        /// reconstruct the set by a single descent from the root. Ties favor the 0-edge side.
+        /// Cost is O(m) for the DP and O(n) for reconstruction (m = reachable nodes, n = variables).
         /// </remarks>
-        /// <exception cref="ArgumentException">
-        /// <paramref name="weights"/> の長さが変数の個数と違う場合。
-        /// </exception>
-        /// <exception cref="InvalidOperationException">族が空（集合を 1 つも持たない）の場合。</exception>
-        /// <exception cref="ObjectDisposedException">
-        /// <paramref name="manager"/> が破棄済みの場合。
-        /// </exception>
+        /// <exception cref="ArgumentException"><paramref name="weights"/>'s length does not match the variable count.</exception>
+        /// <exception cref="InvalidOperationException">The family is empty.</exception>
+        /// <exception cref="ObjectDisposedException"><paramref name="manager"/> has been disposed.</exception>
         public static WeightedSet<TWeight> Optimize<TWeight, TOps>(
             ZddManager manager,
             int rootId,
@@ -79,7 +46,6 @@ namespace ZDD.Net.Core
             bool maximize)
             where TOps : struct, IWeightOps<TWeight>
         {
-            // 破棄済みならここで ObjectDisposedException になる。
             NodeTable nodes = manager.Table.Nodes;
             EnsureWeightCount(manager, weights.Length, nameof(weights));
 
@@ -87,7 +53,7 @@ namespace ZDD.Net.Core
             {
                 EnsureNotEmpty(rootId != NodeTable.Bottom);
 
-                // {∅} の唯一の集合は空集合。重みは加法の単位元。
+                // {∅}'s only set is the empty set; its weight is the additive identity.
                 return new WeightedSet<TWeight>(TOps.Zero, Array.Empty<int>());
             }
 
@@ -114,15 +80,15 @@ namespace ZDD.Net.Core
 
                 if (!hasHi)
                 {
-                    // ゼロサプレス削減規則により 1-枝が ⊥ に落ちるノードは存在しない。
+                    // The zero-suppress rule forbids a node whose 1-edge lands on ⊥.
                     ThrowHelper.ThrowInvalidOperationException(
                         $"The node {id} has the bottom terminal on its 1-edge, which the zero-suppress rule forbids.");
                 }
 
-                // 1-枝の先の集合はどれも item を含むので、その重みが乗る。
+                // Every set past the 1-edge includes this item, so its weight applies.
                 hiValue = TOps.Add(hiValue, weights[item]);
 
-                // 同点は 0-枝側（item を含まない側）を採る。
+                // Ties favor the 0-edge side (item excluded).
                 takeHi[slot] = !hasLo
                     || (maximize ? TOps.Compare(hiValue, loValue) > 0 : TOps.Compare(hiValue, loValue) < 0);
 
@@ -134,46 +100,23 @@ namespace ZDD.Net.Core
                 Descend(manager, nodes, order, rootId, takeHi));
         }
 
-        /// <summary>
-        /// 重みが大きい順に <paramref name="k"/> 個の集合を返す。
-        /// </summary>
-        /// <typeparam name="TWeight">重みの型。</typeparam>
-        /// <typeparam name="TOps">
-        /// 重みの演算。<b><c>struct</c> でなければならない</b>（docs/PLAN.md §10-2）。
-        /// </typeparam>
-        /// <param name="manager">族を所有するマネージャ。</param>
-        /// <param name="rootId">族の根ノード ID。</param>
-        /// <param name="weights">item ごとの重み。長さはマネージャの変数の個数と等しいこと。</param>
-        /// <param name="k">取り出す個数。0 以上。族の濃度より大きければ、ある分だけ返る。</param>
+        /// <summary>Returns the <paramref name="k"/> sets with the largest weight, in descending order.</summary>
+        /// <typeparam name="TWeight">The weight type.</typeparam>
+        /// <typeparam name="TOps">The weight operations; must be a <c>struct</c>.</typeparam>
+        /// <param name="manager">The manager that owns the family.</param>
+        /// <param name="rootId">The family's root node ID.</param>
+        /// <param name="weights">Per-item weights; length must equal the manager's variable count.</param>
+        /// <param name="k">Number of sets to return; if larger than the family's cardinality, only that many come back.</param>
         /// <remarks>
-        /// <para>
-        /// <b>漸化式</b>: <see cref="Optimize{TWeight, TOps}"/> の「良い方を 1 つ選ぶ」を
-        /// 「良い方から k 個まで残す」に広げたもの。ノードごとに、0-枝側の上位 k 個と
-        /// 1-枝側の上位 k 個（それぞれ <c>w[i]</c> を足したもの）を<b>整列済みのまま併合</b>して
-        /// 先頭 k 個を採る。どちらの枝の何番目から来たかを覚えておけば、根の <c>j</c> 番目から
-        /// 1 本降りるだけで集合が復元できる。
-        /// </para>
-        /// <para>
-        /// <b>計算量</b>: 到達できるノード数を <c>m</c>、変数の個数を <c>n</c> として、
-        /// 時間 <c>O(m · k + k · n)</c>、メモリ <c>O(m · k)</c>。
-        /// <b><c>k</c> に比例してノード 1 個あたりの費用が増える</b>ので、<c>k</c> が大きいときは
-        /// 素直に重い。上位いくつかが要るだけなら小さい <c>k</c> で呼ぶこと。
-        /// 全部を重み順に並べたいなら、<see cref="Zdd.Sets(ZddEnumerationOrder)"/> を
-        /// 並べ替えるほうが軽い（族が並べ替えられる大きさなら、の話ではある）。
-        /// </para>
-        /// <para>
-        /// <b>同じ重みの集合が複数あるとき</b>、どの集合が何番目に来るかは規定しない。
-        /// 規定するのは<b>重みの並び</b>だけで、これは全列挙を降順に並べた先頭 <c>k</c> 個と必ず一致する。
-        /// 実装としては、同点なら 0-枝側（item を含まない側）が先に来る。
-        /// </para>
+        /// Generalizes <see cref="Optimize{TWeight, TOps}"/>'s "keep the better side" to "keep the
+        /// top k from each side, merged". Cost is O(m·k + k·n) time and O(m·k) memory, so this
+        /// gets expensive for large k; for large k prefer sorting <see cref="Zdd.Sets(ZddEnumerationOrder)"/>
+        /// instead. Ties favor the 0-edge side; only the weight ordering is guaranteed, matching
+        /// a full descending enumeration's first k entries.
         /// </remarks>
-        /// <exception cref="ArgumentException">
-        /// <paramref name="weights"/> の長さが変数の個数と違う場合。
-        /// </exception>
-        /// <exception cref="ArgumentOutOfRangeException"><paramref name="k"/> が負の場合。</exception>
-        /// <exception cref="ObjectDisposedException">
-        /// <paramref name="manager"/> が破棄済みの場合。
-        /// </exception>
+        /// <exception cref="ArgumentException"><paramref name="weights"/>'s length does not match the variable count.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="k"/> is negative.</exception>
+        /// <exception cref="ObjectDisposedException"><paramref name="manager"/> has been disposed.</exception>
         public static WeightedSet<TWeight>[] TopK<TWeight, TOps>(
             ZddManager manager,
             int rootId,
@@ -181,7 +124,6 @@ namespace ZDD.Net.Core
             int k)
             where TOps : struct, IWeightOps<TWeight>
         {
-            // 破棄済みならここで ObjectDisposedException になる。
             NodeTable nodes = manager.Table.Nodes;
             EnsureWeightCount(manager, weights.Length, nameof(weights));
             ThrowHelper.ThrowIfNegative(k, nameof(k));
@@ -200,7 +142,7 @@ namespace ZDD.Net.Core
 
             NodeOrder order = NodeOrder.Build(manager, rootId);
 
-            // 終端 ⊤ の「上位 k 個」は空集合 1 つだけ。⊥ は 1 つも持たない。
+            // ⊤'s "top k" is just the empty set; ⊥ has none.
             TopEntry<TWeight>[] top = { new TopEntry<TWeight>(TOps.Zero, fromHi: false, index: 0) };
             TopEntry<TWeight>[] bottom = Array.Empty<TopEntry<TWeight>>();
             TopEntry<TWeight>[][] lists = new TopEntry<TWeight>[order.Count][];
@@ -237,52 +179,29 @@ namespace ZDD.Net.Core
             return result;
         }
 
-        /// <summary>
-        /// 各 item が独立に確率 <paramref name="probabilities"/> で選ばれるとき、
-        /// 出来上がる集合が族に属する確率を返す。
-        /// </summary>
-        /// <param name="manager">族を所有するマネージャ。</param>
-        /// <param name="rootId">族の根ノード ID。</param>
-        /// <param name="probabilities">item ごとの確率。長さは変数の個数と等しく、各値は 0 以上 1 以下。</param>
+        /// <summary>Returns the probability that a set formed by choosing each item independently with probability <paramref name="probabilities"/> belongs to the family.</summary>
+        /// <param name="manager">The manager that owns the family.</param>
+        /// <param name="rootId">The family's root node ID.</param>
+        /// <param name="probabilities">Per-item probability, length equal to the variable count, each in [0, 1].</param>
         /// <remarks>
-        /// <para>
-        /// <b>宇宙はマネージャの全変数</b>（docs/OPEN-QUESTIONS.md B8 と同じ立場）。すなわち
-        /// <c>Σ_{A ∈ F} Π_{i ∈ A} p[i] · Π_{i ∉ A} (1 - p[i])</c> であり、
-        /// 族に一度も現れない item の「選ばれなかった確率」も掛かる。
-        /// 族が空なら 0、族が冪集合 2^U なら（どの集合も属するので）1 になる。
-        /// </para>
-        /// <para>
-        /// <b>飛ばされた段を補う必要がある</b>のはこの定義のためである。ZDD は
-        /// ゼロサプレス削減規則により「その部分族のどの集合にも属さない item」の段を持たない。
-        /// 段が飛んでいるということは<b>その item が必ず選ばれていない</b>ということなので、
-        /// 子へ降りるたびに、飛ばされた item の <c>1 - p[j]</c> を掛ける。根より上の段も同じ。
-        /// これを忘れると、確率にならない別の量（各経路の確率の和が 1 にならないもの）が出る。
-        /// </para>
-        /// <para>
-        /// <b>計算量</b>: 到達できるノード数を <c>m</c>、変数の個数を <c>n</c> として
-        /// <c>O(m + 飛ばされた段の総数)</c>、最悪でも <c>O(m · n)</c>。
-        /// 段が飛ぶのは「その部分族が使っていない変数」だけなので、実際の族ではほぼ <c>O(m)</c> である。
-        /// </para>
+        /// The universe is all of the manager's variables: <c>Σ_{A ∈ F} Π_{i ∈ A} p[i] · Π_{i ∉ A} (1 - p[i])</c>,
+        /// so items never appearing in the family still contribute their "not chosen" factor.
+        /// Because zero-suppression skips levels a subfamily never uses, each skipped level's
+        /// "not chosen" factor is folded in explicitly while descending (and above the root too).
+        /// Cost is O(m + skipped levels), worst case O(m·n), typically close to O(m).
         /// </remarks>
-        /// <exception cref="ArgumentException">
-        /// <paramref name="probabilities"/> の長さが変数の個数と違う場合。
-        /// </exception>
-        /// <exception cref="ArgumentOutOfRangeException">
-        /// <paramref name="probabilities"/> に 0 未満・1 超・<see cref="double.NaN"/> が含まれる場合。
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">
-        /// <paramref name="manager"/> が破棄済みの場合。
-        /// </exception>
+        /// <exception cref="ArgumentException"><paramref name="probabilities"/>'s length does not match the variable count.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="probabilities"/> contains a value outside [0, 1] or <see cref="double.NaN"/>.</exception>
+        /// <exception cref="ObjectDisposedException"><paramref name="manager"/> has been disposed.</exception>
         public static double Probability(ZddManager manager, int rootId, ReadOnlySpan<double> probabilities)
         {
-            // 破棄済みならここで ObjectDisposedException になる。
             NodeTable nodes = manager.Table.Nodes;
             EnsureWeightCount(manager, probabilities.Length, nameof(probabilities));
             EnsureProbabilities(probabilities);
 
             if (NodeTable.IsTerminal(rootId))
             {
-                // ∅ には集合が無いので 0。{∅} は「どの item も選ばれない」確率そのもの。
+                // ∅ has no sets, so 0. {∅} is exactly "no item is chosen".
                 return rootId == NodeTable.Bottom
                     ? 0.0
                     : AbsentProduct(probabilities, 0, probabilities.Length);
@@ -309,41 +228,28 @@ namespace ZDD.Net.Core
                     + (probabilities[item] * Lift(manager, nodes, order, probability, probabilities, hi, item + 1));
             }
 
-            // 根より上の段（族のどの集合にも属さない item）も「選ばれなかった」ぶんを掛ける。
+            // Levels above the root (items no set in the family ever uses) also contribute
+            // their "not chosen" factor.
             int rootItem = manager.ItemOf(nodes[rootId].Level);
 
             return probability[order.SlotOf(rootId)] * AbsentProduct(probabilities, 0, rootItem);
         }
 
-        /// <summary>
-        /// 族から集合を 1 つ一様に選んだとき、item <c>i</c> がその集合に属する確率を item ごとに返す。
-        /// </summary>
-        /// <param name="manager">族を所有するマネージャ。</param>
-        /// <param name="rootId">族の根ノード ID。</param>
+        /// <summary>Returns, per item, the probability that a set chosen uniformly at random from the family contains it.</summary>
+        /// <param name="manager">The manager that owns the family.</param>
+        /// <param name="rootId">The family's root node ID.</param>
         /// <remarks>
-        /// <para>
-        /// <b>数え方</b>: item <c>i</c> を含む集合の個数は、item <c>i</c> のノード <c>v</c> ごとに
-        /// 「根から <c>v</c> まで降りてくる経路の本数」×「<c>v</c> の 1-枝の先にある集合の個数」を
-        /// 足したものである。前者は根から葉へ、後者は葉から根への DP で、どちらもノードを
-        /// 1 度ずつ見れば済む（後者は <see cref="CardinalityTable"/> そのもの）。
-        /// </para>
-        /// <para>
-        /// <b>整数で数えてから割る</b>。個数は変数の個数に対して指数的に増えるので、
-        /// 途中は <see cref="BigInteger"/> で厳密に数え、最後に <see cref="double"/> の比にする。
-        /// 途中で <see cref="double"/> にすると、10^24 個規模の族で下位の桁が失われる。
-        /// </para>
-        /// <para>
-        /// <b>計算量</b>: 到達できるノード数を <c>m</c> として、<see cref="BigInteger"/> の
-        /// 加算・乗算が <c>O(m)</c> 回。
-        /// </para>
+        /// For each node on item <c>i</c>, the number of sets containing item <c>i</c> is
+        /// (paths from the root to that node) times (sets past its 1-edge), summed over all
+        /// such nodes; both factors are computed with a single DP pass each (the latter is
+        /// exactly <see cref="CardinalityTable"/>). Counting is done in <see cref="BigInteger"/>
+        /// throughout and only converted to <see cref="double"/> at the end, since these counts
+        /// can be astronomically large and a premature cast to <c>double</c> loses precision.
         /// </remarks>
-        /// <exception cref="InvalidOperationException">族が空（集合を 1 つも持たない）の場合。</exception>
-        /// <exception cref="ObjectDisposedException">
-        /// <paramref name="manager"/> が破棄済みの場合。
-        /// </exception>
+        /// <exception cref="InvalidOperationException">The family is empty.</exception>
+        /// <exception cref="ObjectDisposedException"><paramref name="manager"/> has been disposed.</exception>
         public static double[] ItemFrequency(ZddManager manager, int rootId)
         {
-            // 破棄済みならここで ObjectDisposedException になる。
             NodeTable nodes = manager.Table.Nodes;
 
             EnsureNotEmpty(rootId != NodeTable.Bottom);
@@ -352,7 +258,7 @@ namespace ZDD.Net.Core
 
             if (NodeTable.IsTerminal(rootId))
             {
-                // {∅} の唯一の集合は空集合なので、どの item も入っていない。
+                // {∅}'s only set is the empty set, so no item is present.
                 return frequency;
             }
 
@@ -364,7 +270,8 @@ namespace ZDD.Net.Core
 
             paths[order.SlotOf(rootId)] = BigInteger.One;
 
-            // 末尾が根。末尾から先頭へ回すと、親の本数が確定してから子に配れる。
+            // The root is last; walking back-to-front means a node's path count is finalized
+            // before it's distributed to its children.
             for (int slot = order.Count - 1; slot >= 0; slot--)
             {
                 int id = order.Ids[slot];
@@ -380,7 +287,7 @@ namespace ZDD.Net.Core
 
                 BigInteger incoming = paths[slot];
 
-                // このノードで 1-枝を選んだ経路は、どれも item を含む集合になる。
+                // Every path taking the 1-edge here yields a set that contains this item.
                 containing[item] += incoming * cardinality.CountOf(hi);
 
                 if (!NodeTable.IsTerminal(lo))
@@ -404,30 +311,19 @@ namespace ZDD.Net.Core
             return frequency;
         }
 
-        /// <summary>
-        /// 族から集合を 1 つ一様に選んだときの、その集合の重みの期待値を返す。
-        /// </summary>
-        /// <param name="manager">族を所有するマネージャ。</param>
-        /// <param name="rootId">族の根ノード ID。</param>
-        /// <param name="weights">item ごとの重み。長さは変数の個数と等しいこと。</param>
+        /// <summary>Returns the expected weight of a set chosen uniformly at random from the family.</summary>
+        /// <param name="manager">The manager that owns the family.</param>
+        /// <param name="rootId">The family's root node ID.</param>
+        /// <param name="weights">Per-item weights, length equal to the variable count.</param>
         /// <remarks>
-        /// <para>
-        /// <b>期待値の線形性</b>そのもの: <c>E[Σ_{i ∈ A} w[i]] = Σ_i w[i] · P(i ∈ A)</c> なので、
-        /// <see cref="ItemFrequency"/> との内積で求まる。集合を 1 つずつ数え上げる必要は無い。
-        /// </para>
-        /// <para>
-        /// <b>重みが <see cref="double"/> 固定</b>なのは、期待値には割り算が要るためである。
-        /// <see cref="IWeightOps{TWeight}"/> が求めるのは「0・足す・比べる」の 3 つだけで、
-        /// 割り算は含まない（含めると有理数や辞書順タプルのような重みが乗らなくなる）。
-        /// </para>
+        /// Linearity of expectation: <c>E[Σ_{i ∈ A} w[i]] = Σ_i w[i] · P(i ∈ A)</c>, so this is
+        /// just the dot product with <see cref="ItemFrequency"/> — no per-set enumeration needed.
+        /// Weight is fixed to <see cref="double"/> because computing an expectation requires
+        /// division, which <see cref="IWeightOps{TWeight}"/> deliberately does not require.
         /// </remarks>
-        /// <exception cref="ArgumentException">
-        /// <paramref name="weights"/> の長さが変数の個数と違う場合。
-        /// </exception>
-        /// <exception cref="InvalidOperationException">族が空（集合を 1 つも持たない）の場合。</exception>
-        /// <exception cref="ObjectDisposedException">
-        /// <paramref name="manager"/> が破棄済みの場合。
-        /// </exception>
+        /// <exception cref="ArgumentException"><paramref name="weights"/>'s length does not match the variable count.</exception>
+        /// <exception cref="InvalidOperationException">The family is empty.</exception>
+        /// <exception cref="ObjectDisposedException"><paramref name="manager"/> has been disposed.</exception>
         public static double ExpectedValue(ZddManager manager, int rootId, ReadOnlySpan<double> weights)
         {
             EnsureWeightCount(manager, weights.Length, nameof(weights));
@@ -443,11 +339,9 @@ namespace ZDD.Net.Core
             return expected;
         }
 
-        // ---- 最適集合の復元 ----
+        // ---- Reconstructing the optimal set ----
 
-        /// <summary>
-        /// <see cref="Optimize{TWeight, TOps}"/> が覚えた選択に沿って、根から 1 本降りて集合を組み立てる。
-        /// </summary>
+        /// <summary>Rebuilds the chosen set by descending from the root, following the choices <see cref="Optimize{TWeight, TOps}"/> recorded.</summary>
         private static int[] Descend(
             ZddManager manager,
             NodeTable nodes,
@@ -478,10 +372,7 @@ namespace ZDD.Net.Core
             return path.AsSpan(0, length).ToArray();
         }
 
-        /// <summary>
-        /// <see cref="TopK{TWeight, TOps}"/> の順位 <paramref name="rank"/> の集合を、
-        /// 根から 1 本降りて組み立てる。
-        /// </summary>
+        /// <summary>Rebuilds the set at rank <paramref name="rank"/> from <see cref="TopK{TWeight, TOps}"/> by descending from the root.</summary>
         private static int[] Descend<TWeight>(
             ZddManager manager,
             NodeTable nodes,
@@ -516,15 +407,10 @@ namespace ZDD.Net.Core
             return path.AsSpan(0, length).ToArray();
         }
 
-        // ---- 上位 k 個の併合 ----
+        // ---- Merging top-k lists ----
 
-        /// <summary>
-        /// 0-枝側と 1-枝側の「上位 k 個」を、整列を保ったまま併合して先頭 <paramref name="k"/> 個を返す。
-        /// </summary>
-        /// <remarks>
-        /// 1-枝側の重みには <paramref name="itemWeight"/> が乗る（その先の集合はどれも item を含むため）。
-        /// 同点なら 0-枝側を先に採る。
-        /// </remarks>
+        /// <summary>Merges the 0-edge and 1-edge "top k" lists, preserving order, and keeps the first <paramref name="k"/>.</summary>
+        /// <remarks>The 1-edge side's weight gains <paramref name="itemWeight"/> (every set past it includes the item); ties favor the 0-edge side.</remarks>
         private static TopEntry<TWeight>[] Merge<TWeight, TOps>(
             TopEntry<TWeight>[] loList,
             TopEntry<TWeight>[] hiList,
@@ -563,7 +449,7 @@ namespace ZDD.Net.Core
             return merged;
         }
 
-        /// <summary>子の「上位 k 個」を引く。終端は表に入っていないので、その場で答える。</summary>
+        /// <summary>Looks up a child's "top k" list; terminals aren't in the table, so answer directly.</summary>
         private static TopEntry<TWeight>[] ListOf<TWeight>(
             NodeOrder order,
             TopEntry<TWeight>[][] lists,
@@ -579,12 +465,9 @@ namespace ZDD.Net.Core
             return lists[order.SlotOf(childId)];
         }
 
-        // ---- 確率の補助 ----
+        // ---- Probability helpers ----
 
-        /// <summary>
-        /// 子の確率を、飛ばされた段（<paramref name="from"/> から子の item の手前まで）の
-        /// 「選ばれなかった」確率で持ち上げる。
-        /// </summary>
+        /// <summary>Scales a child's probability by the "not chosen" factor for levels skipped between <paramref name="from"/> and the child's item.</summary>
         private static double Lift(
             ZddManager manager,
             NodeTable nodes,
@@ -596,7 +479,7 @@ namespace ZDD.Net.Core
         {
             if (NodeTable.IsTerminal(childId))
             {
-                // ⊤ に着いた ＝ 残りの item はどれも選ばれていない。⊥ は起こりえない選び方。
+                // Landing on ⊤ means every remaining item was not chosen; ⊥ can't happen here.
                 return childId == NodeTable.Top
                     ? AbsentProduct(probabilities, from, probabilities.Length)
                     : 0.0;
@@ -607,9 +490,7 @@ namespace ZDD.Net.Core
             return probability[order.SlotOf(childId)] * AbsentProduct(probabilities, from, childItem);
         }
 
-        /// <summary>
-        /// <c>Π_{j = from}^{toExclusive - 1} (1 - p[j])</c>。飛ばされた段を補うための積。
-        /// </summary>
+        /// <summary><c>Π_{j = from}^{toExclusive - 1} (1 - p[j])</c>, the "not chosen" product for skipped levels.</summary>
         private static double AbsentProduct(ReadOnlySpan<double> probabilities, int from, int toExclusive)
         {
             double product = 1.0;
@@ -622,17 +503,13 @@ namespace ZDD.Net.Core
             return product;
         }
 
-        // ---- 頻度の補助 ----
+        // ---- Frequency helpers ----
 
-        /// <summary>
-        /// <c>numerator / denominator</c> を <see cref="double"/> にする
-        /// （<c>0 ≤ numerator ≤ denominator</c>、<c>denominator &gt; 0</c> が前提）。
-        /// </summary>
+        /// <summary><c>numerator / denominator</c> as a <see cref="double"/> (requires <c>0 &lt;= numerator &lt;= denominator</c>, <c>denominator &gt; 0</c>).</summary>
         /// <remarks>
-        /// <c>(double)numerator / (double)denominator</c> と書くと、10^308 を超える個数で
-        /// 両辺とも <see cref="double.PositiveInfinity"/> になり、比が <see cref="double.NaN"/> に化ける。
-        /// 先に整数のまま 2^64 倍して割れば、商は必ず 2^64 以下に収まり、
-        /// 仮数部（53bit）より細かい精度で比が得られる。
+        /// A naive <c>(double)numerator / (double)denominator</c> can turn both sides into
+        /// <see cref="double.PositiveInfinity"/> for counts beyond ~10^308, yielding
+        /// <see cref="double.NaN"/>. Scaling by 2^64 before converting avoids that.
         /// </remarks>
         private static double Ratio(BigInteger numerator, BigInteger denominator)
         {
@@ -651,7 +528,7 @@ namespace ZDD.Net.Core
             return Math.ScaleB((double)((numerator << Scale) / denominator), -Scale);
         }
 
-        // ---- 検証 ----
+        // ---- Validation ----
 
         private static void EnsureWeightCount(ZddManager manager, int length, string paramName)
         {
@@ -671,7 +548,7 @@ namespace ZDD.Net.Core
 
                 if (!(probability >= 0.0 && probability <= 1.0))
                 {
-                    // NaN もここに落ちる（どの比較も偽になるため）。
+                    // NaN also lands here, since every comparison with it is false.
                     ThrowHelper.ThrowArgumentOutOfRangeException(
                         nameof(probabilities),
                         $"'{nameof(probabilities)}[{item}]' must be in the range 0..1, but was {probability}.");
@@ -692,7 +569,7 @@ namespace ZDD.Net.Core
         {
             if (id != NodeTable.Top)
             {
-                // ⊥ に着く経路は集合を 1 つも生まない。DP は集合のある側しか選ばないのでここへは来ない。
+                // A path landing on ⊥ yields no set; the DP only ever selects sides that have one.
                 ThrowHelper.ThrowInvalidOperationException(
                     "The descent ended at the bottom terminal, which holds no set; the table and the diagram disagree.");
             }
@@ -703,7 +580,7 @@ namespace ZDD.Net.Core
         {
             if (NodeTable.IsTerminal(childId))
             {
-                // ⊤ は空集合 1 つ。⊥ は集合を持たないので、そもそも候補にならない。
+                // ⊤ is the empty set; ⊥ has no sets and so is never a candidate.
                 value = TOps.Zero;
                 return childId == NodeTable.Top;
             }
@@ -722,9 +599,7 @@ namespace ZDD.Net.Core
             buffer[length++] = value;
         }
 
-        /// <summary>
-        /// <see cref="TopK{TWeight, TOps}"/> の表に入る 1 件。重みと、どこから来たかを覚える。
-        /// </summary>
+        /// <summary>One entry in <see cref="TopK{TWeight, TOps}"/>'s table: a weight, plus where it came from.</summary>
         private readonly struct TopEntry<TWeight>
         {
             public TopEntry(TWeight weight, bool fromHi, int index)
@@ -734,13 +609,13 @@ namespace ZDD.Net.Core
                 Index = index;
             }
 
-            /// <summary>この件が表す集合の重み（このノード以下の部分族としての重み）。</summary>
+            /// <summary>The weight of the set this entry represents (relative to this node's subfamily).</summary>
             public TWeight Weight { get; }
 
-            /// <summary>1-枝側から来たかどうか（＝このノードの item を含むかどうか）。</summary>
+            /// <summary>Whether this entry came from the 1-edge side (i.e. includes this node's item).</summary>
             public bool FromHi { get; }
 
-            /// <summary>来た側の子の表での順位。子が終端なら意味を持たない。</summary>
+            /// <summary>This entry's rank within the child list it came from; meaningless if the child is a terminal.</summary>
             public int Index { get; }
         }
     }
