@@ -1,4 +1,6 @@
 using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using ZDD.Net.Internal;
@@ -28,7 +30,7 @@ namespace ZDD.Net.Core
     /// 例外を投げずに使える（コレクションに入れても壊れないようにするため）。
     /// </para>
     /// </remarks>
-    public readonly struct Zdd : IEquatable<Zdd>
+    public readonly struct Zdd : IEquatable<Zdd>, IEnumerable<int[]>
     {
         private readonly ZddManager? _manager;
         private readonly int _id;
@@ -606,6 +608,131 @@ namespace ZDD.Net.Core
         /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
         /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
         public Zdd Complement() => Manager.Complement(this);
+
+        /// <summary>
+        /// この族に属する集合を 1 つずつ返す遅延列挙を始める。順序は
+        /// <see cref="ZddEnumerationOrder.Default"/>。
+        /// </summary>
+        /// <returns>
+        /// 族に属する集合の列挙子。集合は<b>昇順に並んだ item index の <c>int[]</c></b> で、
+        /// <b>1 つ返すたびに新しい配列</b>が作られる（<see cref="Sets"/> を参照）。
+        /// </returns>
+        /// <remarks>
+        /// <para>
+        /// <b><see cref="Count"/> と計算量が違う</b>。数え上げはノード数に比例するので 10^24 個でも
+        /// 一瞬だが、列挙は<b>返す集合の個数</b>に比例する。だからこそ遅延で、
+        /// <c>foreach</c> の途中で <c>break</c> したり <c>Take(10)</c> で打ち切ったりすれば、
+        /// 族がどれだけ大きくてもそこまでしか辿らない。
+        /// </para>
+        /// <para>
+        /// <b><see cref="System.Collections.Generic.ICollection{T}"/> は実装しない</b>
+        /// （docs/PLAN.md §8）。族の要素数は <c>int</c> に収まらないためで、個数が要るときは
+        /// LINQ の <c>Count()</c> ではなく <see cref="Count"/>（<see cref="BigInteger"/>）を使う。
+        /// </para>
+        /// </remarks>
+        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public IEnumerator<int[]> GetEnumerator() => Sets().GetEnumerator();
+
+        /// <inheritdoc cref="GetEnumerator"/>
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+        /// <summary>
+        /// この族に属する集合を、指定した順序で 1 つずつ返す遅延列挙を作る。
+        /// </summary>
+        /// <param name="order">
+        /// 集合を返す順序。既定は <see cref="ZddEnumerationOrder.Default"/>
+        /// （0-枝優先の深さ優先＝指示ベクトルの辞書順）。
+        /// </param>
+        /// <returns>族に属する集合を <paramref name="order"/> の順に返す遅延列挙。</returns>
+        /// <remarks>
+        /// <para>
+        /// <b>返る配列は毎回新しい</b>。バッファを使い回すと <c>ToList()</c> した全要素が
+        /// 同じ配列を指すという静かな罠になるので、既定は安全側に倒してある。
+        /// 返された <c>int[]</c> は呼び出し側のもので、書き換えても列挙には影響しない。
+        /// </para>
+        /// <para>
+        /// <b>遅延である</b>。ここでは何も辿らず、列挙が進むたびに 1 つ分だけ走査する
+        /// （引数の検査だけはこの場で行う）。同じ戻り値を 2 度 <c>foreach</c> すれば 2 度走査され、
+        /// 族は不変なので同じ並びが 2 度返る。
+        /// </para>
+        /// <para>
+        /// <b>計算量</b>: 集合 1 つあたり、その集合の要素数と辿った 0-枝のぶん。
+        /// 族全体を列挙する手間は「集合の個数 × 変数の個数」で抑えられる。
+        /// </para>
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// <paramref name="order"/> が定義されていない値の場合。
+        /// </exception>
+        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public IEnumerable<int[]> Sets(ZddEnumerationOrder order = ZddEnumerationOrder.Default) =>
+            SetEnumeration.Enumerate(Manager, _id, order);
+
+        /// <summary>
+        /// <paramref name="set"/> が表す集合がこの族に属するかどうかを返す。
+        /// </summary>
+        /// <param name="set">
+        /// 調べる集合の item index。順不同でよく、同じ item が重なっていても 1 つとして扱う。
+        /// 空なら「この族が空集合を要素に持つか」を問うことになる。
+        /// </param>
+        /// <remarks>
+        /// 族を作らず、根から終端まで 1 本の経路を降りるだけなので O(変数の個数)
+        /// （<paramref name="set"/> を昇順に並べるぶん、要素数 k に対して O(k log k) が加わる）。
+        /// 列挙と整合する: <see cref="Sets"/> が返した集合は必ず <see langword="true"/> になる。
+        /// </remarks>
+        /// <exception cref="ArgumentNullException"><paramref name="set"/> が <see langword="null"/> の場合。</exception>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// <paramref name="set"/> に 0 以上 <see cref="ZddManager.VariableCount"/> 未満でない値が含まれる場合。
+        /// </exception>
+        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public bool Contains(IEnumerable<int> set)
+        {
+            ThrowHelper.ThrowIfNull(set, nameof(set));
+
+            int[] items = set as int[] ?? new List<int>(set).ToArray();
+            return Manager.Contains(this, items);
+        }
+
+        /// <inheritdoc cref="Contains(IEnumerable{int})"/>
+        /// <param name="items">
+        /// 調べる集合の item index。順不同でよく、同じ item が重なっていても 1 つとして扱う。
+        /// 空なら「この族が空集合を要素に持つか」を問うことになる。
+        /// </param>
+        public bool Contains(params ReadOnlySpan<int> items) => Manager.Contains(this, items);
+
+        /// <summary>
+        /// この族の集合がすべて <paramref name="g"/> にも属するか（族としての包含 <c>F ⊆ G</c>）を返す。
+        /// </summary>
+        /// <param name="g">相手の族。このマネージャに属していなければならない。</param>
+        /// <remarks>
+        /// <c>(F - G).IsEmpty</c> と同じ答だが、<b>差の族を組み立てない</b>。
+        /// 反例（<c>G</c> に無い <c>F</c> の集合）が 1 つ見つかった時点で打ち切る。
+        /// 空の族はどの族にも含まれ（<c>∅.IsSubsetOf(G)</c> は常に真）、
+        /// <c>F.IsSubsetOf(F)</c> も常に真。
+        /// </remarks>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="g"/> が別のマネージャに属する、または <c>default(Zdd)</c> の場合。
+        /// </exception>
+        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public bool IsSubsetOf(Zdd g) => Manager.IsSubsetOf(this, g);
+
+        /// <summary>
+        /// この族と <paramref name="g"/> に共通の集合があるかどうかを返す。
+        /// </summary>
+        /// <param name="g">相手の族。このマネージャに属していなければならない。</param>
+        /// <remarks>
+        /// <c>(F &amp; G) != Empty</c> と同じ答だが、<b>交わりの族を組み立てない</b>。
+        /// 共通の集合が 1 つ見つかった時点で打ち切る。どちらかが空の族なら常に偽。
+        /// </remarks>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="g"/> が別のマネージャに属する、または <c>default(Zdd)</c> の場合。
+        /// </exception>
+        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public bool Overlaps(Zdd g) => Manager.Overlaps(this, g);
 
         /// <summary>2 つのハンドルが同じマネージャの同じ族を指すかどうか。</summary>
         /// <param name="other">比較相手。</param>

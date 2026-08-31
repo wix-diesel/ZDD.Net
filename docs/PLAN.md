@@ -226,7 +226,7 @@ public sealed class ZddManager : IDisposable
 }
 
 // 値型ハンドル。マネージャ参照 + ノード ID
-public readonly struct Zdd : IEquatable<Zdd>
+public readonly struct Zdd : IEquatable<Zdd>, IEnumerable<int[]>
 {
     public ZddManager Manager { get; }
     public bool IsEmpty { get; }
@@ -234,6 +234,10 @@ public readonly struct Zdd : IEquatable<Zdd>
     public long NodeCount { get; }          // このZDDが参照するノード数
     public BigInteger Count { get; }        // 要素（部分集合）の個数
     public double CountApprox { get; }      // double 近似（高速）
+    public IEnumerable<int[]> Sets(ZddEnumerationOrder order = default);  // 遅延列挙
+    public bool Contains(IEnumerable<int> set);
+    public bool IsSubsetOf(Zdd g);
+    public bool Overlaps(Zdd g);
     // 演算子: | & - ^ * / % ~
 }
 ```
@@ -324,6 +328,22 @@ public readonly struct Zdd : IEquatable<Zdd>
 
 `ElementAt` と `Sample` は「10^20 個の解から一様サンプリング」という ZDD の目玉機能なので
 **v0.1 から入れる**。
+
+**列挙は遅延で、返す配列は毎回新しい**。数え上げがノード数に比例するのに対し、列挙は
+**返す集合の個数**に比例するので、`Take(10)` や途中の `break` が族の大きさに関係なく即座に
+終わることが要る。経路そのものは 1 本の作業配列で持ち回るが、終端 ⊤ に着くたびに写した
+`int[]` を返す（使い回すと `ToList()` した全要素が同じ配列になるという静かな罠が生まれる）。
+バッファを使い回す高速版が要るなら `EnumerateInto(Span<int>)` のような別 API として足す。
+
+**順序は 2 つ**（`ZddEnumerationOrder`）。既定は 0-枝優先の深さ優先で、これは
+**指示ベクトルの辞書順**になる（item 0 が根側にあるため。B5）。`Lexicographic` は集合を
+**昇順の item 列**と見たときの辞書順で、空列が最小、以降は先頭要素の小さい順。
+`{0,2}` と `{1}` の前後が入れ替わるので、2 つは別の全順序である。どちらも 1 回の深さ優先走査で出せる。
+
+**`IsSubsetOf` / `Overlaps` は族を作らない**。`(F - G).IsEmpty` / `(F & G) != Empty` と同じ答だが、
+差や交わりの ZDD を組み立てない。どちらも分解すると合成が 1 種類しか出てこない
+（`Overlaps` は ∨ だけの木、`IsSubsetOf` は ∧ だけの木）ので、答は到達できる終端条件の
+∨／∧ そのものであり、決着する値が 1 つ出た時点で打ち切ってよい。
 
 ---
 

@@ -15,7 +15,8 @@ namespace ZDD.Net.Core
     /// 変換は
     /// <c>level = VariableCount - item</c> / <c>item = VariableCount - level</c> の 1 対 1 対応で、
     /// item 0 が根側に来る（docs/OPEN-QUESTIONS.md B5）。この向きにすると、
-    /// 0-枝を先に辿る深さ優先の列挙がそのまま item の辞書順になる。
+    /// 0-枝を先に辿る深さ優先の列挙がそのまま<b>指示ベクトルの辞書順</b>になる
+    /// （<see cref="ZddEnumerationOrder.Default"/>）。
     /// 変換は <see cref="LevelOf"/> / <see cref="ItemOf"/> の 2 つだけが行い、他の場所では計算しない。
     /// </para>
     /// <para>
@@ -308,6 +309,43 @@ namespace ZDD.Net.Core
         /// <summary>補 <c>2^U ∖ f</c>（<c>U</c> はこのマネージャの全変数）を返す。</summary>
         /// <param name="f">対象の族。このマネージャに属していなければならない。</param>
         internal Zdd Complement(in Zdd f) => ApplyExtremal(ZddOperation.Complement, f);
+
+        /// <summary>
+        /// <paramref name="items"/> が表す集合が <paramref name="f"/> に属するかどうかを返す。
+        /// </summary>
+        /// <param name="f">対象の族。このマネージャに属していなければならない。</param>
+        /// <param name="items">調べる集合の item index。順不同・重複可。</param>
+        /// <remarks>
+        /// 族を作らないので、演算キャッシュを整える必要も作業領域を借りる必要も無い。
+        /// </remarks>
+        internal bool Contains(in Zdd f, ReadOnlySpan<int> items)
+        {
+            EnsureOwns(f, nameof(f));
+
+            return QueryOperations.Contains(this, f.Id, items);
+        }
+
+        /// <summary><paramref name="f"/> の集合がすべて <paramref name="g"/> にも属するかどうか。</summary>
+        /// <param name="f">左の族。このマネージャに属していなければならない。</param>
+        /// <param name="g">右の族。このマネージャに属していなければならない。</param>
+        internal bool IsSubsetOf(in Zdd f, in Zdd g)
+        {
+            EnsureOwns(f, nameof(f));
+            EnsureOwns(g, nameof(g));
+
+            return QueryOperations.IsSubsetOf(this, f.Id, g.Id);
+        }
+
+        /// <summary><paramref name="f"/> と <paramref name="g"/> に共通の集合があるかどうか。</summary>
+        /// <param name="f">左の族。このマネージャに属していなければならない。</param>
+        /// <param name="g">右の族。このマネージャに属していなければならない。</param>
+        internal bool Overlaps(in Zdd f, in Zdd g)
+        {
+            EnsureOwns(f, nameof(f));
+            EnsureOwns(g, nameof(g));
+
+            return QueryOperations.Overlaps(this, f.Id, g.Id);
+        }
 
         /// <summary>
         /// 全体集合の冪集合 <c>2^U</c>（<see cref="VariableCount"/> 個の item の全部分集合）の根ノード ID。

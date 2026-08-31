@@ -11,10 +11,16 @@ namespace ZDD.Net.Core
     /// <see cref="OperationCache"/> が使うため固定する。
     /// </para>
     /// <para>
-    /// ここに並ぶのは M1-5 〜 M1-10 の演算で、いずれも実装済みである
+    /// ここに並ぶのは M1-5 〜 M1-13 の演算で、いずれも実装済みである
     /// （<see cref="UnaryOperations"/> / <see cref="BinaryOperations"/> /
     /// <see cref="FamilyAlgebraOperations"/> / <see cref="ContainmentOperations"/> /
-    /// <see cref="ExtremalOperations"/>）。
+    /// <see cref="ExtremalOperations"/> / <see cref="QueryOperations"/>）。
+    /// </para>
+    /// <para>
+    /// <b>キャッシュに載らない演算もここに並ぶ</b>: <see cref="IsSubsetOf"/> /
+    /// <see cref="Overlaps"/> は族ではなく真偽を返すので <see cref="OperationCache"/> には入らないが、
+    /// 部分問題のキーは同じ <see cref="OperationKey"/> で作る。詰め方と正規化を演算ごとに
+    /// 書き分けないための決めごとで、種別の値はそこでも要る。
     /// </para>
     /// </remarks>
     internal enum ZddOperation
@@ -59,6 +65,14 @@ namespace ZDD.Net.Core
 
         /// <summary><c>g</c> のどれの上位集合でもない要素だけを残す（M1-9）。</summary>
         NonSupersetsOf,
+
+        // ---- 族を作らない問い合わせ（M1-13）----
+
+        /// <summary><c>f</c> のどの集合も <c>g</c> に属するか（M1-13）。</summary>
+        IsSubsetOf,
+
+        /// <summary><c>f</c> と <c>g</c> に共通の集合があるか（M1-13）。</summary>
+        Overlaps,
 
         // ---- 単項演算（item を取るもの・取らないもの） ----
 
@@ -111,6 +125,9 @@ namespace ZDD.Net.Core
         /// 0-枝は残り 3 通りの和で、どちらも左右の入れ替えで同じ部分問題の集まりになる。
         /// 一方 <see cref="ZddOperation.SupersetsOf"/> 以下 4 つのふるいは、
         /// 左を右でふるいにかける演算なので当然に非可換。
+        /// <see cref="ZddOperation.Overlaps"/> は M1-13 で確かめて加えた: 終端の場合分けも
+        /// 分解（0-枝どうし・1-枝どうしの 2 つの部分問題）も左右の入れ替えで同じになる。
+        /// <see cref="ZddOperation.IsSubsetOf"/> は「左が右に含まれるか」なので当然に非可換。
         /// </para>
         /// </remarks>
         public static bool IsCommutative(ZddOperation op) =>
@@ -118,7 +135,8 @@ namespace ZDD.Net.Core
                 or ZddOperation.Intersect
                 or ZddOperation.SymmetricDifference
                 or ZddOperation.Product
-                or ZddOperation.Meet;
+                or ZddOperation.Meet
+                or ZddOperation.Overlaps;
 
         /// <summary>
         /// 単項演算（第 2 オペランドが別の族ではなく item、あるいは何も取らないもの）かどうか。
