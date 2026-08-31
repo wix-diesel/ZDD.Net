@@ -443,6 +443,9 @@ public interface IHybridDdSpec<TScalar> { ... }
 C++ の既存スペックを移植する人がそのまま書けるメリットが大きい。
 可読性のため `DdResult.False` / `DdResult.True` 定数も用意する。
 
+規約の詳細（状態の寿命・返してよい水準・等価とハッシュの整合・状態設計の原則）と実装例は
+[docs/frontier-spec-guide.md](frontier-spec-guide.md) にまとめてある。
+
 ### 6.2 構築器
 
 ```csharp

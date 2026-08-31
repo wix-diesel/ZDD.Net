@@ -66,6 +66,7 @@ CLI から触ってみたい場合は [`samples/Zdd.Cli`](samples/Zdd.Cli)（`do
 ## ドキュメント
 
 - **[docs/api-guide.md](docs/api-guide.md)** — API ガイド（`ZddManager`/`Zdd` の使い方、演算一覧、性能上の注意）
+- **[docs/frontier-spec-guide.md](docs/frontier-spec-guide.md)** — スペックの書き方（フロンティア法。v0.2 開発中）
 - **[docs/PLAN.md](docs/PLAN.md)** — 機能・仕様・アーキテクチャ
 - **[docs/ROADMAP.md](docs/ROADMAP.md)** — マイルストーン別の PR 単位タスク分割
 - **[docs/OPEN-QUESTIONS.md](docs/OPEN-QUESTIONS.md)** — 未確定事項

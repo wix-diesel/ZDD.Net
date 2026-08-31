@@ -6,6 +6,22 @@
 
 v1.0 までは API 未確定のプレリリース版として公開する（[docs/PLAN.md](docs/PLAN.md) §13）。
 
+## [Unreleased]
+
+M2「フロンティア法フレームワーク」（v0.2）に向けた変更。
+
+### Added
+
+- `ZDD.Net.Frontier`: フロンティア法のスペックのインタフェース
+  `IDdSpec<TState>` / `IArrayDdSpec` / `IHybridDdSpec<TScalar>` と、終端の定数 `DdResult`
+  （戻り値の規約は TdZdd 互換: `0` = ⊥、`-1` = ⊤、正数 = 次の水準）
+- `docs/frontier-spec-guide.md`: スペックの書き方（規約と実装例）
+
+### Notes
+
+- **契約（インタフェース）のみで、構築器 `FrontierBuilder` はまだ無い**。
+  スペックを書いても ZDD を構築できるようになるのは M2-4 以降
+
 ## [0.1.0] - 2026-08-31
 
 M1「Core エンジン」マイルストーン（[docs/PLAN.md](docs/PLAN.md) §12）の内容。ZDD Core エンジンが
