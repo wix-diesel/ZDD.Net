@@ -27,6 +27,13 @@ namespace ZDD.Net.Core
     /// ノード数に対して指数的な手間になりうる。
     /// </para>
     /// <para>
+    /// <b>その場で決着する対も覚える</b>。片方が ⊤ の対は分解せずに答が出るので「もう積んだ」印を
+    /// 通らないが、その答（もう片方が空集合を持つか）を出すには 0-枝の連なりを辿る必要がある。
+    /// これを覚えずにいると、段ごとに ⊤ との対が現れる形の族で辿り直しが積み重なり、
+    /// <b>変数の個数の二乗</b>になる（#90）。同じ途中結果表に、対と衝突しないキーで置いてある
+    /// （<see cref="HasEmptySet(NodeTable, OperationWorkspace, ZddOperation, int)"/>）。
+    /// </para>
+    /// <para>
     /// <b>再帰は書かない</b>（docs/PLAN.md §4.5）。ZDD の深さは変数の個数そのもので、
     /// 10 万規模の族を素直な再帰で辿ると <c>StackOverflowException</c> になり、
     /// .NET ではこれを catch できずプロセスが即死する。
@@ -206,7 +213,9 @@ namespace ZDD.Net.Core
 
             // 終端が絡む組合せはここで片付く。作業領域を借りずに返せるので、
             // f.Overlaps(manager.Empty) のような呼び出しは表に触れない。
-            if (TryResolve(nodes, op, fRoot, gRoot, out bool resolved))
+            // ここだけは覚えておく先が無いので、0-枝の連なりを辿り直す経路になる
+            // （走査の前に 1 度きりなので O(段数) で済む）。
+            if (TryResolve(nodes, work: null, op, fRoot, gRoot, out bool resolved))
             {
                 return resolved;
             }
@@ -255,7 +264,7 @@ namespace ZDD.Net.Core
             int f,
             int g)
         {
-            if (TryResolve(nodes, op, f, g, out bool resolved))
+            if (TryResolve(nodes, work, op, f, g, out bool resolved))
             {
                 return resolved != decisive;
             }
@@ -305,8 +314,21 @@ namespace ZDD.Net.Core
         /// どちらの演算でも、ここを抜けた時点で <c>f</c> と <c>g</c> は<b>両方とも非終端</b>である。
         /// <see cref="NodePair.Split"/> が前提とする条件（終端どうしの対は来ない）はこれで満たされる。
         /// </para>
+        /// <para>
+        /// <b><paramref name="work"/> は「空集合を持つか」を覚えておく先</b>である。ここで決着する対は
+        /// <see cref="Remember"/> を通らないので、渡さないと
+        /// <see cref="HasEmptySet(NodeTable, OperationWorkspace, ZddOperation, int)"/> の
+        /// 0-枝の辿り直しが走査のたびに積み重なる（<see langword="null"/> を渡してよいのは
+        /// <see cref="Search"/> が作業領域を借りる前の 1 度きりの呼び出しだけ）。
+        /// </para>
         /// </remarks>
-        private static bool TryResolve(NodeTable nodes, ZddOperation op, int f, int g, out bool resolved)
+        private static bool TryResolve(
+            NodeTable nodes,
+            OperationWorkspace? work,
+            ZddOperation op,
+            int f,
+            int g,
+            out bool resolved)
         {
             if (op == ZddOperation.IsSubsetOf)
             {
@@ -324,7 +346,7 @@ namespace ZDD.Net.Core
 
                 if (f == NodeTable.Top)
                 {
-                    resolved = HasEmptySet(nodes, g);
+                    resolved = HasEmptySet(nodes, work, op, g);
                     return true;
                 }
 
@@ -346,7 +368,7 @@ namespace ZDD.Net.Core
 
             if (f == NodeTable.Top || g == NodeTable.Top)
             {
-                resolved = HasEmptySet(nodes, f == NodeTable.Top ? g : f);
+                resolved = HasEmptySet(nodes, work, op, f == NodeTable.Top ? g : f);
                 return true;
             }
 
@@ -367,6 +389,77 @@ namespace ZDD.Net.Core
             }
 
             return id == NodeTable.Top;
+        }
+
+        /// <summary>
+        /// <see cref="HasEmptySet(NodeTable, int)"/> に<b>覚えておく先</b>を与えたもの。
+        /// <paramref name="work"/> が <see langword="null"/> なら辿り直す版に落ちる。
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>なぜ覚える必要があるか</b>: <see cref="TryResolve"/> がここへ来る対は
+        /// 片方が ⊤ で、その場で答が出るため <see cref="Remember"/> を通らない。
+        /// 覚えずに済ませると、<c>f</c> の 1-枝が段ごとに ⊤ へ着く形の族
+        /// （<c>{{0}, {1}, …, {n-1}}</c> など）で、段を 1 つ降りるたびに長さ <c>k</c> の
+        /// 0-枝の連なりを辿り直すことになり、合計 Σk = O(変数の個数の二乗) になる。
+        /// </para>
+        /// <para>
+        /// <b>なぜ連なり全体に同じ答を書けるか</b>: 空集合は 0-枝の連なりの先にしかいないので、
+        /// ある 0-枝の道の上のノードは<b>どれも同じ終端に行き着く</b>。よって 1 回の走査で
+        /// 通ったノードすべてに同じ答を書き込んでよく、全体で O(変数の個数) に収まる。
+        /// 「終端に着くか、覚えているノードに当たるまで降りる」「同じ道をもう一度降りて書き込む」の
+        /// 2 周で済むので、通り道を控えるための配列は要らない。
+        /// </para>
+        /// <para>
+        /// <b>キーが対のキーと衝突しない理由</b>: <see cref="Remember"/> が積む対は
+        /// <see cref="TryResolve"/> の remarks のとおり<b>左右とも非終端</b>なので、
+        /// キーの左は必ず <see cref="NodeTable.FirstNodeId"/> 以上になる。ここで使う
+        /// <c>OperationKey.Of(op, NodeTable.Top, id)</c> の左は ⊤（= 1）なので、両者は必ず食い違う
+        /// （<see cref="ZddOperation.Overlaps"/> は可換なので昇順に正規化されるが、
+        /// <c>id</c> は非終端で ⊤ より大きいため入れ替わらない）。
+        /// </para>
+        /// <para>
+        /// 途中結果表の値はノード ID を入れるためのものなので、真偽は
+        /// <see cref="NodeTable.Top"/> / <see cref="NodeTable.Bottom"/> の形で置く。
+        /// </para>
+        /// </remarks>
+        private static bool HasEmptySet(NodeTable nodes, OperationWorkspace? work, ZddOperation op, int id)
+        {
+            if (work is null)
+            {
+                return HasEmptySet(nodes, id);
+            }
+
+            // 終端に着くか、覚えているノードに当たるまで 0-枝を降りる。
+            int tail = id;
+            bool hasEmptySet;
+
+            while (true)
+            {
+                if (NodeTable.IsTerminal(tail))
+                {
+                    hasEmptySet = tail == NodeTable.Top;
+                    break;
+                }
+
+                if (work.TryGetResult(OperationKey.Of(op, NodeTable.Top, tail), out int memo))
+                {
+                    hasEmptySet = memo == NodeTable.Top;
+                    break;
+                }
+
+                tail = nodes[tail].Lo;
+            }
+
+            // 同じ道をもう一度降りて、通ったノードすべてに同じ答を書き込む。
+            int result = hasEmptySet ? NodeTable.Top : NodeTable.Bottom;
+
+            for (int current = id; current != tail; current = nodes[current].Lo)
+            {
+                work.SetResult(OperationKey.Of(op, NodeTable.Top, current), result);
+            }
+
+            return hasEmptySet;
         }
     }
 }

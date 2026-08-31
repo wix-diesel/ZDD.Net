@@ -34,13 +34,12 @@ namespace ZDD.Net.Tests.Stress
     /// 深さの検証としてはどちらも等価で、実行時間だけが違う。
     /// </para>
     /// <para>
-    /// <b>意図的に外してあるお題</b>: <c>Singletons.IsSubsetOf(PowerSet)</c> は深さの二乗になる。
-    /// <c>f</c> の 1-枝が ⊤ に着くたびに「<c>g</c> は空集合を持つか」を 0-枝の連なりを
-    /// 端まで辿って確かめ直すためで、実測は変数 1.25 万で 0.2 秒、2.5 万で 0.6 秒、
-    /// 5 万で 2.5 秒、10 万で 10.5 秒（倍にするごとにおよそ 4 倍）。
-    /// これは M1-13 の <c>QueryOperations</c> の性能上の課題であって、深さの安全性とは別の話であり、
-    /// <c>Full.IsSubsetOf(PowerSet)</c> が同じ 10 万段を同じ経路で降りて数ミリ秒で終わる。
-    /// CI の予算（この一式で 20 秒弱）を 1 つの呼び出しに使い切らないため、こちらを採っている。
+    /// <b>一度外してあったお題</b>: <c>Singletons.IsSubsetOf(PowerSet)</c> は、かつて深さの二乗になった
+    /// （変数 10 万で 10 秒以上）。<c>f</c> の 1-枝が ⊤ に着くたびに「<c>g</c> は空集合を持つか」を
+    /// 0-枝の連なりを端まで辿って確かめ直していたためで、CI の予算を 1 つの呼び出しに
+    /// 使い切らないよう <see cref="EnumerationAndMembershipFinish"/> から外してあった。
+    /// #90 で <c>QueryOperations</c> がこの答を覚えるようになり線形になったので、お題を戻してある。
+    /// 増え方そのものの回帰テストは <see cref="QueryScalingTests"/> にある。
     /// </para>
     /// </remarks>
     [Trait("Category", "Slow")]
@@ -200,7 +199,13 @@ namespace ZDD.Net.Tests.Stress
             Assert.True(_deep.Full.IsSubsetOf(_deep.PowerSet));
             Assert.False(_deep.PowerSet.IsSubsetOf(_deep.Full));
 
+            // 1 要素集合の族を冪集合と突き合わせる形（#90 で線形になったお題）。
+            // 打ち切りが効かないので、10 万段の対をひとつ残らず見る。
+            Assert.True(_deep.Singletons.IsSubsetOf(_deep.PowerSet));
+            Assert.False(_deep.PowerSet.IsSubsetOf(_deep.Singletons));
+
             Assert.True(_deep.Full.Overlaps(_deep.PowerSet));
+            Assert.True(_deep.Singletons.Overlaps(_deep.PowerSet));
             Assert.False(_deep.Full.Overlaps(_deep.Singletons));
         }
 
