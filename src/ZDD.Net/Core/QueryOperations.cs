@@ -65,23 +65,41 @@ namespace ZDD.Net.Core
         /// </exception>
         public static bool Contains(ZddManager manager, int rootId, ReadOnlySpan<int> items)
         {
+            EnsureItemsInRange(manager, items);
+
+            // 昇順に並べておけば、根から葉へ向かって item が増える ZDD と同時に前進できる。
+            // 空なら ToArray は割り当てずに空配列を返すので、そのまま渡してよい。
+            int[] sorted = items.ToArray();
+            Array.Sort(sorted);
+
+            return ContainsSorted(manager, rootId, sorted);
+        }
+
+        /// <summary>
+        /// 集合が<b>昇順に並んでいる</b>ことを前提にした <see cref="Contains"/>。
+        /// </summary>
+        /// <param name="manager">族を所有するマネージャ。</param>
+        /// <param name="rootId">族の根ノード ID。</param>
+        /// <param name="sortedItems">
+        /// 調べる集合の item index。<b>昇順</b>で、範囲検査は済んでいなければならない
+        /// （<see cref="EnsureItemsInRange"/>）。同じ item が重なっていてもよい。
+        /// </param>
+        /// <remarks>
+        /// 既に並べ替え済みの集合を持っている呼び出し側（<see cref="SetRanking"/> の順位づけ）が、
+        /// 並べ直しと配列の作り直しを二重に払わずに済むようにするための入口。
+        /// </remarks>
+        /// <exception cref="ObjectDisposedException">
+        /// <paramref name="manager"/> が破棄済みの場合。
+        /// </exception>
+        public static bool ContainsSorted(ZddManager manager, int rootId, ReadOnlySpan<int> sortedItems)
+        {
             // 破棄済みならここで ObjectDisposedException になる。
             NodeTable nodes = manager.Table.Nodes;
 
-            // 途中まで降りてから例外にすると、呼び出し側から見て何が起きたのか分からない
-            // （ZddManager.Flip と同じ手つき）。欲しいのは範囲検査そのものなので、結果は捨てる。
-            foreach (int item in items)
-            {
-                _ = manager.LevelOf(item);
-            }
-
-            if (items.Length == 0)
+            if (sortedItems.Length == 0)
             {
                 return HasEmptySet(nodes, rootId);
             }
-
-            int[] wanted = items.ToArray();
-            Array.Sort(wanted);
 
             int next = 0;
             int id = rootId;
@@ -91,20 +109,20 @@ namespace ZDD.Net.Core
                 ref ZddNode node = ref nodes[id];
                 int item = manager.ItemOf(node.Level);
 
-                if (next < wanted.Length && wanted[next] < item)
+                if (next < sortedItems.Length && sortedItems[next] < item)
                 {
                     // この item を分岐に使うノードはもう現れない ＝ ここから下の集合はどれも含まない。
                     return false;
                 }
 
-                if (next < wanted.Length && wanted[next] == item)
+                if (next < sortedItems.Length && sortedItems[next] == item)
                 {
                     // 同じ item が重なって渡されていても、集合としては 1 つ。
                     do
                     {
                         next++;
                     }
-                    while (next < wanted.Length && wanted[next] == item);
+                    while (next < sortedItems.Length && sortedItems[next] == item);
 
                     id = node.Hi;
                 }
@@ -115,7 +133,34 @@ namespace ZDD.Net.Core
             }
 
             // 終端に着いても、まだ使い残した item があれば別の集合を辿ったことになる。
-            return id == NodeTable.Top && next == wanted.Length;
+            return id == NodeTable.Top && next == sortedItems.Length;
+        }
+
+        /// <summary>
+        /// item がすべてこのマネージャの宇宙に収まっていることを確かめる。
+        /// </summary>
+        /// <param name="manager">族を所有するマネージャ。</param>
+        /// <param name="items">調べる item index。</param>
+        /// <remarks>
+        /// 途中まで降りてから例外にすると、呼び出し側から見て何が起きたのか分からない
+        /// （<see cref="ZddManager.Flip"/> と同じ手つき）。欲しいのは範囲検査そのものなので、
+        /// <see cref="ZddManager.LevelOf"/> の結果は捨てる。
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// <paramref name="items"/> に範囲外の item index が含まれる場合。
+        /// </exception>
+        /// <exception cref="ObjectDisposedException">
+        /// <paramref name="manager"/> が破棄済みの場合。
+        /// </exception>
+        public static void EnsureItemsInRange(ZddManager manager, ReadOnlySpan<int> items)
+        {
+            // 破棄済みならここで ObjectDisposedException になる（降り始める前に）。
+            _ = manager.Table;
+
+            foreach (int item in items)
+            {
+                _ = manager.LevelOf(item);
+            }
         }
 
         /// <summary>

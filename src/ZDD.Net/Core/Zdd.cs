@@ -703,6 +703,145 @@ namespace ZDD.Net.Core
         public bool Contains(params ReadOnlySpan<int> items) => Manager.Contains(this, items);
 
         /// <summary>
+        /// この族の <paramref name="index"/> 番目（0 始まり）の集合を返す（unranking）。
+        /// </summary>
+        /// <param name="index">
+        /// 取り出す集合の順位。0 以上 <see cref="Count"/> 未満。族の濃度は <see cref="BigInteger"/> なので、
+        /// 順位も <see cref="BigInteger"/> で受ける（<c>long</c> に収まらない族があるため）。
+        /// </param>
+        /// <param name="order">
+        /// 順位の数え方。既定は <see cref="ZddEnumerationOrder.Default"/>。
+        /// </param>
+        /// <returns>
+        /// 昇順に並んだ item index の <c>int[]</c>。呼び出しごとに新しい配列を返す。
+        /// </returns>
+        /// <remarks>
+        /// <para>
+        /// <b>これが「10^20 個の解から k 番目を取り出す」機能である</b>（docs/PLAN.md §5.3）。
+        /// 列挙（<see cref="Sets"/>）は先頭から順に舐めるので k 番目を得るには k 回ぶん辿るが、
+        /// こちらはノードごとの部分濃度を先に求めておき、根から<b>1 本の経路を降りるだけ</b>で答を出す。
+        /// 手間は「濃度の走査（ノード数ぶんの足し算。<see cref="Count"/> と同じ）＋ O(変数の個数)」。
+        /// </para>
+        /// <para>
+        /// <b>順序は列挙と一致する</b>。同じ <paramref name="order"/> を渡す限り、
+        /// <c>ElementAt(k)</c> は <c>Sets(order).ElementAt(k)</c> と必ず同じ集合を返す。
+        /// </para>
+        /// <para>
+        /// <b>濃度の表は呼び出しごとに作って捨てる</b>。連続して何度も引くなら
+        /// <see cref="Sample(int, Random)"/> のように<b>まとめて頼む</b> API のほうが速い
+        /// （表を 1 本だけ作って使い回すため）。
+        /// </para>
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// <paramref name="index"/> が 0 未満または <see cref="Count"/> 以上の場合
+        /// （空の族ではどんな値も範囲外になる）。<paramref name="order"/> が定義されていない値の場合。
+        /// </exception>
+        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public int[] ElementAt(BigInteger index, ZddEnumerationOrder order = ZddEnumerationOrder.Default) =>
+            Manager.ElementAt(this, index, order);
+
+        /// <summary>
+        /// <paramref name="set"/> が表す集合の順位を返す（ranking）。族に属さなければ <c>-1</c>。
+        /// </summary>
+        /// <param name="set">
+        /// 調べる集合の item index。順不同でよく、同じ item が重なっていても 1 つとして扱う。
+        /// 空なら「空集合の順位」を問うことになる。
+        /// </param>
+        /// <param name="order">
+        /// 順位の数え方。既定は <see cref="ZddEnumerationOrder.Default"/>。
+        /// </param>
+        /// <returns>
+        /// 0 以上 <see cref="Count"/> 未満の順位。族に属さない集合には順位が無いので、
+        /// そのときは <b><c>-1</c> を返す</b>（例外にはしない。<see cref="System.Collections.IList.IndexOf"/> や
+        /// <see cref="string.IndexOf(string)"/> と同じ流儀で、<see cref="Contains(IEnumerable{int})"/> が
+        /// <see langword="false"/> を返す集合がちょうどこれに当たる）。
+        /// </returns>
+        /// <remarks>
+        /// <b><see cref="ElementAt"/> の逆</b>である。<c>IndexOf(ElementAt(k)) == k</c> がすべての
+        /// <c>k</c> で成り立ち、族に属する集合 <c>s</c> について <c>ElementAt(IndexOf(s))</c> は
+        /// <c>s</c> に戻る（同じ <paramref name="order"/> を渡した場合）。
+        /// 手間は <see cref="ElementAt"/> と同じで、濃度の走査 1 回＋経路 1 本。
+        /// </remarks>
+        /// <exception cref="ArgumentNullException"><paramref name="set"/> が <see langword="null"/> の場合。</exception>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// <paramref name="set"/> に 0 以上 <see cref="ZddManager.VariableCount"/> 未満でない値が含まれる場合。
+        /// <paramref name="order"/> が定義されていない値の場合。
+        /// </exception>
+        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public BigInteger IndexOf(IEnumerable<int> set, ZddEnumerationOrder order = ZddEnumerationOrder.Default)
+        {
+            ThrowHelper.ThrowIfNull(set, nameof(set));
+
+            int[] items = set as int[] ?? new List<int>(set).ToArray();
+            return Manager.IndexOf(this, items, order);
+        }
+
+        /// <inheritdoc cref="IndexOf(IEnumerable{int}, ZddEnumerationOrder)"/>
+        /// <param name="items">
+        /// 調べる集合の item index。順不同でよく、同じ item が重なっていても 1 つとして扱う。
+        /// 空なら「空集合の順位」を問うことになる。
+        /// </param>
+        /// <remarks>
+        /// 順位の数え方は <see cref="ZddEnumerationOrder.Default"/> に固定される
+        /// （<c>params</c> は最後の引数でなければならないため）。順序を選ぶときは
+        /// <see cref="IndexOf(IEnumerable{int}, ZddEnumerationOrder)"/> を使う。
+        /// </remarks>
+        public BigInteger IndexOf(params ReadOnlySpan<int> items) =>
+            Manager.IndexOf(this, items, ZddEnumerationOrder.Default);
+
+        /// <summary>
+        /// この族から集合を 1 つ、<b>一様ランダム</b>に選んで返す。
+        /// </summary>
+        /// <param name="random">乱数の供給元。種を固定すれば結果は決定的になる。</param>
+        /// <returns>
+        /// 昇順に並んだ item index の <c>int[]</c>。族に属するどの集合も等しい確率で選ばれる。
+        /// </returns>
+        /// <remarks>
+        /// <para>
+        /// <b>「10^20 個の解から一様に 1 つ」が ZDD の目玉機能である</b>（docs/PLAN.md §5.3）。
+        /// 解を並べることなく、<see cref="ElementAt"/> に一様乱数を食わせるだけで実現できる。
+        /// 手間は <see cref="ElementAt"/> と同じ。
+        /// </para>
+        /// <para>
+        /// <b>本当に一様である</b>。順位は <see cref="Count"/> 未満の <see cref="BigInteger"/> を
+        /// <b>棄却法</b>で作る（乱数の剰余を取る素朴なやり方は、範囲が乱数の周期の約数でない限り
+        /// 必ず偏るため）。<paramref name="random"/> が返すビットの質はそのまま結果の質になる。
+        /// </para>
+        /// </remarks>
+        /// <exception cref="ArgumentNullException"><paramref name="random"/> が <see langword="null"/> の場合。</exception>
+        /// <exception cref="InvalidOperationException">
+        /// <c>default(Zdd)</c> の場合、またはこの族が空（<see cref="IsEmpty"/>）で選べる集合が 1 つも無い場合。
+        /// </exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public int[] Sample(Random random) => Manager.Sample(this, random);
+
+        /// <summary>
+        /// この族から集合を <paramref name="count"/> 個、<b>一様ランダム</b>に選んで返す。
+        /// </summary>
+        /// <param name="count">取り出す個数。0 以上。</param>
+        /// <param name="random">乱数の供給元。種を固定すれば結果は決定的になる。</param>
+        /// <returns>
+        /// <paramref name="count"/> 個の集合。<b>復元抽出</b>（重複あり）で、1 つずつ独立に引くので
+        /// <b>同じ集合が 2 度以上現れることがある</b>。重複しない <c>n</c> 個が要るなら、
+        /// 返ってきたものを呼び出し側で均すか、多めに引いて絞る。
+        /// </returns>
+        /// <remarks>
+        /// <c>Sample(random)</c> を <paramref name="count"/> 回呼ぶのと結果の分布は同じだが、
+        /// <b>濃度の表を 1 本だけ作って使い回す</b>ぶん速い（手間は「濃度の走査 1 回 ＋
+        /// <paramref name="count"/> × O(変数の個数)」）。
+        /// </remarks>
+        /// <exception cref="ArgumentNullException"><paramref name="random"/> が <see langword="null"/> の場合。</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="count"/> が負の場合。</exception>
+        /// <exception cref="InvalidOperationException">
+        /// <c>default(Zdd)</c> の場合、またはこの族が空（<see cref="IsEmpty"/>）で選べる集合が 1 つも無い場合。
+        /// <paramref name="count"/> が 0 でも、空の族からは取り出せないものとして例外にする。
+        /// </exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public int[][] Sample(int count, Random random) => Manager.Sample(this, count, random);
+
+        /// <summary>
         /// この族の集合がすべて <paramref name="g"/> にも属するか（族としての包含 <c>F ⊆ G</c>）を返す。
         /// </summary>
         /// <param name="g">相手の族。このマネージャに属していなければならない。</param>

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using ZDD.Net.Internal;
 
 namespace ZDD.Net.Core
@@ -323,6 +324,58 @@ namespace ZDD.Net.Core
             EnsureOwns(f, nameof(f));
 
             return QueryOperations.Contains(this, f.Id, items);
+        }
+
+        /// <summary>
+        /// <paramref name="f"/> の <paramref name="index"/> 番目の集合を返す（unranking）。
+        /// </summary>
+        /// <param name="f">対象の族。このマネージャに属していなければならない。</param>
+        /// <param name="index">取り出す集合の順位。0 以上、族の濃度未満。</param>
+        /// <param name="order">順位の数え方（列挙の順序と同じ）。</param>
+        /// <remarks>
+        /// 族を作らないので、演算キャッシュを整える必要も作業領域を借りる必要も無い。
+        /// </remarks>
+        internal int[] ElementAt(in Zdd f, BigInteger index, ZddEnumerationOrder order)
+        {
+            EnsureOwns(f, nameof(f));
+
+            return SetRanking.ElementAt(this, f.Id, index, order);
+        }
+
+        /// <summary>
+        /// <paramref name="items"/> が表す集合の <paramref name="f"/> における順位を返す（ranking）。
+        /// </summary>
+        /// <param name="f">対象の族。このマネージャに属していなければならない。</param>
+        /// <param name="items">調べる集合の item index。順不同・重複可。</param>
+        /// <param name="order">順位の数え方（列挙の順序と同じ）。</param>
+        internal BigInteger IndexOf(in Zdd f, ReadOnlySpan<int> items, ZddEnumerationOrder order)
+        {
+            EnsureOwns(f, nameof(f));
+
+            return SetRanking.IndexOf(this, f.Id, items, order);
+        }
+
+        /// <summary><paramref name="f"/> から集合を 1 つ、一様ランダムに選んで返す。</summary>
+        /// <param name="f">対象の族。このマネージャに属していなければならない。</param>
+        /// <param name="random">乱数の供給元。</param>
+        internal int[] Sample(in Zdd f, Random random)
+        {
+            EnsureOwns(f, nameof(f));
+
+            return SetRanking.Sample(this, f.Id, random);
+        }
+
+        /// <summary>
+        /// <paramref name="f"/> から集合を <paramref name="count"/> 個、一様ランダムに選んで返す。
+        /// </summary>
+        /// <param name="f">対象の族。このマネージャに属していなければならない。</param>
+        /// <param name="count">取り出す個数。0 以上。</param>
+        /// <param name="random">乱数の供給元。</param>
+        internal int[][] Sample(in Zdd f, int count, Random random)
+        {
+            EnsureOwns(f, nameof(f));
+
+            return SetRanking.Sample(this, f.Id, count, random);
         }
 
         /// <summary><paramref name="f"/> の集合がすべて <paramref name="g"/> にも属するかどうか。</summary>

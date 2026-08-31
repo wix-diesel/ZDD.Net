@@ -62,17 +62,33 @@ namespace ZDD.Net.Core
         /// </exception>
         public static IEnumerable<int[]> Enumerate(ZddManager manager, int rootId, ZddEnumerationOrder order)
         {
+            EnsureDefinedOrder(order);
+
+            // 破棄済みならここで ObjectDisposedException になる（列挙を始めてからではなく）。
+            _ = manager.Table;
+
+            return Traverse(manager, rootId, order == ZddEnumerationOrder.Lexicographic);
+        }
+
+        /// <summary>
+        /// 順序が定義された値であることを確かめる。
+        /// </summary>
+        /// <param name="order">検査する順序。</param>
+        /// <remarks>
+        /// 順位づけ（<see cref="SetRanking"/>）も同じ順序を受け取るので、検査はここ 1 箇所に置く。
+        /// 順序の意味を決めているのが列挙の側だからで、2 箇所に書くと片方だけ直されうる。
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// <paramref name="order"/> が定義されていない値の場合。
+        /// </exception>
+        public static void EnsureDefinedOrder(ZddEnumerationOrder order)
+        {
             if (order is not (ZddEnumerationOrder.Default or ZddEnumerationOrder.Lexicographic))
             {
                 ThrowHelper.ThrowArgumentOutOfRangeException(
                     nameof(order),
                     $"'{nameof(order)}' must be a defined {nameof(ZddEnumerationOrder)} value, but was {(int)order}.");
             }
-
-            // 破棄済みならここで ObjectDisposedException になる（列挙を始めてからではなく）。
-            _ = manager.Table;
-
-            return Traverse(manager, rootId, order == ZddEnumerationOrder.Lexicographic);
         }
 
         /// <summary>
