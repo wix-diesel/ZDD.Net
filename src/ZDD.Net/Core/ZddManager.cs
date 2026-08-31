@@ -378,6 +378,87 @@ namespace ZDD.Net.Core
             return SetRanking.Sample(this, f.Id, count, random);
         }
 
+        /// <summary><paramref name="f"/> の中で重みが最大の集合を、その重みとともに返す。</summary>
+        /// <typeparam name="TWeight">重みの型。</typeparam>
+        /// <typeparam name="TOps">重みの演算。<c>struct</c> でなければならない。</typeparam>
+        /// <param name="f">対象の族。このマネージャに属していなければならない。</param>
+        /// <param name="weights">item ごとの重み。長さは <see cref="VariableCount"/> と等しいこと。</param>
+        /// <remarks>
+        /// 族を作らないので、演算キャッシュを整える必要も作業領域を借りる必要も無い。
+        /// </remarks>
+        internal WeightedSet<TWeight> MaxWeight<TWeight, TOps>(in Zdd f, ReadOnlySpan<TWeight> weights)
+            where TOps : struct, IWeightOps<TWeight>
+        {
+            EnsureOwns(f, nameof(f));
+
+            return WeightOperations.Optimize<TWeight, TOps>(this, f.Id, weights, maximize: true);
+        }
+
+        /// <summary><paramref name="f"/> の中で重みが最小の集合を、その重みとともに返す。</summary>
+        /// <typeparam name="TWeight">重みの型。</typeparam>
+        /// <typeparam name="TOps">重みの演算。<c>struct</c> でなければならない。</typeparam>
+        /// <param name="f">対象の族。このマネージャに属していなければならない。</param>
+        /// <param name="weights">item ごとの重み。長さは <see cref="VariableCount"/> と等しいこと。</param>
+        internal WeightedSet<TWeight> MinWeight<TWeight, TOps>(in Zdd f, ReadOnlySpan<TWeight> weights)
+            where TOps : struct, IWeightOps<TWeight>
+        {
+            EnsureOwns(f, nameof(f));
+
+            return WeightOperations.Optimize<TWeight, TOps>(this, f.Id, weights, maximize: false);
+        }
+
+        /// <summary><paramref name="f"/> の中で重みが大きい順に <paramref name="k"/> 個の集合を返す。</summary>
+        /// <typeparam name="TWeight">重みの型。</typeparam>
+        /// <typeparam name="TOps">重みの演算。<c>struct</c> でなければならない。</typeparam>
+        /// <param name="f">対象の族。このマネージャに属していなければならない。</param>
+        /// <param name="weights">item ごとの重み。長さは <see cref="VariableCount"/> と等しいこと。</param>
+        /// <param name="k">取り出す個数。0 以上。</param>
+        internal WeightedSet<TWeight>[] TopK<TWeight, TOps>(in Zdd f, ReadOnlySpan<TWeight> weights, int k)
+            where TOps : struct, IWeightOps<TWeight>
+        {
+            EnsureOwns(f, nameof(f));
+
+            return WeightOperations.TopK<TWeight, TOps>(this, f.Id, weights, k);
+        }
+
+        /// <summary>
+        /// 各 item が独立に確率 <paramref name="probabilities"/> で選ばれるとき、
+        /// 出来上がる集合が <paramref name="f"/> に属する確率。
+        /// </summary>
+        /// <param name="f">対象の族。このマネージャに属していなければならない。</param>
+        /// <param name="probabilities">
+        /// item ごとの確率。長さは <see cref="VariableCount"/> と等しく、各値は 0 以上 1 以下。
+        /// </param>
+        internal double Probability(in Zdd f, ReadOnlySpan<double> probabilities)
+        {
+            EnsureOwns(f, nameof(f));
+
+            return WeightOperations.Probability(this, f.Id, probabilities);
+        }
+
+        /// <summary>
+        /// <paramref name="f"/> から集合を 1 つ一様に選んだときの、その集合の重みの期待値。
+        /// </summary>
+        /// <param name="f">対象の族。このマネージャに属していなければならない。</param>
+        /// <param name="weights">item ごとの重み。長さは <see cref="VariableCount"/> と等しいこと。</param>
+        internal double ExpectedValue(in Zdd f, ReadOnlySpan<double> weights)
+        {
+            EnsureOwns(f, nameof(f));
+
+            return WeightOperations.ExpectedValue(this, f.Id, weights);
+        }
+
+        /// <summary>
+        /// <paramref name="f"/> から集合を 1 つ一様に選んだとき、item ごとにそれが含まれる確率。
+        /// </summary>
+        /// <param name="f">対象の族。このマネージャに属していなければならない。</param>
+        internal double[] ItemFrequency(in Zdd f)
+        {
+            EnsureOwns(f, nameof(f));
+
+            return WeightOperations.ItemFrequency(this, f.Id);
+        }
+
         /// <summary><paramref name="f"/> の集合がすべて <paramref name="g"/> にも属するかどうか。</summary>
         /// <param name="f">左の族。このマネージャに属していなければならない。</param>
         /// <param name="g">右の族。このマネージャに属していなければならない。</param>

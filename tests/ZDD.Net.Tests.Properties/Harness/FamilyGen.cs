@@ -29,6 +29,15 @@ namespace ZDD.Net.Tests.Properties.Harness
         /// <summary>1 つの族に入れる集合の個数の上限。</summary>
         public const int MaxSetCount = 8;
 
+        /// <summary>生成する重みの下限。</summary>
+        public const int MinWeight = -9;
+
+        /// <summary>生成する重みの上限。</summary>
+        public const int MaxWeight = 9;
+
+        /// <summary>確率を整数で生成するときの分母。</summary>
+        public const int PercentScale = 100;
+
         /// <summary>族を 1 つ生成する。</summary>
         public static Gen<FamilySpec> Family { get; } =
             Gen.Int[MinVariableCount, MaxVariableCount].SelectMany(FamilyOf);
@@ -50,6 +59,19 @@ namespace ZDD.Net.Tests.Properties.Harness
             Gen.Int[MinVariableCount, MaxVariableCount]
                 .SelectMany(n => Gen.Select(FamilyOf(n), Gen.Int[0, n - 1]))
                 .Select(pair => new FamilyAndItem(pair.Item1, pair.Item2));
+
+        /// <summary>族と、item ごとの重み・確率を生成する（重み最適化に要る）。</summary>
+        /// <remarks>
+        /// 重みは負も含む小さな整数（総和が <see cref="int"/> に収まる範囲）。確率は
+        /// 0〜100 の整数を 100 で割ったもので、生成も縮小も整数のまま行われるので反例が読める。
+        /// </remarks>
+        public static Gen<FamilyAndWeights> FamilyAndWeights { get; } =
+            Gen.Int[MinVariableCount, MaxVariableCount]
+                .SelectMany(n => Gen.Select(
+                    FamilyOf(n),
+                    Gen.Int[MinWeight, MaxWeight].Array[n],
+                    Gen.Int[0, PercentScale].Array[n]))
+                .Select(triple => new FamilyAndWeights(triple.Item1, triple.Item2, triple.Item3));
 
         /// <summary>変数の個数を決め打ちして族を生成する。</summary>
         public static Gen<FamilySpec> FamilyOf(int variableCount)
@@ -100,6 +122,32 @@ namespace ZDD.Net.Tests.Properties.Harness
         public override string ToString() =>
             $"n={First.VariableCount} f={FamilySpec.Format(First.Masks)} " +
             $"g={FamilySpec.Format(Second.Masks)} h={FamilySpec.Format(Third.Masks)}";
+    }
+
+    /// <summary>族と、その宇宙の item ごとの重み・確率。</summary>
+    internal sealed class FamilyAndWeights
+    {
+        private readonly int[] _percents;
+
+        public FamilyAndWeights(FamilySpec family, int[] weights, int[] percents)
+        {
+            Family = family;
+            Weights = weights;
+            _percents = percents;
+        }
+
+        public FamilySpec Family { get; }
+
+        /// <summary>item ごとの重み。長さは <c>Family.VariableCount</c>。</summary>
+        public int[] Weights { get; }
+
+        /// <summary>item ごとの確率（0 以上 1 以下）。長さは <c>Family.VariableCount</c>。</summary>
+        public double[] Probabilities =>
+            Array.ConvertAll(_percents, percent => (double)percent / FamilyGen.PercentScale);
+
+        public override string ToString() =>
+            $"n={Family.VariableCount} f={FamilySpec.Format(Family.Masks)} " +
+            $"w=[{string.Join(", ", Weights)}] p=[{string.Join(", ", _percents)}]/{FamilyGen.PercentScale}";
     }
 
     /// <summary>族と、その宇宙に属する item 1 つ。</summary>

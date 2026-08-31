@@ -242,6 +242,13 @@ public readonly struct Zdd : IEquatable<Zdd>, IEnumerable<int[]>
     public BigInteger IndexOf(IEnumerable<int> set, ZddEnumerationOrder order = default);  // ranking（無ければ -1）
     public int[] Sample(Random rng);        // 一様ランダムに 1 個
     public int[][] Sample(int n, Random rng);  // 一様ランダムに n 個（復元抽出）
+    public WeightedSet<T> MaxWeight<T, TOps>(params ReadOnlySpan<T> w) where TOps : struct, IWeightOps<T>;
+    public WeightedSet<T> MinWeight<T, TOps>(params ReadOnlySpan<T> w) where TOps : struct, IWeightOps<T>;
+    public WeightedSet<T>[] TopK<T, TOps>(ReadOnlySpan<T> w, int k) where TOps : struct, IWeightOps<T>;
+    // int / long / double は型引数を書かない短い形でも呼べる（MaxWeight(w) など）
+    public double Probability(params ReadOnlySpan<double> p);   // 各 item が独立に p で選ばれるとき
+    public double ExpectedValue(params ReadOnlySpan<double> w); // 族の上の一様分布での期待値
+    public double[] ItemFrequency();                            // 同上、item ごとの出現確率
     // 演算子: | & - ^ * / % ~
 }
 ```
@@ -368,6 +375,34 @@ public readonly struct Zdd : IEquatable<Zdd>, IEnumerable<int[]>
 食わせるだけだが、`rng` の返すビットの剰余を取ると必ず偏る（範囲が 2 の冪でない限り）。
 `Count - 1` を表せるビット数ぶんだけ引いて、範囲外なら捨てて引き直す**棄却法**を使う。
 1 回で当たる確率は必ず 1/2 より大きいので、桁数がいくら大きくても引き直しの期待回数は 2 未満。
+
+**重み最適化は DAG の最長路 DP**。ZDD は閉路を持たないので、`MaxWeight` は
+「⊤ は `Zero`、⊥ は候補にならない、ノードでは `max(lo, hi + w[i])`」というボトムアップ DP
+そのものになる。どちらの枝を選んだかを覚えておけば、根から 1 本降りるだけで**最適集合**が
+復元できるので、最適値と最適集合は 1 回の呼び出しで一緒に返す（`WeightedSet<T>`）。
+重みが負でも成り立つ（閉路が無いため）。同点のときは 0-枝側を採ると決めてあり、
+これは既定の列挙順で最初に来る集合に一致する。`TopK` は「良い方を 1 つ」を「良い方から k 個」に
+広げたもので、ノードごとに整列済みの上位 k 個を併合する。**費用は k に比例する**
+（時間 O(m·k)、メモリ O(m·k)）ので、doc に明記して小さい k での利用を勧める。
+同じ重みの集合が複数あるときに何番目に来るかは規定せず、規定するのは重みの並びだけとする。
+
+**重み型は `IWeightOps<T>` の `static abstract` メンバで抽象化する**（B10・§2）。DP に要るのは
+`Zero` / `Add` / `Compare` の 3 つだけなので、この 3 つを型で渡せば `int` / `long` / `double` /
+`BigInteger` の同梱実装のほか、有理数や辞書順タプルのような利用者定義の重みもそのまま乗る。
+`IDdEval` と同じく **interface 型では受け取らない**（`where TOps : struct, IWeightOps<T>`）。
+ノードごとに走る `Add` / `Compare` が仮想呼び出しになると数倍遅くなるためで、
+この約束はテストで機械的に確かめる。
+
+**`Probability` の宇宙はマネージャの全変数**（`Support()` ではない。B8）。すなわち
+`Σ_{A∈F} Π_{i∈A} p[i] · Π_{i∉A} (1-p[i])` で、ZDD が飛ばした段（その部分族が使っていない変数）は
+「必ず選ばれていない」ことを意味するので、子へ降りるたびに `1-p[j]` を補う。これを補わないと
+確率にならない別の量になる（各排他事象の和が 1 にならない）。定義どおりなので、
+すべての `p[i]` を 1 にした答は「全体集合 U が族に属するか」であって、族が空でないことでは 1 にならない。
+一方 `ExpectedValue` / `ItemFrequency` の分布は**族の上の一様分布**（`Sample` と同じ）で、
+`Probability` とは別物である。頻度は「item i を含む集合の個数 ÷ 濃度」で、前者は
+「根からの経路数（トップダウン）× 1-枝の先の濃度（ボトムアップ）」の和として 1 回ずつの走査で出る。
+個数は `BigInteger` で厳密に数え、`double` にするのは最後の割り算だけにする
+（10^308 を超える濃度で `inf / inf` にしないため）。
 
 ---
 
