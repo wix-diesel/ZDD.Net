@@ -4,56 +4,30 @@ using System.Diagnostics;
 namespace ZDD.Net.Core
 {
     /// <summary>
-    /// 族どうしを組み合わせる集合演算（<see cref="ZddOperation.Union"/> /
+    /// Set operations combining two families (<see cref="ZddOperation.Union"/> /
     /// <see cref="ZddOperation.Intersect"/> / <see cref="ZddOperation.Difference"/> /
-    /// <see cref="ZddOperation.SymmetricDifference"/>）の実装。
+    /// <see cref="ZddOperation.SymmetricDifference"/>).
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// <b>単項演算の雛形をそのまま二項に広げたもの</b>（<see cref="UnaryOperations.Apply"/> /
-    /// docs/PLAN.md §4.5）。スタックの回し方は同じで、変わるのは
-    /// 「部分問題が 1 つのノードではなく<b>ノードの対</b>になる」ところだけである。
-    /// 対は <see cref="OperationKey.Of"/> で 1 個の <c>long</c> に詰め、
-    /// 作業スタックと途中結果表にはその値を入れる。
-    /// </para>
-    /// <para>
-    /// <b>再帰は書かない</b>。ZDD の深さは変数の個数そのもので、10 万規模の族を素直な再帰で辿ると
-    /// <c>StackOverflowException</c> になり、.NET ではこれを catch できずプロセスが即死する。
-    /// </para>
-    /// <para>
-    /// <b>分解の形</b>（<see cref="Decompose"/>）: レベル <c>L</c> のノードは
-    /// <c>f = f₀ ∪ item·f₁</c> と読める（<c>f₀</c> = item を含まない側、
-    /// <c>f₁</c> = item を含む側から item を除いたもの）。両者が同じレベルで分岐していれば
-    /// 枝どうしを突き合わせればよく、片方だけが上にあるときは
-    /// <b>下の族には その item を含む集合が 1 つも無い</b>ので、
-    /// 上の族の 1-枝をそのまま残すか丸ごと捨てるかのどちらかになる。
-    /// 演算ごとに違うのはその 1 点だけなので、4 演算を 1 つのループで書いている。
-    /// </para>
-    /// <para>
-    /// <b>可換演算のキー</b>: オペランドの正規化は <see cref="OperationKey"/> が引き受ける。
-    /// </para>
+    /// Same iterative-traversal template as <see cref="UnaryOperations.Apply"/>, but subproblems
+    /// are pairs of nodes rather than single nodes (packed by <see cref="OperationKey.Of"/>).
+    /// When operands branch at different levels, the lower family has no sets containing that
+    /// item, so the upper family's 1-edge either passes through unchanged or is dropped entirely
+    /// (<see cref="Decompose"/>) — the one point where the four ops differ.
     /// </remarks>
     internal static class BinaryOperations
     {
-        /// <summary>ノードを作らず Lo 枝の答をそのまま結果にすることを表す番兵のレベル。</summary>
-        /// <remarks>レベル 0 は終端のもので、演算がノードを作るレベルには決してならない。</remarks>
+        /// <summary>Sentinel level meaning "no node created; use the lo branch's answer directly".</summary>
+        /// <remarks>Level 0 belongs to terminals and is never produced by this operation.</remarks>
         private const int NoNode = 0;
 
-        /// <summary>
-        /// 2 つの族に集合演算を適用し、結果の根ノード ID を返す。
-        /// </summary>
-        /// <param name="manager">両方の族を所有するマネージャ。</param>
-        /// <param name="op">
-        /// <see cref="ZddOperation.Union"/> / <see cref="ZddOperation.Intersect"/> /
-        /// <see cref="ZddOperation.Difference"/> / <see cref="ZddOperation.SymmetricDifference"/>
-        /// のいずれか。
-        /// </param>
-        /// <param name="fRoot">左オペランドの根ノード ID。</param>
-        /// <param name="gRoot">右オペランドの根ノード ID。</param>
-        /// <returns>結果の族の根ノード ID。</returns>
-        /// <exception cref="ObjectDisposedException">
-        /// <paramref name="manager"/> が破棄済みの場合。
-        /// </exception>
+        /// <summary>Applies a set operation to two families and returns the resulting root node id.</summary>
+        /// <param name="manager">Manager owning both families.</param>
+        /// <param name="op">One of the set operations.</param>
+        /// <param name="fRoot">Root node id of the left operand.</param>
+        /// <param name="gRoot">Root node id of the right operand.</param>
+        /// <returns>Root node id of the resulting family.</returns>
+        /// <exception cref="ObjectDisposedException"><paramref name="manager"/> is disposed.</exception>
         public static int Apply(ZddManager manager, ZddOperation op, int fRoot, int gRoot)
         {
             Debug.Assert(
@@ -63,8 +37,7 @@ namespace ZDD.Net.Core
                     or ZddOperation.SymmetricDifference,
                 $"'{op}' is not one of the set operations.");
 
-            // 終端どうし（∅ / {∅} の組合せ）と、片方が ∅ の場合はここで片付く。
-            // 作業領域を借りる前に返せるので、単発の f | Empty のような呼び出しは表に触れない。
+            // Terminal combinations settle here before renting a workspace.
             if (TryResolveTerminal(op, fRoot, gRoot, out int trivial))
             {
                 return trivial;
@@ -88,9 +61,7 @@ namespace ZDD.Net.Core
 
                     if (OperationWorkspace.IsCombine(entry))
                     {
-                        // 子は必ず計算済み。合成を積んだ直後に子を積んでいるので（LIFO）、
-                        // 子の部分問題がすべて片付くまで、この項目は取り出されない。
-                        // 分解はノード表を読むだけなので、積んだときと同じ答が出る。
+                        // Children are already computed (pushed just below this entry, LIFO).
                         Decompose(op, nodes, f, g, out int level, out long loKey, out long hiKey, out int hiId);
 
                         work.TryGetResult(loKey, out int loResult);
@@ -98,19 +69,17 @@ namespace ZDD.Net.Core
                         int combined;
                         if (level == NoNode)
                         {
-                            // 上の族の 1-枝が丸ごと落ちる演算。残るのは 0-枝側の答だけ。
                             combined = loResult;
                         }
                         else
                         {
-                            // Hi 枝は「部分問題の答」か「そのまま残る既存のノード」のどちらか。
+                            // Hi branch is either a computed subproblem or an existing node passed through.
                             int hiResult = hiId;
                             if (hiKey != OperationKey.None)
                             {
                                 work.TryGetResult(hiKey, out hiResult);
                             }
 
-                            // ゼロサプレス規則と一意化は GetNode が引き受ける。
                             combined = table.GetNode(level, loResult, hiResult);
                         }
 
@@ -119,27 +88,23 @@ namespace ZDD.Net.Core
                         continue;
                     }
 
-                    // 1) 途中結果表: 別の親が既に片付けていれば、それ以上何もしない。
                     if (work.HasResult(key))
                     {
                         continue;
                     }
 
-                    // 2) 基底ケース: 終端が絡む組合せは、降りずにその場で答が決まる。
                     if (TryResolveTerminal(op, f, g, out int direct))
                     {
                         work.SetResult(key, direct);
                         continue;
                     }
 
-                    // 3) 演算キャッシュ: 過去の演算で同じ部分問題を解いていれば、その答を使う。
                     if (cache.TryGetBinary(op, f, g, out int cached))
                     {
                         work.SetResult(key, cached);
                         continue;
                     }
 
-                    // 4) 1 段降りる。自分を先に積み、その上に未計算の子を積む。
                     Decompose(op, nodes, f, g, out _, out long childLoKey, out long childHiKey, out _);
 
                     work.PushCombine(key);
@@ -164,40 +129,25 @@ namespace ZDD.Net.Core
             }
         }
 
-        /// <summary>
-        /// 終端が絡む組合せの答を返す。ここだけで <c>f == g</c> / <c>f == ∅</c> / <c>g == ∅</c> を扱う。
-        /// </summary>
-        /// <returns>答が決まれば <see langword="true"/>。</returns>
-        /// <remarks>
-        /// <para>
-        /// この 3 つで<b>終端どうしの組合せはすべて尽きる</b>。残るのは <c>{∅}</c> と ∅ の対だけで、
-        /// それは <c>g == ∅</c>（または <c>f == ∅</c>）に当たるからである。
-        /// </para>
-        /// <para>
-        /// <c>{∅}</c>（<see cref="ZddManager.Base"/>）は、これら 4 演算では定数時間の近道にならない。
-        /// たとえば <c>f ∪ {∅}</c> は「f に空集合を足す」演算で、f の 0-枝を末端まで辿らなければ
-        /// 答が決まらない。近道を作るには結局同じだけ降りることになるので、素直に分解に任せる。
-        /// </para>
-        /// </remarks>
+        /// <summary>Resolves the answer when a terminal is involved (<c>f == g</c>, or either is ∅).</summary>
+        /// <returns><see langword="true"/> if the answer was resolved.</returns>
+        /// <remarks><c>{∅}</c> is not a constant-time shortcut for these ops: resolving it still requires walking to the 0-edge's end.</remarks>
         private static bool TryResolveTerminal(ZddOperation op, int f, int g, out int result)
         {
             if (f == g)
             {
-                // f ∪ f = f ∩ f = f、f ∖ f = f △ f = ∅。
                 result = op is ZddOperation.Union or ZddOperation.Intersect ? f : NodeTable.Bottom;
                 return true;
             }
 
             if (f == NodeTable.Bottom)
             {
-                // ∅ ∪ g = ∅ △ g = g、∅ ∩ g = ∅ ∖ g = ∅。
                 result = op is ZddOperation.Union or ZddOperation.SymmetricDifference ? g : NodeTable.Bottom;
                 return true;
             }
 
             if (g == NodeTable.Bottom)
             {
-                // f ∪ ∅ = f △ ∅ = f ∖ ∅ = f、f ∩ ∅ = ∅。
                 result = op == ZddOperation.Intersect ? NodeTable.Bottom : f;
                 return true;
             }
@@ -206,23 +156,15 @@ namespace ZDD.Net.Core
             return false;
         }
 
-        /// <summary>
-        /// 部分問題 <c>(f, g)</c> を 1 段分解する。ここだけが演算ごとに違う。
-        /// </summary>
-        /// <param name="op">演算の種別。</param>
-        /// <param name="nodes">ノード表。</param>
-        /// <param name="f">左オペランドのノード ID。</param>
-        /// <param name="g">右オペランドのノード ID。</param>
-        /// <param name="level">
-        /// 合成で作るノードのレベル。<see cref="NoNode"/> なら<b>ノードを作らず</b>
-        /// <paramref name="loKey"/> の答をそのまま結果にする。
-        /// </param>
-        /// <param name="loKey">0-枝側の部分問題のキー。常に有効。</param>
-        /// <param name="hiKey">
-        /// 1-枝側の部分問題のキー。<see cref="OperationKey.None"/> なら 1-枝は部分問題ではなく
-        /// <paramref name="hiId"/> のノードがそのまま入る。
-        /// </param>
-        /// <param name="hiId"><paramref name="hiKey"/> が <see cref="OperationKey.None"/> のときの 1-枝のノード ID。</param>
+        /// <summary>Decomposes subproblem <c>(f, g)</c> by one level. The only part that differs per operation.</summary>
+        /// <param name="op">Operation kind.</param>
+        /// <param name="nodes">Node table.</param>
+        /// <param name="f">Left operand's node id.</param>
+        /// <param name="g">Right operand's node id.</param>
+        /// <param name="level">Level of the combined node; <see cref="NoNode"/> means no node is created and <paramref name="loKey"/>'s answer is used directly.</param>
+        /// <param name="loKey">Key of the 0-edge subproblem; always valid.</param>
+        /// <param name="hiKey">Key of the 1-edge subproblem, or <see cref="OperationKey.None"/> if the 1-edge is simply <paramref name="hiId"/>.</param>
+        /// <param name="hiId">1-edge node id to use when <paramref name="hiKey"/> is <see cref="OperationKey.None"/>.</param>
         private static void Decompose(
             ZddOperation op,
             NodeTable nodes,
@@ -242,7 +184,7 @@ namespace ZDD.Net.Core
 
             if (fLevel == gLevel)
             {
-                // 同じ item で分岐している。0-枝どうし・1-枝どうしを突き合わせる。
+                // Same branching item: match 0-edges and 1-edges up.
                 int fLo;
                 int fHi;
                 {
@@ -266,8 +208,8 @@ namespace ZDD.Net.Core
                 return;
             }
 
-            // 片方だけが上（根側）にある。下の族はその item に一度も言及していない
-            // ＝ どの集合もその item を含まないので、上の族の 1-枝と交わる集合は無い。
+            // One operand's root is at a higher level; the lower one never mentions that item,
+            // so nothing in it intersects the upper operand's 1-edge.
             bool fIsUpper = fLevel > gLevel;
             int upper = fIsUpper ? f : g;
             int lower = fIsUpper ? g : f;
@@ -280,23 +222,20 @@ namespace ZDD.Net.Core
                 upperHi = node.Hi;
             }
 
-            // 上の族の 1-枝（= その item を含む集合たち）が答に残るかどうか。
+            // Whether the upper operand's 1-edge (its item-containing sets) survives in the result.
             bool keepsUpperHi = op switch
             {
-                // どちらも「相手が持っていない集合」を残す演算なので、1-枝はそのまま通る。
                 ZddOperation.Union or ZddOperation.SymmetricDifference => true,
-
-                // 相手に同じ集合は無いので、1-枝は丸ごと落ちる。
                 ZddOperation.Intersect => false,
 
-                // f ∖ g: f が上なら f の 1-枝は g に削られず残る。
-                // g が上なら g の 1-枝は f から何も削れないので、g の 0-枝だけを見ればよい。
+                // f \ g: if f is upper, its 1-edge is unaffected by g; if g is upper, g's
+                // 1-edge removes nothing from f, so only g's 0-edge matters.
                 ZddOperation.Difference => fIsUpper,
 
                 _ => throw Unsupported(op),
             };
 
-            // 差だけが非可換なので、上下を入れ替えても左右の並びは崩さない。
+            // Difference is the only non-commutative op, so keep operand order on recursion.
             loKey = fIsUpper ? OperationKey.Of(op, upperLo, lower) : OperationKey.Of(op, lower, upperLo);
             hiKey = OperationKey.None;
 

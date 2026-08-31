@@ -4,55 +4,34 @@ using System.Numerics;
 namespace ZDD.Net.Internal
 {
     /// <summary>
-    /// <c>0</c> 以上 <c>bound</c> 未満の <see cref="BigInteger"/> を<b>偏りなく</b>返す乱数源。
-    /// 一様サンプリング（<see cref="ZDD.Net.Core.Zdd.Sample(Random)"/>）が使う。
+    /// An unbiased random source for <see cref="BigInteger"/> values in <c>[0, bound)</c>.
+    /// Used by uniform sampling (<see cref="ZDD.Net.Core.Zdd.Sample(Random)"/>).
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// <b>剰余を取ってはいけない</b>。<c>乱数 % bound</c> は、乱数の取りうる範囲が
-    /// <c>bound</c> の倍数でない限り必ず偏る（余りが小さい値だけが 1 回多く当たる）。
-    /// 範囲が広ければ偏りは小さいが、ここで扱うのは 10^20 個の解から 1 個選ぶ話であり、
-    /// 「一様である」ことがこの API の売りそのものなので、偏りは許されない。
-    /// </para>
-    /// <para>
-    /// <b>棄却法</b>: <c>bound - 1</c> を表すのに必要なビット数ぶんだけ乱数ビットを取り、
-    /// <c>bound</c> 以上なら捨てて引き直す。取りうる値は <c>2^bits</c> 通りで、
-    /// <c>bound &gt; 2^(bits-1)</c>（ビット数の定義より）だから、1 回で当たる確率は必ず
-    /// <b>1/2 より大きい</b>。したがって引き直しの回数の期待値は 2 回未満で、
-    /// 桁数がいくら大きくなってもこれは変わらない。
-    /// </para>
-    /// <para>
-    /// <b>バッファは使い回す</b>。<c>n</c> 個まとめて取るサンプリングでは同じ <c>bound</c> で
-    /// 何度も引くので、必要なバイト数と最上位バイトのマスクは作るときに 1 度だけ求め、
-    /// 乱数バイトを受ける配列も 1 本を使い回す。
-    /// </para>
-    /// <para>
-    /// <b>乱数の質は <see cref="Random"/> のもの</b>。この型がするのは「与えられた乱数ビットを
-    /// 偏りなく範囲へ写す」ことだけで、暗号論的な強度は求められた <see cref="Random"/> 次第である。
-    /// </para>
+    /// Uses rejection sampling rather than <c>random % bound</c>, which is biased unless
+    /// <c>bound</c> divides the random range evenly. Draws just enough bits to cover <c>bound - 1</c>
+    /// and rejects out-of-range draws; the rejection probability is always below 1/2, so the
+    /// expected number of draws stays under 2 regardless of magnitude. The internal buffer is
+    /// reused across repeated draws with the same bound.
     /// </remarks>
     internal readonly struct UniformBigInteger
     {
-        /// <summary>返す値の上限（この値は返さない）。</summary>
+        /// <summary>Exclusive upper bound of returned values.</summary>
         private readonly BigInteger _bound;
 
-        /// <summary>乱数バイトを受ける作業配列。<c>bound</c> が 1 のときだけ長さ 0。</summary>
+        /// <summary>Scratch buffer for random bytes; length 0 only when <c>bound</c> is 1.</summary>
         private readonly byte[] _buffer;
 
-        /// <summary>最上位バイトのうち、使ってよいビットだけを残すマスク。</summary>
+        /// <summary>Mask keeping only the usable bits of the top byte.</summary>
         private readonly byte _topByteMask;
 
-        /// <summary>上限を決めて乱数源を作る。</summary>
-        /// <param name="exclusiveUpperBound">返す値の上限。<b>1 以上</b>でなければならない。</param>
+        /// <summary>Creates a random source for a given upper bound.</summary>
+        /// <param name="exclusiveUpperBound">Exclusive upper bound; must be at least 1.</param>
         /// <remarks>
-        /// <b>検査は <c>Debug.Assert</c> ではなく実行時に行う</b>。上限が 0 以下のまま進むと、
-        /// 0 なら<b>常に 0 を返す</b>（範囲に値が無いのに答が出てしまう）、負なら<b>棄却が
-        /// 永遠に当たらず止まらなくなる</b>。どちらも Release ビルドで静かに壊れる形なので、
-        /// 呼び出し側の不備をその場で言い切る。検査は乱数 1 本につき 1 度で、引くたびではない。
+        /// Validated eagerly (not via <c>Debug.Assert</c>): a bound of 0 would silently always
+        /// return 0, and a negative bound would make rejection sampling loop forever.
         /// </remarks>
-        /// <exception cref="ArgumentOutOfRangeException">
-        /// <paramref name="exclusiveUpperBound"/> が 1 未満の場合。
-        /// </exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="exclusiveUpperBound"/> is less than 1.</exception>
         public UniformBigInteger(BigInteger exclusiveUpperBound)
         {
             if (exclusiveUpperBound < BigInteger.One)
@@ -64,8 +43,8 @@ namespace ZDD.Net.Internal
 
             _bound = exclusiveUpperBound;
 
-            // 必要なのは「bound - 1 を表せるビット数」。bound が 2 の冪ならぴったり収まり、
-            // 棄却は 1 度も起きない。bound が 1 なら 0 ビット＝乱数を引くまでもなく 0 が答。
+            // The number of bits needed to represent bound - 1. A power-of-two bound needs no
+            // rejection at all; a bound of 1 needs zero bits, so the answer is always 0.
             long bitLength = (exclusiveUpperBound - BigInteger.One).GetBitLength();
             int byteCount = (int)((bitLength + 7) / 8);
             int topBits = (int)(bitLength & 7);
@@ -74,18 +53,16 @@ namespace ZDD.Net.Internal
             _topByteMask = topBits == 0 ? byte.MaxValue : (byte)((1 << topBits) - 1);
         }
 
-        /// <summary><c>0</c> 以上 <c>bound</c> 未満の値を 1 つ、一様に返す。</summary>
-        /// <param name="random">乱数の供給元。</param>
-        /// <exception cref="ArgumentNullException">
-        /// <paramref name="random"/> が <see langword="null"/> の場合。
-        /// </exception>
+        /// <summary>Returns a value in <c>[0, bound)</c>, uniformly at random.</summary>
+        /// <param name="random">The source of randomness.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="random"/> is <see langword="null"/>.</exception>
         public BigInteger Next(Random random)
         {
             ThrowHelper.ThrowIfNull(random, nameof(random));
 
             if (_buffer.Length == 0)
             {
-                // 上限が 1 なら答は 0 しかない。乱数は 1 ビットも消費しない。
+                // Bound of 1 means the only possible answer is 0; no randomness needed.
                 return BigInteger.Zero;
             }
 
@@ -93,11 +70,10 @@ namespace ZDD.Net.Internal
             {
                 random.NextBytes(_buffer);
 
-                // 最上位バイトの余ったビットを落とす。落とさないと、そのぶんだけ
-                // 棄却される確率が上がる（答が偏るわけではないが、無駄に引き直す）。
+                // Drop the unused high bits of the top byte to reduce (not eliminate) rejections.
                 _buffer[^1] &= _topByteMask;
 
-                // 符号なし・下位バイト先頭として読む（NextBytes が埋める向きに合わせる）。
+                // Read as unsigned, little-endian, matching how NextBytes fills the buffer.
                 BigInteger value = new BigInteger(_buffer, isUnsigned: true, isBigEndian: false);
 
                 if (value < _bound)

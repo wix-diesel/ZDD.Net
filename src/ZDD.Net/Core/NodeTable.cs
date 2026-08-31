@@ -5,104 +5,69 @@ using ZDD.Net.Internal;
 namespace ZDD.Net.Core
 {
     /// <summary>
-    /// ZDD ノードの物理的な格納庫。<see cref="ZddNode"/> を 1 本の配列に連続確保し、
-    /// 満杯になったら容量を倍化する。ノードは配列 index と一致する <c>int</c> の ID で参照される。
+    /// Physical storage for ZDD nodes: a single growable array of <see cref="ZddNode"/>,
+    /// indexed by node id (id == array index).
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// ID <see cref="Bottom"/> (= 0) と <see cref="Top"/> (= 1) は終端として予約済みで、
-    /// 実ノードの ID は <see cref="FirstNodeId"/> (= 2) から始まる。終端も配列上に
-    /// 実体を持たせることで「ID = 配列 index」が常に成立し、参照時の減算が不要になる。
-    /// </para>
-    /// <para>
-    /// この型は一意化（同じ <c>(level, lo, hi)</c> の共有）もゼロサプレス削減規則の適用も行わない。
-    /// それらは一意化表（M1-2）の責務で、本型はその下に敷く「表」だけを提供する。
-    /// </para>
-    /// <para>
-    /// 設計方針（docs/PLAN.md §4.1・§10）: <c>List&lt;T&gt;</c> や <c>Dictionary</c> を使わず生の配列で持つ、
-    /// レベルごとに表を分割せず全体で 1 本にする、ID は <c>int</c> のままとし 64bit ID 版は作らない。
-    /// </para>
-    /// <para>
-    /// <b>不変条件</b>: <c>FirstNodeId &lt;= _count &lt;= _nodes.Length</c> が常に成り立つ。
-    /// <see cref="Grow"/> は配列を先に差し替えてから <c>_count</c> を進めるため、
-    /// 途中でこれが破れる瞬間は無い。
-    /// </para>
-    /// <para>
-    /// <b>メモリ安全性</b>: ノードへのアクセスは通常の配列インデクサで行い、
-    /// <c>Unsafe.Add</c> による境界チェックの省略は<b>採らない</b>。
-    /// <c>id &lt; _count</c> の確認（意味的な契約）と CLR の境界チェック（メモリ安全性の最後の砦）が
-    /// 二重になるが、実測では最も差の出た走査パターンでも 3〜4%、書き込み経路と逐次走査では
-    /// 誤差（≦2%）でしかなく、不変条件を 1 箇所壊しただけでヒープ破壊になる設計を
-    /// ライブラリの土台に置く価値は無いと判断した。ここを詰めるのは
-    /// BenchmarkDotNet でプロファイルを取ってから（docs/ROADMAP.md v0.4）で十分間に合う。
-    /// </para>
-    /// <para>
-    /// <b>スレッド安全性</b>: この型は<b>スレッドセーフではない</b>。同一インスタンスへの
-    /// <see cref="Add"/> と読み出しを複数スレッドから並行に行ってはならない。
-    /// ただし境界チェックを省いていないため、誤って並行アクセスした場合の最悪ケースは
-    /// 例外か読み取り値の不整合であって、ヒープ破壊ではない。
-    /// 並列フロンティア構築（docs/PLAN.md §10-8, v0.4）ではスレッドごとに別インスタンスを持たせる。
-    /// </para>
+    /// Terminals <see cref="Bottom"/> (0) and <see cref="Top"/> (1) occupy real slots so id ==
+    /// index always holds. This type does not do uniquing or zero-suppression reduction; that's
+    /// the unique table's job. Not thread-safe: concurrent <see cref="Add"/>/reads on one
+    /// instance are unsafe, though bounds checks are never skipped, so the worst case of
+    /// misuse is an exception or inconsistent read, not heap corruption.
     /// </remarks>
     internal sealed class NodeTable
     {
-        /// <summary>終端 ⊥（空集合族 ∅）を表す予約 ID。</summary>
+        /// <summary>Reserved id for terminal ⊥ (the empty family ∅).</summary>
         public const int Bottom = 0;
 
-        /// <summary>終端 ⊤（<c>{∅}</c>）を表す予約 ID。</summary>
+        /// <summary>Reserved id for terminal ⊤ (<c>{∅}</c>).</summary>
         public const int Top = 1;
 
-        /// <summary>最初の実ノードに割り当てられる ID。予約済み終端の個数でもある。</summary>
+        /// <summary>Id assigned to the first real node; also the count of reserved terminals.</summary>
         public const int FirstNodeId = 2;
 
-        /// <summary><see cref="ZddNode.Next"/> が「次が無い」ことを表す番兵。</summary>
+        /// <summary>Sentinel meaning "no next" for <see cref="ZddNode.Next"/>.</summary>
         public const int NoNext = -1;
 
-        /// <summary>容量を明示しない場合の初期容量（終端 2 個分を含む）。</summary>
+        /// <summary>Default initial capacity (includes the 2 terminal slots).</summary>
         public const int DefaultCapacity = 1024;
 
         /// <summary>
-        /// ノード表が確保できる ID の上限。ID は <c>int</c> なので理論上限は 2^31 だが、
-        /// 実際には配列長の上限（<see cref="Array.MaxLength"/>）の方が先に来るため、そちらを採る。
-        /// 16 バイト × この個数 ≒ 32 GB。
+        /// Upper bound on ids the table can allocate. Ids are <c>int</c>, but
+        /// <see cref="Array.MaxLength"/> is reached first (~32 GB at 16 bytes/node).
         /// </summary>
         public static readonly int MaxCapacity = Array.MaxLength;
 
         /// <summary>
-        /// 容量の上限。既定は <see cref="MaxCapacity"/>。上限到達時の例外をテストするために、
-        /// internal なコンストラクタで小さい値へ差し替えられるようにしてある
-        /// （実際に 2^31 個確保して検証することはできないため）。
+        /// Capacity ceiling; normally <see cref="MaxCapacity"/>. Overridable via the internal
+        /// constructor so tests can exercise exhaustion without allocating 2^31 nodes.
         /// </summary>
         private readonly int _capacityLimit;
 
         private ZddNode[] _nodes;
 
-        /// <summary>使用済みスロット数。終端 2 個を含むので、次に払い出す ID と一致する。</summary>
+        /// <summary>Slots used so far, including the 2 terminals; also the next id to hand out.</summary>
         private int _count;
 
-        /// <summary><see cref="_count"/> がこれまでに到達した最大値。</summary>
+        /// <summary>Highest value <see cref="_count"/> has ever reached.</summary>
         private int _peakCount;
 
-        /// <summary>既定の初期容量でノード表を作る。</summary>
+        /// <summary>Creates a node table with the default initial capacity.</summary>
         public NodeTable()
             : this(DefaultCapacity, MaxCapacity)
         {
         }
 
-        /// <summary>初期容量を指定してノード表を作る。</summary>
-        /// <param name="initialCapacity">
-        /// 初期容量。終端 2 個分を含むため <see cref="FirstNodeId"/> 以上でなければならない。
-        /// </param>
+        /// <summary>Creates a node table with the given initial capacity.</summary>
+        /// <param name="initialCapacity">Initial capacity; must be at least <see cref="FirstNodeId"/>.</param>
         public NodeTable(int initialCapacity)
             : this(initialCapacity, MaxCapacity)
         {
         }
 
-        /// <summary>初期容量と容量上限を指定してノード表を作る（上限到達時の挙動を試験するための入口）。</summary>
-        /// <param name="initialCapacity">初期容量。<see cref="FirstNodeId"/> 以上。</param>
-        /// <param name="capacityLimit">
-        /// 容量の上限。<paramref name="initialCapacity"/> 以上かつ <see cref="MaxCapacity"/> 以下。
-        /// </param>
+        /// <summary>Creates a node table with a given initial capacity and capacity limit (mainly for testing exhaustion).</summary>
+        /// <param name="initialCapacity">Initial capacity; at least <see cref="FirstNodeId"/>.</param>
+        /// <param name="capacityLimit">Capacity ceiling; between <paramref name="initialCapacity"/> and <see cref="MaxCapacity"/>.</param>
         public NodeTable(int initialCapacity, int capacityLimit)
         {
             if (initialCapacity < FirstNodeId)
@@ -124,48 +89,34 @@ namespace ZDD.Net.Core
             _count = FirstNodeId;
             _peakCount = FirstNodeId;
 
-            // 終端はゼロ初期化されない配列上に置かれるので、明示的に書き込む。
-            // 終端はどの変数にも属さないのでレベル 0、枝は自分自身を指さず 0 のままにする。
+            // Terminals live on an uninitialized array, so write them explicitly.
             _nodes[Bottom] = new ZddNode { Level = 0, Lo = Bottom, Hi = Bottom, Next = NoNext };
             _nodes[Top] = new ZddNode { Level = 0, Lo = Bottom, Hi = Bottom, Next = NoNext };
         }
 
-        /// <summary>確保済みの実ノード数（予約された終端 2 個は含まない）。</summary>
+        /// <summary>Number of real nodes allocated (excludes the 2 reserved terminals).</summary>
         public int Count => _count - FirstNodeId;
 
-        /// <summary>
-        /// <see cref="Count"/> がこれまでに到達した最大値。
-        /// </summary>
-        /// <remarks>
-        /// ノードを解放する手段がまだ無い（ノード GC は M5-3）ので、現状は常に
-        /// <see cref="Count"/> と等しい。それでも別に持つのは、統計
-        /// （<see cref="ZddStatistics.PeakNodeCount"/>）の意味を先に固定しておくためで、
-        /// GC が入っても「これまでに同時に生きた最大のノード数」を読み替えずに使える。
-        /// </remarks>
+        /// <summary>Highest value <see cref="Count"/> has ever reached.</summary>
+        /// <remarks>Currently always equal to <see cref="Count"/> since there is no node GC yet (planned M5-3).</remarks>
         public int PeakCount => _peakCount - FirstNodeId;
 
-        /// <summary>次の <see cref="Add"/> が返す ID。終端を含めた使用済みスロット数でもある。</summary>
+        /// <summary>Id the next <see cref="Add"/> call will return.</summary>
         public int NextId => _count;
 
-        /// <summary>現在の容量（終端 2 個分を含む）。</summary>
+        /// <summary>Current capacity (includes the 2 terminal slots).</summary>
         public int Capacity => _nodes.Length;
 
-        /// <summary>この表が確保できる ID の上限。</summary>
+        /// <summary>Upper bound on ids this table can allocate.</summary>
         public int CapacityLimit => _capacityLimit;
 
-        /// <summary>ID が予約済みの終端（⊥ または ⊤）かどうか。</summary>
+        /// <summary>Whether an id is one of the reserved terminals (⊥ or ⊤).</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool IsTerminal(int id) => (uint)id < FirstNodeId;
 
-        /// <summary>
-        /// ID からノードへの参照を得る。返り値は表の実体への <c>ref</c> なので、
-        /// 経由して書き換えるとノード表に反映される。
-        /// </summary>
-        /// <remarks>
-        /// リサイズで配列が差し替わると、それ以前に取得した <c>ref</c> は古い配列を指したままになる。
-        /// <see cref="Add"/> を挟んで <c>ref</c> を保持しないこと。
-        /// </remarks>
-        /// <param name="id">0 以上 <see cref="NextId"/> 未満のノード ID。</param>
+        /// <summary>Gets a reference to the node for an id; writes through it mutate the table.</summary>
+        /// <remarks>A resize replaces the backing array, so don't hold a <c>ref</c> across a call to <see cref="Add"/>.</remarks>
+        /// <param name="id">Node id, 0 up to (but excluding) <see cref="NextId"/>.</param>
         public ref ZddNode this[int id]
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -178,26 +129,15 @@ namespace ZDD.Net.Core
                         $"Node id {id} is out of range; the table currently holds ids 0..{_count - 1}.");
                 }
 
-                // 上のチェックは「まだ追加されていないスロット」を弾くための意味的な検査で、
-                // メモリ安全性は配列インデクサ自身の境界チェックが担保する（型の remarks 参照）。
                 return ref _nodes[id];
             }
         }
 
-        /// <summary>
-        /// ノードを 1 個追加し、その ID を返す。容量が尽きていれば倍化してから書き込む。
-        /// </summary>
-        /// <param name="level">変数レベル。1 以上（0 は終端の予約値）。</param>
-        /// <param name="lo">0-枝の子 ID。既に存在する ID でなければならない。</param>
-        /// <param name="hi">
-        /// 1-枝の子 ID。既に存在する ID で、かつゼロサプレス削減規則より
-        /// <see cref="Bottom"/> であってはならない。
-        /// </param>
-        /// <exception cref="InvalidOperationException">
-        /// ID 空間を使い切っている場合。上限は <see cref="CapacityLimit"/> だが、これは
-        /// 予約済み終端 2 個を含めた ID の個数なので、実ノード数（<see cref="Count"/>）の上限は
-        /// <c><see cref="CapacityLimit"/> - <see cref="FirstNodeId"/></c> になる。
-        /// </exception>
+        /// <summary>Adds a node and returns its id, growing the table first if full.</summary>
+        /// <param name="level">Variable level; 1 or greater (0 is reserved for terminals).</param>
+        /// <param name="lo">0-edge child id; must already exist.</param>
+        /// <param name="hi">1-edge child id; must already exist and must not be <see cref="Bottom"/> (zero-suppression rule).</param>
+        /// <exception cref="InvalidOperationException">The id space is exhausted.</exception>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int Add(int level, int lo, int hi)
         {
@@ -205,8 +145,6 @@ namespace ZDD.Net.Core
 
             int id = _count;
 
-            // 不変条件より等号でしか成立しないが、万一 _count が先走った場合でも
-            // 黙って書き潰さないよう >= で受ける。
             if (id >= _nodes.Length)
             {
                 Grow();
@@ -254,11 +192,7 @@ namespace ZDD.Net.Core
             }
         }
 
-        /// <summary>
-        /// 容量を倍化する（上限に近ければ上限まで）。<c>Array.Resize</c> は内部で新配列をゼロ初期化するため、
-        /// 未初期化確保 + コピーで済ませる。書き込むのは <see cref="Add"/> が使う分だけなので、
-        /// 末尾のゴミが読まれることはない（<see cref="this[int]"/> が <see cref="NextId"/> で弾く）。
-        /// </summary>
+        /// <summary>Doubles capacity (or grows to the limit if closer). Uses uninitialized allocation + copy, since only ids below <see cref="NextId"/> are ever read.</summary>
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void Grow()
         {
@@ -273,8 +207,6 @@ namespace ZDD.Net.Core
 
             int newCapacity = capacity <= _capacityLimit / 2 ? capacity * 2 : _capacityLimit;
 
-            // ZddNode は参照型フィールドを持たないため、未初期化のまま確保しても
-            // GC が追跡すべき値は生じない（参照を含む型なら、この API でもゼロ初期化される）。
             ZddNode[] grown = GC.AllocateUninitializedArray<ZddNode>(newCapacity);
             Array.Copy(_nodes, grown, capacity);
             _nodes = grown;

@@ -7,10 +7,10 @@ using System.Runtime.CompilerServices;
 namespace ZDD.Net.Internal
 {
     /// <summary>
-    /// 例外の生成・送出をまとめる場所。呼び出し側の検証メソッド（<c>ThrowIfXxx</c>）は
-    /// インライン化されるように小さく保ち、実際の <c>throw</c> と文字列組み立ては
-    /// <see cref="StackTraceHiddenAttribute"/> を付けた非インラインのメソッドに切り出す。
-    /// これにより、検証だけが行われる正常系のコード量を hot path 側で最小化できる。
+    /// Centralizes exception construction and throwing. Validation methods (<c>ThrowIfXxx</c>)
+    /// stay small enough to inline; the actual <c>throw</c> and message building live in
+    /// non-inlined, <see cref="StackTraceHiddenAttribute"/>-tagged methods so the hot path
+    /// stays cheap when nothing is wrong.
     /// </summary>
     internal static class ThrowHelper
     {
@@ -41,10 +41,7 @@ namespace ZDD.Net.Internal
             }
         }
 
-        /// <summary>
-        /// <paramref name="value"/> が正の 2 の冪であることを検証する。Fibonacci hashing など、
-        /// テーブルサイズが 2 の冪であることを前提とする処理の入口で使う。
-        /// </summary>
+        /// <summary>Validates that <paramref name="value"/> is a positive power of two, as required for Fibonacci hashing.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void ThrowIfNotPositivePowerOfTwo(int value, string paramName)
         {

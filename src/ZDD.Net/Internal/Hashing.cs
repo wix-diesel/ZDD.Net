@@ -5,23 +5,16 @@ using System.Runtime.CompilerServices;
 namespace ZDD.Net.Internal
 {
     /// <summary>
-    /// 64bit ハッシュ関数群。ノードの一意化表（<c>(level, lo, hi)</c> をキーとするオープンアドレス法の
-    /// ハッシュ表）向けに、<see cref="System.HashCode"/> より軽量な専用実装を提供する。
-    /// <see cref="System.HashCode"/> はランダム化されたシード（DoS 耐性のため）を毎プロセス起動時に
-    /// 生成する汎用実装であり、hot path で毎回呼び出すにはオーバーヘッドが大きい。
+    /// 64-bit hash functions for the node unique table (an open-addressing hash table keyed on
+    /// <c>(level, lo, hi)</c>). Lighter weight than <see cref="System.HashCode"/>, which pays for
+    /// a per-process randomized seed that this hot path doesn't need.
     /// </summary>
     internal static class Hashing
     {
-        /// <summary>
-        /// 黄金比から導かれる 64bit の奇数定数（<c>floor(2^64 / phi)</c>）。
-        /// 乗算ハッシュ・Fibonacci hashing のどちらでも使う。
-        /// </summary>
+        /// <summary>Odd 64-bit constant derived from the golden ratio (<c>floor(2^64 / phi)</c>); used for both mixing and Fibonacci hashing.</summary>
         private const ulong GoldenRatio64 = 0x9E3779B97F4A7C15UL;
 
-        /// <summary>
-        /// 64bit の値を撹拌する。SplittableRandom / SplitMix64 のファイナライザとして知られる
-        /// 混合関数で、単一ビットの入力差が出力のほぼ半分のビットに伝播する（雪崩効果）。
-        /// </summary>
+        /// <summary>Mixes a 64-bit value (the SplitMix64 finalizer) so a single input bit flips roughly half the output bits.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong Mix64(ulong value)
         {
@@ -33,10 +26,7 @@ namespace ZDD.Net.Internal
             return value;
         }
 
-        /// <summary>
-        /// ノードの一意化表のキー <c>(level, lo, hi)</c> を単一の 64bit ハッシュに混ぜる。
-        /// 同じ引数からは必ず同じ値を返す。
-        /// </summary>
+        /// <summary>Combines a unique-table key <c>(level, lo, hi)</c> into a single 64-bit hash.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong Combine(int level, int lo, int hi)
         {
@@ -48,12 +38,11 @@ namespace ZDD.Net.Internal
         }
 
         /// <summary>
-        /// 既に撹拌済みの 64bit ハッシュから、サイズが 2 の冪である表のスロット index を
-        /// Fibonacci hashing で求める。剰余（<c>%</c>）より高速で、下位ビットに偏りがある
-        /// ハッシュでも上位ビットを使うため分布が安定する。
+        /// Maps an already-mixed 64-bit hash to a slot index for a power-of-two-sized table, via
+        /// Fibonacci hashing (faster than <c>%</c> and more stable when low bits are biased).
         /// </summary>
-        /// <param name="hash">撹拌済みの 64bit ハッシュ値。</param>
-        /// <param name="tableSize">ハッシュ表のサイズ。2 の冪でなければならない（1 以上）。</param>
+        /// <param name="hash">An already-mixed 64-bit hash value.</param>
+        /// <param name="tableSize">The table size; must be a power of two (at least 1).</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int IndexFor(ulong hash, int tableSize)
         {
@@ -72,15 +61,11 @@ namespace ZDD.Net.Internal
         }
 
         /// <summary>
-        /// <see cref="IndexFor"/> と同じ Fibonacci hashing だが、<paramref name="tableSize"/> の検証を
-        /// Debug ビルドの表明に落としたもの。サイズを自分で管理していて 2 の冪であることが
-        /// 構造的に保証されている表（一意化表・演算キャッシュ）の hot path 用。
+        /// Same as <see cref="IndexFor"/> but validates <paramref name="tableSize"/> only via a
+        /// Debug assertion, for hot paths (unique table, operation cache) that already guarantee it.
         /// </summary>
-        /// <param name="hash">撹拌済みの 64bit ハッシュ値。</param>
-        /// <param name="tableSize">
-        /// ハッシュ表のサイズ。<b>2 以上の 2 の冪</b>でなければならない（検証されない）。
-        /// サイズ 1 の表は <see cref="IndexFor"/> を使うこと。
-        /// </param>
+        /// <param name="hash">An already-mixed 64-bit hash value.</param>
+        /// <param name="tableSize">The table size; must be a power of two greater than one (unvalidated). Use <see cref="IndexFor"/> for size 1.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int IndexForPowerOfTwo(ulong hash, int tableSize)
         {

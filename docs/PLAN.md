@@ -1,3 +1,11 @@
+# ZDD.Net Development Plan
+
+Feature, specification, and implementation plan for a native C# implementation of a ZDD
+(Zero-suppressed Decision Diagram) + frontier method library.
+
+- Document version: v1 (2026-08-29)
+- Target repository: `wix-diesel/ZDD.Net` (Apache-2.0)
+
 # ZDD.Net 開発計画書
 
 C# ネイティブ実装による ZDD（Zero-suppressed Decision Diagram）＋フロンティア法ライブラリの
@@ -7,6 +15,19 @@ C# ネイティブ実装による ZDD（Zero-suppressed Decision Diagram）＋�
 - 対象リポジトリ: `wix-diesel/ZDD.Net`（Apache-2.0）
 
 ---
+
+## 0. Executive Summary (Conclusions First)
+
+| Item | Conclusion |
+|---|---|
+| Target | **`net10.0` only** |
+| Native degree | 100% managed C# (no P/Invoke, NativeAOT compatible). **Zero external NuGet dependencies** (all required APIs are bundled with the framework) |
+| Primary use case | **Path enumeration/counting** (s-t paths / cycles) + **general combinatorial counting** (cardinality constraints, linear constraints, independent sets) |
+| Expected scale | **Thousands of edges**. Bring forward state bit-packing and edge-order optimization to before v0.3 |
+| Architecture | 3 layers: **Core (ZDD engine) / Frontier (frontier method framework) / Graphs (graph problem API)** |
+| Main reference OSS | TdZdd (MIT), Graphillion (MIT), SAPPOROBDD (MIT), CUDD/EXTRA, Knuth *TAOCP* 4A 7.1.4 |
+| Differentiation | **.NET effectively has no native implementation of ZDD/frontier method** (the only option is a P/Invoke wrapper around CUDD). This is where this library's value lies. |
+| First milestone target | Being able to compute the number of self-avoiding paths on an 11x11 grid, `1568758030464750013214100`, in on the order of tens of seconds |
 
 ## 0. エグゼクティブサマリ（結論だけ先に）
 
@@ -22,6 +43,30 @@ C# ネイティブ実装による ZDD（Zero-suppressed Decision Diagram）＋�
 | 最初の到達目標 | 11×11 格子の自己回避パス数 `1568758030464750013214100` を数十秒級で算出できること |
 
 ---
+
+## 1. Existing OSS Survey and What to Reference
+
+| OSS | Language / License | What to reference | Cautions |
+|---|---|---|---|
+| **TdZdd** (kunisura/TdZdd, ERATO MINATO Project) | C++ header-only / MIT | **Main axis of the design**. Abstraction of the frontier method via `DdSpec`, level-by-level breadth-first construction → reduction, bottom-up evaluation via `DdEval`, spec composition via `zddSubset` | The design assumes template metaprogramming. In C# this is reinterpreted as struct generics + interface constraints |
+| **Graphillion** (graphillion/graphillion) | Python + C++ / MIT | **Main axis of the high-level API**. Set-like interface of `GraphSet` / `SetSet`, vocabulary such as `paths()` `trees()` `matchings()`, `rand_iter` / `max_iter` / `probability`, edge-order heuristics | Internally depends on SAPPOROBDD. Only the API vocabulary is referenced; the implementation is original |
+| **SAPPOROBDD** (Shin-ichi Minato) | C / MIT | **The very definition of ZDD family algebra operations** (`Change` / `OnSet` / `OffSet` / `Product` / `Quotient` / `Remainder` / `Meet` / `Permit`, etc.), classical construction of the unique table and operation cache | The implementation details premised on 32-bit node IDs are not followed |
+| **CUDD + EXTRA** | C / BSD family | Implementation knowledge of the operation cache (lossy direct-mapped cache), dynamic resizing, GC (mark & sweep) | Dynamic variable reordering (sifting) is out of scope for v1.0 |
+| **Knuth, TAOCP Vol.4A 7.1.4 / BDD14 program suite** | Educational C / published for educational purposes | SIMPATH (simple path enumeration) algorithm, definition of the mate array, counting/random extraction/optimization algorithms on ZDDs | Implementation is not copied; the described algorithms are reimplemented |
+| **Kawahara–Saitoh–Yoshinaka et al. papers** | — | Generalization of the frontier method, state design for graph partitioning, connected-component constraints, degree constraints | — |
+| **JDD / Sylvan / OxiDD** | Java / C / Rust | Reference for parallel DD construction, lock-free node tables | Parallelization is v0.4 and later |
+
+### License Policy
+
+This repository is **Apache-2.0**. Directly porting code from MIT-licensed OSS is legally possible, but
+the principle is **"reimplement algorithms from papers/documentation, do not copy code."** Reasons:
+
+1. Avoid the header-management cost of mixing Apache-2.0 and MIT
+2. Bringing over an implementation that assumes C++ templates/C macros as-is would not be fast in .NET anyway
+3. It matches the original goal of a "native implementation"
+
+Facts referenced (algorithm provenance) are recorded as references to papers/repositories in
+`THIRD-PARTY-NOTICES.md` and in each source's XML doc comments.
 
 ## 1. 既存 OSS 調査と参考にする点
 
@@ -48,6 +93,82 @@ C# ネイティブ実装による ZDD（Zero-suppressed Decision Diagram）＋�
 論文・リポジトリへの参照として記載する。
 
 ---
+
+## 2. Target Framework Decision
+
+### Conclusion: `<TargetFramework>net10.0</TargetFramework>` (single target)
+
+Initially `netstandard2.0` was considered as the primary target, but the decision was made to go with
+**net10.0 only**.
+
+**What we gain**
+
+- **All polyfills become unnecessary** (`BitOps` / `HashCode` / `SimpleArrayPool` / nullable attributes)
+- **Zero `#if NET` branches** — the code becomes a single codebase, and a single test project suffices
+- APIs usable as-is: `Span<T>` / `ReadOnlySpan<T>`, `ArrayPool<T>`, `System.HashCode`,
+  `BitOperations`, `System.Runtime.Intrinsics` (SIMD), `CollectionsMarshal`,
+  `GC.AllocateUninitializedArray` (POH), `ref` fields, `[InlineArray]`,
+  generic math (`INumber<T>` / `static abstract` interface members),
+  collection expressions, `params ReadOnlySpan<T>`
+- Full support for NativeAOT / trimming from the start
+
+**What we lose (accepted)**
+
+- .NET Framework 4.x / Unity (Mono, IL2CPP) / Xamarin are out of scope
+- .NET 8 / 9 users are also out of scope (an upgrade to net10 is required)
+
+Adding `netstandard2.0` later remains possible, but at that point the full polyfill set and `#if` branches
+would be needed. Therefore the policy of keeping **the internal implementation based on "plain arrays +
+`int` indices"** is maintained regardless (not only for portability, but because it is simply better for
+performance).
+
+### Concrete Impact on the Design
+
+| Item | Decision with net10 only |
+|---|---|
+| `IArrayDdSpec` | **Uses `Span<int>`** (the ns2.0 constraint is gone, so we no longer need "array + offset") |
+| Weight type `IWeightOps<T>` | Defined via **`static abstract` interface members** (no dummy instance needed) |
+| Array pool | Use `ArrayPool<int>.Shared` directly |
+| Hashing | The unique table keeps its own custom hash (`HashCode` is too general-purpose and heavy for the hot path). `BitOperations` is used as-is |
+| Frontier state | Consider a fixed-length inline state via **`[InlineArray]`** (M3-2) |
+| SIMD | Consider `System.Runtime.Intrinsics` for state comparison/hashing (M4-2) |
+
+### External Dependencies: **Kept at Zero**
+
+Holds not a single `PackageReference`. However, now that we target net10 only, this **is no longer a
+constraint** (`Span`, `ArrayPool`, and `BitOperations` are all bundled with the framework).
+The policy is maintained regardless, and verified mechanically by tests.
+
+### Common Build Settings
+
+```xml
+<PropertyGroup>
+  <TargetFramework>net10.0</TargetFramework>
+  <LangVersion>latest</LangVersion>
+  <Nullable>enable</Nullable>
+  <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  <IsAotCompatible>true</IsAotCompatible>
+  <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+  <GenerateDocumentationFile>true</GenerateDocumentationFile>
+</PropertyGroup>
+```
+
+### About the Development Environment (Measured)
+
+Under the current remote environment's egress policy:
+
+| Host | Result | Impact |
+|---|---|---|
+| `builds.dotnet.microsoft.com` | **403 (policy denied)** | SDK acquisition via `dotnet-install.sh` is not possible |
+| `download.visualstudio.microsoft.com` / `aka.ms` / `dotnetcli.blob.core.windows.net` | Unreachable | Same as above |
+| `packages.microsoft.com` | 200 (but no SDK package on noble prod) | Cannot be obtained via this route |
+| **Ubuntu noble repository** | **OK** | **`apt-get install -y dotnet-sdk-10.0` installs the .NET 10 SDK (10.0.111)** |
+| `api.nuget.org` / `www.nuget.org` | OK | NuGet restore works without issues |
+
+→ In addition to `dotnet-sdk-10.0`, `dotnet-sdk-aot-10.0` (the NativeAOT component) can also be installed,
+so **M6-2's NativeAOT verification can also be performed in this environment**.
+Automated via `scripts/setup-dev-env.sh` and a SessionStart hook.
 
 ## 2. ターゲットフレームワークの決定
 
@@ -123,6 +244,37 @@ C# ネイティブ実装による ZDD（Zero-suppressed Decision Diagram）＋�
 **M6-2 の NativeAOT 検証もこの環境で実施できる**。
 `scripts/setup-dev-env.sh` と SessionStart フックで自動化する。
 
+---
+
+## 3. Repository Layout
+
+```
+ZDD.Net.sln
+Directory.Build.props / Directory.Packages.props   … common settings, central package management
+.editorconfig
+src/
+  ZDD.Net/                    … the NuGet package body (bundles Core + Frontier + Graphs)
+    Core/                     … node table, unique table, operation cache, family algebra
+    Frontier/                 … frontier method framework (IDdSpec / builder / evaluator)
+    Specs/                    … built-in specs (paths, trees, matchings, cardinality constraints, ...)
+    Graphs/                   … Graph / GraphSet high-level API, edge-order optimization
+    Io/                       … serialization, DOT output, Graphillion-compatible I/O
+    Internal/                 … hashing, bit operations, common utilities
+tests/
+  ZDD.Net.Tests/              … xUnit (unit, brute-force verification, known values)
+  ZDD.Net.Tests.Properties/   … property tests via CsCheck
+bench/
+  ZDD.Net.Benchmarks/         … BenchmarkDotNet
+samples/
+  Zdd.Cli/                    … CLI for manual verification (grid path / spanning tree, etc.)
+docs/
+  PLAN.md (this document) / algorithms.md / api-guide.md / benchmarks.md
+```
+
+**The NuGet package is consolidated into one** (`ZDD.Net`). The Graphs layer is a thin layer on top of
+Core, so the size increase is small, and "needing 3 references" would be a barrier to adoption. If
+visualization (e.g. DOT→SVG rendering) is added in the future, it can be a separate package.
+
 ## 3. リポジトリ構成
 
 ```
@@ -152,6 +304,117 @@ docs/
 「参照が 3 つ必要」は導入障壁になる。可視化（DOT→SVG レンダリング等）を将来足すなら別パッケージ。
 
 ---
+
+## 4. Core Layer: ZDD Engine
+
+### 4.1 Data Structures
+
+```csharp
+// A fixed 16-byte node. Held as AoS (contiguous in an array).
+internal struct ZddNode
+{
+    public int Level;   // 1 = lowest (leaf side) ... N = highest (root side). Same orientation as TdZdd
+    public int Lo;      // 0-edge (side that does not include the item)
+    public int Hi;      // 1-edge (side that includes the item). Hi != 0 per the ZDD reduction rule
+    public int Next;    // unique table chain (unused if open addressing is used)
+}
+```
+
+- Node IDs are `int`. ID `0` = terminal ⊥ (empty family of sets ∅), ID `1` = terminal ⊤ ({∅}).
+- Upper bound 2^31 nodes ≈ 32 GB. Sufficient for practical purposes, so **no 64-bit ID version will be
+  made** (not worth the added complexity).
+- Nodes are allocated contiguously in a single `ZddNode[]` array, resized by doubling. There is no
+  per-level split (the frontier method side uses a separate temporary table, so Core can use a single table).
+
+### 4.2 Unique Table
+
+- **Open addressing (linear probing, power-of-two size, doubles at load factor 0.7)**.
+  `Dictionary<K,V>` is not used (the key is 3 integers; this avoids boxing and comparer calls).
+- Hash: mix `(level, lo, hi)` into 64 bits and determine the slot via Fibonacci hashing.
+- Whether to split into per-level tables or use a single global table: **a single global table** is used
+  (since dynamic variable reordering is not done, the benefit of per-level splitting is small).
+
+### 4.3 Operation Cache
+
+- CUDD-style **direct-mapped lossy cache** (collisions overwrite). A fixed-size array; `ArrayPool` is
+  not used.
+- Entry: `struct { long Key; int Op; int Result; }` (16 bytes).
+- Default size auto-adjusts in proportion to the node count (roughly 1/4 of the node count, with a
+  configurable upper bound).
+- Key construction differs between binary operations (Union/Intersect/Diff/Product/…) and unary
+  operations (Change/OnSet/…).
+
+### 4.4 Memory Management
+
+- **No reference counting** (would make the user API heavy).
+- Explicit GC: `ZddManager.Collect(params Zdd[] roots)` performs mark & sweep + compaction + ID
+  reassignment. Since reassignment invalidates existing `Zdd` handles, only handles registered in
+  `ZddManager.RootSet` survive and are remapped.
+- In practice, "solve one problem and discard the manager entirely" is the dominant usage pattern, so
+  GC is a v0.4-and-later concern.
+
+### 4.5 Handling Recursion (a .NET-Specific Concern)
+
+Family algebra operations are naturally implemented recursively, but on a **deep ZDD (on the order of
+100,000 variables)** this triggers `StackOverflowException`. Unlike C++, .NET cannot catch a stack
+overflow — the process dies immediately — which makes this fatal.
+
+Countermeasures:
+1. Implement **all binary operations iteratively using an explicit stack (an `int` array)**.
+2. Or a hybrid: "recurse if depth is below a threshold, switch to iteration if it exceeds it."
+3. Default to the iterative implementation. Use recursion, with a depth cap, only where benchmarks show
+   it is significantly faster.
+
+This is a point that is often overlooked when porting from C++ implementations, so the policy is to
+**write iteratively from the earliest design stage**.
+
+### 4.6 Public Types
+
+```csharp
+public sealed class ZddManager : IDisposable
+{
+    public ZddManager(int variableCount, ZddManagerOptions? options = null);
+    public int VariableCount { get; }
+    public long NodeCount { get; }
+    public Zdd Empty { get; }        // ∅
+    public Zdd Base { get; }         // {∅}
+    public Zdd Singleton(int item);  // {{item}}
+    public Zdd PowerSet(...);        // 2^S
+    public Zdd FromSets(IEnumerable<IEnumerable<int>> sets);
+    public void Collect();
+    public ZddStatistics GetStatistics();
+}
+
+// A value-type handle. Manager reference + node ID
+public readonly struct Zdd : IEquatable<Zdd>, IEnumerable<int[]>
+{
+    public ZddManager Manager { get; }
+    public bool IsEmpty { get; }
+    public bool IsBase { get; }
+    public long NodeCount { get; }          // number of nodes referenced by this ZDD
+    public BigInteger Count { get; }        // number of elements (subsets)
+    public double CountApprox { get; }      // double approximation (fast)
+    public IEnumerable<int[]> Sets(ZddEnumerationOrder order = default);  // lazy enumeration
+    public bool Contains(IEnumerable<int> set);
+    public bool IsSubsetOf(Zdd g);
+    public bool Overlaps(Zdd g);
+    public int[] ElementAt(BigInteger index, ZddEnumerationOrder order = default);   // unranking
+    public BigInteger IndexOf(IEnumerable<int> set, ZddEnumerationOrder order = default);  // ranking (-1 if absent)
+    public int[] Sample(Random rng);        // 1 uniformly random element
+    public int[][] Sample(int n, Random rng);  // n uniformly random elements (with replacement)
+    public WeightedSet<T> MaxWeight<T, TOps>(params ReadOnlySpan<T> w) where TOps : struct, IWeightOps<T>;
+    public WeightedSet<T> MinWeight<T, TOps>(params ReadOnlySpan<T> w) where TOps : struct, IWeightOps<T>;
+    public WeightedSet<T>[] TopK<T, TOps>(ReadOnlySpan<T> w, int k) where TOps : struct, IWeightOps<T>;
+    // int / long / double can be called via a short form omitting the type argument (e.g. MaxWeight(w))
+    public double Probability(params ReadOnlySpan<double> p);   // when each item is independently chosen with probability p
+    public double ExpectedValue(params ReadOnlySpan<double> w); // expected value under the uniform distribution over the family
+    public double[] ItemFrequency();                            // same, per-item probability of appearing
+    // Operators: | & - ^ * / % ~
+}
+```
+
+`Zdd` is made a `struct` to avoid allocation. It holds a manager reference, so it is 12-16 bytes.
+Operations across different managers throw an exception.
 
 ## 4. Core レイヤ: ZDD エンジン
 
@@ -257,6 +520,167 @@ public readonly struct Zdd : IEquatable<Zdd>, IEnumerable<int[]>
 異なるマネージャ間の演算は例外にする。
 
 ---
+
+## 5. Family Algebra API (Feature List)
+
+### 5.1 Set Operations
+
+| API | Symbol | Meaning |
+|---|---|---|
+| `Union(g)` | `f \| g` | F ∪ G |
+| `Intersect(g)` | `f & g` | F ∩ G |
+| `Difference(g)` | `f - g` | F \ G |
+| `SymmetricDifference(g)` | `f ^ g` | symmetric difference |
+| `Complement()` | `~f` | 2^U \ F (with respect to the universe U) |
+
+### 5.2 ZDD-Specific (Minato's Basic Operations)
+
+| API | Meaning |
+|---|---|
+| `OnSet(item)` / `Subset1` | extract sets containing item, and remove item from them |
+| `OffSet(item)` / `Subset0` | extract sets that do not contain item |
+| `Change(item)` | flip the presence/absence of item in each set |
+| `Product(g)` / `f * g` | cartesian product join: `{ a ∪ b : a∈F, b∈G }` |
+| `Quotient(g)` / `f / g` | quotient |
+| `Remainder(g)` / `f % g` | remainder: `f - g*(f/g)` |
+| `Meet(g)` | `{ a ∩ b : a∈F, b∈G }` |
+| `Restrict(g)` / `SupersetsOf(g)` | elements of F that contain some element of G |
+| `Permit(g)` / `SubsetsOf(g)` | elements of F that are contained in some element of G |
+| `NonSubsetsOf(g)` / `NonSupersetsOf(g)` | negated versions of the above |
+| `Maximal()` / `Minimal()` | only elements maximal/minimal under inclusion |
+| `HittingSets()` / `Blocking()` | the blocking family of sets (hypergraph transversal) |
+| `Flip(items)` | flip multiple items at once |
+| `Support()` | the set of variables actually in use |
+
+**The boundary of division**: `f / g` is `{ a : ∀ b ∈ g, a ∩ b = ∅ and a ∪ b ∈ f }`.
+When `g` is the empty family ∅, the condition is vacuously true, so by definition **`f / ∅` is the power
+set of the universe, 2^U** (taking the manager's full set of variables, same as the universe used by
+`Complement()` — kept consistent with B8).
+Some implementations make this an error, but keeping `f % ∅ == f` preserves `f == f/g*g + f%g` as-is
+(since `2^U * ∅ == ∅`).
+
+**Aliases for the inclusion family**: `Restrict` / `Permit` are names inherited from SAPPOROBDD, while
+`SupersetsOf` / `SubsetsOf` are .NET-style names that directly state "what remains" — **both point to the
+same implementation**. Both are exposed so that either vocabulary can be found.
+The negated versions (`NonSubsetsOf` / `NonSupersetsOf`) compute the result in a single pass without
+actually taking a difference, but `f.NonSupersetsOf(g) == f - f.Restrict(g)` and
+`f.NonSubsetsOf(g) == f - f.Permit(g)` hold.
+
+**The boundary of sieving**: when the right operand is ∅, "∃ b" is false and "∀ b" is vacuously true, so
+`f.Restrict(∅) == f.Permit(∅) == ∅` and `f.NonSubsetsOf(∅) == f.NonSupersetsOf(∅) == f`.
+`{∅}` is the identity element of `Restrict` (∅ is contained in every set), and
+`f.Permit({∅})` becomes `{∅}` only when `f` contains the empty set.
+
+**Hitting sets are not minimized**: what `HittingSets()` returns is
+`{ a ⊆ U : ∀ b ∈ F, a ∩ b ≠ ∅ }`, i.e. **every set that intersects** (an upward-closed family).
+When only the minimal ones are needed, write `HittingSets().Minimal()`. Berge's duality theorem then
+takes the form `F.Minimal().HittingSets().Minimal().HittingSets().Minimal() == F.Minimal()`.
+The result can be exponentially larger than the original family.
+
+**The boundary between Maximal/Minimal and hitting sets**: `∅.Maximal() == ∅.Minimal() == ∅`,
+`{∅}.Minimal() == {∅}`, and if `F` contains the empty set then `F.Minimal() == {∅}`.
+`∅.HittingSets() == 2^U` (the condition is vacuously true); `HittingSets()` of a family that contains the
+empty set is ∅ (nothing can intersect ∅). Both `HittingSets()` and the universe `U` used by
+`Complement()` are **all of the manager's variables**, not `Support()` (B8). This is because items that
+the family has never used may still freely be candidates — the same-content family gives a different
+answer if the number of variables differs.
+
+### 5.3 Queries and Enumeration
+
+| API | Notes |
+|---|---|
+| `Count` (`BigInteger`) / `CountApprox` (`double`) | bottom-up DP, cached |
+| `CountBySize()` | count distribution by element count (`BigInteger[]`) |
+| `Contains(IEnumerable<int> set)` | membership test, O(number of variables) |
+| `IsSubsetOf(g)` / `Overlaps(g)` | |
+| `GetEnumerator()` → `IEnumerable<int[]>` | lazy enumeration (DFS via an explicit stack, with a lexicographic option) |
+| `ElementAt(BigInteger index)` | **unranking**. Retrieve the k-th set directly in O(number of variables) |
+| `IndexOf(int[] set)` | ranking (the inverse of the above) |
+| `Sample(Random rng)` / `Sample(n)` | **uniform random sampling** (using cardinality DP) |
+| `MaxWeight(w)` / `MinWeight(w)` | the maximum/minimum weight set (longest/shortest path DP over the DAG) |
+| `TopK(w, k)` | enumerate the top k |
+| `Probability(p)` | compute the family's probability from each element's independent probability p (network reliability) |
+| `ExpectedValue(w)` | expected value |
+| `ItemFrequency()` | probability/frequency that each variable is included in a set |
+
+`ElementAt` and `Sample` are ZDD's flagship feature — "uniform sampling from 10^20 solutions" — so they
+are **included starting from v0.1**.
+
+**Enumeration is lazy, and every returned array is freshly allocated**. Counting is proportional to the
+number of nodes, whereas enumeration is proportional to **the number of sets returned**, so `Take(10)` or
+an early `break` must finish immediately regardless of the family's size. The path itself is carried in a
+single working array, but each time terminal ⊤ is reached a copied `int[]` is returned (reusing the buffer
+would create the silent trap of `ToList()` producing a list where every element is the same array).
+If a fast version that reuses the buffer is needed, it will be added as a separate API such as
+`EnumerateInto(Span<int>)`.
+
+**There are two orders** (`ZddEnumerationOrder`). The default is 0-edge-first depth-first, which turns
+out to be **lexicographic order of the indicator vector** (since item 0 is on the root side; B5).
+`Lexicographic` is lexicographic order when a set is viewed as an **ascending sequence of items** — the
+empty sequence is smallest, followed by ascending order of the first element. `{0,2}` and `{1}` swap
+positions between the two, so they are genuinely different total orders. Both can be produced with a
+single depth-first traversal.
+
+**`IsSubsetOf` / `Overlaps` do not build a family**. They give the same answer as `(F - G).IsEmpty` /
+`(F & G) != Empty`, but without constructing the difference or intersection ZDD. Decomposing either one
+yields only a single kind of composition (`Overlaps` is an OR-only tree, `IsSubsetOf` is an AND-only
+tree), so the answer is exactly the reachable terminal's OR/AND value, and evaluation can stop as soon as
+one decisive value appears.
+
+**Ranking rides on top of "per-node partial cardinality"**. Whereas `Count` returns a single value at the
+root, `ElementAt` asks, at every node along the path, "how many sets lie beyond the 0-edge?" — this
+requires a **table** from node ID to `BigInteger` (`CardinalityTable`). Given the table, the k-th set is
+obtained by walking a single path from the root: if `k < |lo|` take the 0-edge, otherwise `k -= |lo|` and
+take the 1-edge. The cost is "a cardinality traversal (same as `Count`) + O(number of variables)", and
+this holds even for the 10^20-th element. The table is **built and discarded per call** (having the
+manager remember it would add the burden of discarding it on every operation that changes the meaning of
+node IDs; M5-3). The batched `Sample(n, rng)` builds the table just once and draws n times from it.
+
+**`ElementAt`'s order matches enumeration**. As long as the same `ZddEnumerationOrder` is passed,
+`ElementAt(k) == Sets(order).ElementAt(k)`; without this match, users could not trust the ranking.
+Under `Lexicographic`, the empty set is smallest, so at each node we also need "does the chain of
+0-edges eventually reach ⊤?" This too is computed in the same single traversal as cardinality, as
+`hasEmptySet(n) = hasEmptySet(n.Lo)` (retracing the 0-edge chain each time would make it
+O(number of variables)^2). `IndexOf` is its inverse map; sets that do not belong to the family have no
+rank, so **-1 is returned** (the same convention as `IList.IndexOf`; an out-of-range item is a caller
+error, so that throws instead).
+
+**Uniform sampling does not use modulo**. `Sample` simply feeds `ElementAt` a uniform random number in
+`[0, Count)`, but taking the modulo of the bits returned by `rng` is always biased (unless the range is a
+power of two). It draws just enough bits to represent `Count - 1`, and uses **rejection sampling**:
+discard and redraw if out of range. The probability of success on a single draw is always greater than
+1/2, so no matter how many digits are involved, the expected number of redraws is less than 2.
+
+**Weight optimization is longest-path DP over the DAG**. Since a ZDD has no cycles, `MaxWeight` is
+exactly the bottom-up DP "⊤ is `Zero`, ⊥ is not a candidate, at a node take `max(lo, hi + w[i])`". By
+remembering which edge was chosen, the **optimal set** can be recovered just by walking one path down
+from the root, so the optimal value and optimal set are returned together from a single call
+(`WeightedSet<T>`). This holds even with negative weights (since there are no cycles). Ties are resolved
+by taking the 0-edge side, which is defined to match the set that comes first in the default enumeration
+order. `TopK` generalizes "the single best" to "the best k", merging the per-node sorted top-k lists.
+**Cost is proportional to k** (time O(m·k), memory O(m·k)), which is documented, recommending small k.
+The relative order among multiple sets of equal weight is left unspecified — only the ordering by weight
+is specified.
+
+**The weight type is abstracted via the `static abstract` members of `IWeightOps<T>`** (B10, §2). The DP
+only needs `Zero` / `Add` / `Compare`, so passing these three via a type allows not only the bundled
+`int` / `long` / `double` / `BigInteger` implementations but also user-defined weights such as rationals
+or lexicographic tuples to work as-is. As with `IDdEval`, it is **not accepted as an interface type**
+(`where TOps : struct, IWeightOps<T>`). If `Add` / `Compare`, which run per node, became virtual calls,
+this would be several times slower — and this guarantee is checked mechanically by tests.
+
+**`Probability`'s universe is all of the manager's variables** (not `Support()`; B8). That is, it
+computes `Σ_{A∈F} Π_{i∈A} p[i] · Π_{i∉A} (1-p[i])`, and a level a ZDD skips (a variable not used by that
+subfamily) means it is "definitely not selected", so `1-p[j]` must be multiplied in each time we descend
+to a child. Without this correction the result would be a different quantity, not a probability (the sum
+over mutually exclusive events would not add up to 1). By definition, setting all `p[i]` to 1 yields
+"does the full universe U belong to the family" — not 1 just because the family is non-empty. Meanwhile
+the distribution for `ExpectedValue` / `ItemFrequency` is the **uniform distribution over the family**
+(same as `Sample`), which is a different thing from `Probability`. Frequency is "the number of sets
+containing item i ÷ cardinality"; the numerator is obtained in a single pass each as the sum of
+"(number of paths from the root, top-down) × (cardinality beyond the 1-edge, bottom-up)". Counts are
+computed exactly as `BigInteger`, and conversion to `double` happens only at the final division (to
+avoid `inf / inf` when cardinality exceeds 10^308).
 
 ## 5. 家族代数 API（機能一覧）
 
@@ -406,6 +830,117 @@ public readonly struct Zdd : IEquatable<Zdd>, IEnumerable<int[]>
 
 ---
 
+## 6. Frontier Layer: The Frontier Method Framework
+
+A generalized framework reinterpreting TdZdd's `DdSpec` in C#. The core value of this library is that
+users write a "state transition" and the ZDD is built automatically.
+
+### 6.1 Spec Interface
+
+```csharp
+/// <summary>DD specification for the frontier method. TState is strongly recommended to be a struct (gets devirtualized).</summary>
+public interface IDdSpec<TState>
+{
+    /// <summary>Initializes the root state and returns its level. 0=⊥, -1=⊤.</summary>
+    int GetRoot(ref TState state);
+
+    /// <summary>Returns the child state and level obtained by following edge value (0/1) at level. 0=⊥, -1=⊤.</summary>
+    int GetChild(ref TState state, int level, int value);
+
+    bool StateEquals(in TState a, in TState b);
+    int  StateHashCode(in TState state);
+}
+
+// For variable-length/array state (equivalent to TdZdd's PodArrayDdSpec)
+public interface IArrayDdSpec
+{
+    int ArrayLength { get; }                                  // number of elements in the state array
+    int GetRoot(Span<int> state);
+    int GetChild(Span<int> state, int level, int value);
+}
+
+// Composite of scalar + array (equivalent to HybridDdSpec)
+public interface IHybridDdSpec<TScalar> { ... }
+```
+
+The return-value convention (`0` = ⊥, `-1` = ⊤, positive number = next level) is made **compatible with
+TdZdd**. This is a major advantage for anyone porting an existing C++ spec, since they can write it as-is.
+For readability, `DdResult.False` / `DdResult.True` constants are also provided.
+
+### 6.2 Builder
+
+```csharp
+public static class FrontierBuilder
+{
+    public static Zdd Build<TSpec, TState>(ZddManager manager, TSpec spec, BuildOptions? options = null)
+        where TSpec : IDdSpec<TState>;                        // struct constraint for inlining
+}
+```
+
+Algorithm (following TdZdd's two-pass approach):
+
+1. **Breadth-first expansion (top-down)**: proceeding level N → 1, apply `GetChild` while managing each
+   level's set of states via a "state → temporary node ID" hash table.
+   - The state table is built and discarded per level (peak memory = at most 2 levels' worth).
+   - If the state is a fixed-length struct, this can be allocation-free via a state array + open-addressed table.
+2. **Reduction (bottom-up)**: proceeding level 1 → N, apply the ZDD reduction rules
+   - Rule A: a node with `Hi == ⊥` is replaced by `Lo` (the zero-suppression rule)
+   - Rule B: nodes with the same `(Level, Lo, Hi)` are shared
+   - At the same time, register into Core's unique table and turn the result into a `Zdd` handle.
+3. (Optional) **Look-ahead pruning**: eagerly eliminate states where the edge for which `GetChild`
+   returns ⊥ is already determined.
+
+### 6.3 Spec Composition
+
+```csharp
+spec1.And(spec2)          // intersection spec (both constraints satisfied simultaneously)
+spec1.Or(spec2)
+zdd.Subset(spec)          // narrow an existing ZDD by a spec (equivalent to TdZdd's zddSubset)
+```
+
+Compositions like "s-t path AND at most 10 edges AND passes through a specific edge" can be built
+directly without constructing a huge intermediate ZDD. This is a clear advantage over Graphillion.
+
+### 6.4 Bottom-Up Evaluator
+
+```csharp
+public interface IDdEval<TValue>
+{
+    TValue EvalTerminal(bool isTrue);
+    TValue EvalNode(int item, TValue lo, TValue hi);
+}
+public static TValue Evaluate<TEval, TValue>(this in Zdd zdd, TEval eval)
+    where TEval : struct, IDdEval<TValue>;
+```
+
+`Count` / `Probability` / `MaxWeight` etc. are all implemented on top of this, and user-defined
+evaluations (expected value, polynomials, moments, etc.) can be written in the same framework.
+
+**`EvalNode` receives the item** (not the internal level). Since an evaluator typically looks up
+per-variable information in a form like `w[item]`, the public-facing side is unified on 0-based item
+indices (B5). The commitment that level ↔ item conversion happens in exactly one place (`ZddManager`) is
+preserved as-is.
+
+**`TEval` is received with a `struct` constraint** (§10-2). If `IDdEval` were received as an interface
+type, `EvalNode` would become a virtual call for every single node. With the constraint set to
+`where TEval : struct, IDdEval<TValue>`, writing it to receive an interface type simply **fails to
+compile**. `TValue` cannot be inferred from the type argument, so both must be specified explicitly at
+the call site.
+
+**Traversal and memoization**: explicit-stack postorder (no recursion; §4.5) plus memoization keyed by
+node ID, so `EvalNode` is called **exactly once per reachable node**. Even for a family with 10^24 sets,
+this costs only as many calls as there are nodes. Memoization uses the same intermediate-result table as
+the `OperationWorkspace` used for operations, storing not the evaluated value itself but an index into a
+value table (since the table's values are fixed as `int` for result node IDs). Because the operation
+cache can only remember `int`s, memoization is closed within a single evaluation call.
+
+**Three entry points for cardinality**: `Count` (`BigInteger`, exact) / `CountApprox` (`double`, fast
+but rounds beyond 2^53 and saturates to `+∞` beyond `double.MaxValue`) / `CountBySize()` (distribution by
+element count). The distribution array's length is **the maximum element count of any set in the family,
+plus 1**; it is length 0 for an empty family. It is not sized to match the manager's total variable
+count, so that counting a small family in a manager with 100,000 variables does not allocate a
+100,000-element array per node.
+
 ## 6. Frontier レイヤ: フロンティア法フレームワーク
 
 TdZdd の `DdSpec` を C# に読み替えた汎用フレームワーク。ユーザが「状態遷移」を書けば
@@ -514,6 +1049,64 @@ public static TValue Evaluate<TEval, TValue>(this in Zdd zdd, TEval eval)
 
 ---
 
+## 7. Built-in Specs
+
+### 7.1 Common Infrastructure for Graphs
+
+```csharp
+public sealed class FrontierManager
+{
+    // Precompute, along the edge order, the "vertices newly appearing" and "vertices no longer appearing" at each edge i
+    public IReadOnlyList<int> IntroducedVertices(int edgeIndex);
+    public IReadOnlyList<int> ForgottenVertices(int edgeIndex);
+    public int MaxFrontierSize { get; }         // state size = the exponent driving the time complexity
+    public int MateIndex(int edgeIndex, int vertex);   // slot within the state array
+}
+```
+
+State is represented via a `mate` array (for paths/cycles) or a `comp` array (for connectivity), reusing
+the slots of vertices leaving the frontier to minimize size.
+
+### 7.2 List of Specs to Implement
+
+**Families of edges (GraphSet family)**
+
+| Spec | Content |
+|---|---|
+| `PathSpec(s, t)` | s-t simple path (`SIMPATH`). `allowAnyEndpoints` for all simple paths |
+| `HamiltonianPathSpec` / `HamiltonianCycleSpec` | passes through all vertices |
+| `CycleSpec` | simple cycle (single/multiple) |
+| `SpanningTreeSpec` / `ForestSpec` | spanning tree, spanning forest, k-component forest |
+| `ConnectedSubgraphSpec(terminals)` | subgraph that connects a specified set of vertices (basis for Steiner tree) |
+| `SteinerTreeSpec` | tree connecting a set of terminals |
+| `MatchingSpec(perfect:)` | matching, perfect matching |
+| `DegreeConstraintSpec(lo[], hi[])` | per-vertex degree constraint (generalizes many of the above) |
+| `GraphPartitionSpec(k, balance)` | k-partition (districting, regional division) |
+| `CutSpec(s, t)` | s-t cut |
+| `EdgeCoverSpec` | edge cover |
+
+**Families of vertices (SetSet family)**
+
+| Spec | Content |
+|---|---|
+| `IndependentSetSpec` / `CliqueSpec` | independent set / clique |
+| `VertexCoverSpec` / `DominatingSetSpec` | vertex cover / dominating set |
+| `ColoringSpec(k)` | k-coloring (vertex × color as the variable) |
+
+**General combinatorial constraints**
+
+| Spec | Content |
+|---|---|
+| `CardinalitySpec(min, max)` | exactly k elements / a range of element counts |
+| `LinearConstraintSpec(a[], op, b)` | linear constraint (subset sum, knapsack) |
+| `KnapsackSpec` | capacity constraint |
+| `LookaheadSpec` | pruning helper |
+| `DfaSpec` / `SequenceSpec` | turning a DFA into a ZDD (constraints via regular languages) |
+| `SortedSetsSpec`, `CombinationSpec`, `PowerSetSpec` | basic forms |
+
+These are added incrementally. If v0.2 gets "s-t path", "spanning tree", "matching", and "cardinality
+constraint" working, the framework's validity will have been verified.
+
 ## 7. 組み込みスペック
 
 ### 7.1 グラフ用の共通基盤
@@ -524,7 +1117,7 @@ public sealed class FrontierManager
     // 辺順序に沿って、各辺 i で「新たに登場する頂点」「以降現れなくなる頂点」を前計算
     public IReadOnlyList<int> IntroducedVertices(int edgeIndex);
     public IReadOnlyList<int> ForgottenVertices(int edgeIndex);
-    public int MaxFrontierSize { get; }         // 状態サイズ = ここが計算量の肩
+    public int MaxFrontierSize { get; }         // 状態サイズ = 計算量の肩
     public int MateIndex(int edgeIndex, int vertex);   // 状態配列内のスロット
 }
 ```
@@ -574,6 +1167,47 @@ public sealed class FrontierManager
 
 ---
 
+## 8. Graphs Layer (Graphillion-Equivalent High-Level API)
+
+```csharp
+var g = Graph.Grid(9, 9);                      // grid graph
+var paths = GraphSet.Paths(g, from: 0, to: 80);
+
+Console.WriteLine(paths.Count);                // BigInteger
+var shortest = paths.MinWeight(e => 1);        // shortest
+var sample   = paths.Sample(new Random(42));   // uniform sampling
+
+var filtered = paths.Including(edge).Excluding(other).Smaller(20);
+foreach (var p in filtered.Take(10)) { ... }
+```
+
+- `GraphSet` is a thin wrapper over `Zdd` (holding a mapping between edge index and variable index).
+- `SetSet<T>` is a generic wrapper handling a family of any element type (holding a dictionary between
+  `T` and variable index).
+- **`IEnumerable<...>` is implemented, but `ICollection` is not**
+  (because `Count` does not fit in an `int`; the `Count` property is `BigInteger`, and to avoid colliding
+  with LINQ's `Count()`, things are organized as `Count` / `LongCount` / `CountApprox`).
+- Graphillion's vocabulary (`paths` `cycles` `trees` `forests` `matchings` `cliques`
+  `including` `excluding` `larger` `smaller` `rand_iter` `max_iter`) is carried over, adapted to .NET
+  naming conventions → the learning cost for users coming from Python is zero.
+
+### Edge-Order Optimization
+
+Since frontier width sits in the exponent of the time complexity, **edge order determines 90% of the
+performance**.
+
+```csharp
+public enum EdgeOrderStrategy { AsGiven, Bfs, Dfs, BeamSearchPathWidth, Grid }
+graph.Optimize(EdgeOrderStrategy.BeamSearchPathWidth);
+graph.EstimateMaxFrontierSize();   // estimate before running; warn if too large
+```
+
+- The default is BFS order (equivalent to Graphillion).
+- Beam-search-based path-width-minimizing approximation is added in v0.4.
+- A dedicated serpentine order is provided for grid graphs.
+- An "estimation API" is provided so users can be warned before starting a reckless computation
+  (quite important in practice).
+
 ## 8. Graphs レイヤ（Graphillion 相当の高レベル API）
 
 ```csharp
@@ -614,6 +1248,18 @@ graph.EstimateMaxFrontierSize();   // 実行前に見積り、大きすぎるな
 
 ---
 
+## 9. I/O, Visualization, and Interoperability
+
+| Feature | Content |
+|---|---|
+| DOT output | `zdd.ToDot()` → Graphviz. Level labels and state labels are customizable |
+| Custom binary format | Serializes the node table directly. Fast and compact |
+| Text format | Compatible with Graphillion's `dumps`/`loads` → **round-trips with Python's Graphillion** (useful for both migration and verification) |
+| Knuth format | For comparison/verification against reference implementations (optional) |
+| Streaming output for set enumeration | Streams large results to a `TextWriter` |
+
+No dependency on `System.Text.Json` or similar is introduced (to keep dependencies at zero).
+
 ## 9. I/O・可視化・相互運用
 
 | 機能 | 内容 |
@@ -627,6 +1273,34 @@ graph.EstimateMaxFrontierSize();   // 実行前に見積り、大きすぎるな
 `System.Text.Json` などへの依存は入れない（依存ゼロを保つ）。
 
 ---
+
+## 10. Performance Design (.NET-Specific Considerations)
+
+1. **Produce no allocations**: node tables and state tables are all `int[]` / struct arrays. No GC is
+   triggered outside of enumeration.
+2. **struct generics + interface constraints** devirtualize/inline spec calls.
+   If `IDdSpec<T>` is received as an interface type it becomes a virtual call and is several times
+   slower, so it must **always be received via the type argument `where TSpec : IDdSpec<TState>`**.
+3. **Bounds-check elimination**: align loops to the `for (int i = 0; i < arr.Length; i++)` form.
+   Push further with `Unsafe.Add` / `ref` access where needed.
+4. **Hash tables use open addressing** (avoiding `Dictionary`'s two-level indirection).
+5. **`BigInteger` is slow**, so cardinality computation has two tracks: `double` (approximate, fast) and
+   `BigInteger` (exact). A "fast path for when 128-bit integers suffice" is also being considered.
+6. **Avoid recursion** (§4.5).
+7. **ServerGC / `TieredPGO`** are recommended in the documentation. Benchmarks are measured with this setting.
+8. **Parallelization** (v0.4): parallelize per-level expansion of frontier construction with
+   `Parallel.For` + per-partition state tables → merge. The operation cache is split thread-locally.
+
+### Performance Targets
+
+| Benchmark | Target |
+|---|---|
+| 9x9 grid s-t simple paths (3266598486981642 ways) | Under 1 second |
+| 11x11 grid (1568758030464750013214100 ways) | Under 60 seconds / under 8 GB memory |
+| Ratio vs. Graphillion (C++ core) | **Within 3x**, eventually within 2x |
+
+"Beating C++" is not a goal. The value is "being in the same order of magnitude, usable from .NET with
+no dependencies."
 
 ## 10. 性能設計（.NET 固有の勘所）
 
@@ -655,6 +1329,49 @@ graph.EstimateMaxFrontierSize();   // 実行前に見積り、大きすぎるな
 「C++ に勝つ」は目標にしない。「同じオーダーで、.NET から依存なしに使える」ことが価値。
 
 ---
+
+## 11. Test Strategy
+
+1. **Brute-force verification**: for variable count ≤ 16, naively enumerate all subsets and verify the
+   results of every family algebra operation match. Generate large numbers of random families for
+   property testing (CsCheck).
+2. **Algebraic laws**: commutativity, associativity, distributivity, De Morgan's laws,
+   `f = f/g * g + f%g`, etc.
+3. **Canonicity**: building the same family via different sequences of operations yields the same node ID.
+4. **Comparison against known values**
+   - Number of diagonal self-avoiding paths on an n x n vertex grid = **OEIS A007764**
+     (2x2:2, 3x3:12, 4x4:184, 5x5:8512, 6x6:1262816, 7x7:575780564,
+     8x8:789360053252, 9x9:3266598486981642, 11x11:1568758030464750013214100)
+   - Number of spanning trees = verified independently via the **Matrix-Tree Theorem** (Kirchhoff)
+   - Number of perfect matchings = verified via permanent / bitmask DP
+   - Number of independent sets = verified via naive DP
+5. **Consistency between enumeration and counting**: for small cases, `Count`, the actual number
+   enumerated, and a full traversal of `ElementAt` all agree.
+6. **Uniform sampling test**: a chi-squared test confirming no bias.
+7. **Round-trip**: serialization/deserialization, and mutual conversion with the Graphillion format.
+8. **Stress**: no stack overflow on a deep ZDD (100,000 variables) (regression test for §4.5).
+9. **CI**: a GitHub Actions matrix over ubuntu/windows × 2 TFMs, with coverage measurement.
+
+### 11.1 Where Property Tests Live and Reproducibility
+
+Property tests live in `tests/ZDD.Net.Tests.Properties/` (CsCheck). This is a separate project from the
+brute-force verification tests (`tests/ZDD.Net.Tests/`) so as to **confine CsCheck's `PackageReference`
+to that project alone**. The zero-dependency requirement of the main `src/ZDD.Net`
+(`docs/OPEN-QUESTIONS.md` B1) is checked by `DependencyPolicyTests` against both the csproj and the
+built assembly.
+
+- **Inputs** are generated not as ZDDs but as sequences of bitmasks (`FamilySpec`). This is why a
+  shrunk counterexample reads in a form like "1 variable, 2 sets" — because the generator is shaped
+  that way.
+- **Reproducibility**: CsCheck's `seed` only covers the first draw, so `PropertyCheck` spins up a single
+  `PCG` from the seed and drives it itself, recording the state right before each draw as a seed. So
+  fixing the seed reproduces the entire input sequence. The seed is derived from the property name, and
+  can be overridden via the `ZDD_PROPERTY_SEED` environment variable.
+- **Shrinking**: on a failing run, CsCheck's `Sample` is re-run from that run's seed, using the
+  remaining trials to shrink the counterexample. Both the shrunk counterexample and the seed that
+  reproduces it are emitted in the exception message and the test output.
+- **Running time**: default is 100 runs per property, adding under 1 second to CI. To run heavier,
+  raise `ZDD_PROPERTY_ITER` (about 1 minute for 20000 runs).
 
 ## 11. テスト戦略
 
@@ -695,6 +1412,19 @@ graph.EstimateMaxFrontierSize();   // 実行前に見積り、大きすぎるな
 
 ---
 
+## 12. Milestones
+
+| Version | Content | Estimate |
+|---|---|---|
+| **v0.1** | Core engine (node table, unique table, operation cache, all family algebra operations, counting, enumeration, sampling, unranking) + brute-force tests | 2-3 weeks |
+| **v0.2** | Frontier framework (`IDdSpec` / builder / evaluator) + `FrontierManager` + s-t path, spanning tree, matching, cardinality constraint. Correctness verified via grid path counts | 2-3 weeks |
+| **v0.3** | Expansion of the spec suite (connectivity, partitioning, Steiner, degree constraints, independent sets, etc.) + `Graph` / `GraphSet` / `SetSet<T>` high-level API | 3 weeks |
+| **v0.4** | Performance: edge-order optimization (beam search), parallel construction, cache tuning, BenchmarkDotNet, Graphillion comparison report | 3 weeks |
+| **v0.5** | I/O (DOT, binary, Graphillion-compatible), node GC, sample CLI, DocFX documentation | 2 weeks |
+| **v1.0** | API freeze, NativeAOT verification, NuGet publication, README/tutorial polish | 1-2 weeks |
+
+Release notes and benchmark results are appended to `docs/benchmarks.md` for each version.
+
 ## 12. マイルストーン
 
 | 版 | 内容 | 目安 |
@@ -709,6 +1439,19 @@ graph.EstimateMaxFrontierSize();   // 実行前に見積り、大きすぎるな
 各版でリリースノートとベンチ結果を `docs/benchmarks.md` に追記する。
 
 ---
+
+## 13. Risks and Mitigations
+
+| Risk | Impact | Mitigation |
+|---|---|---|
+| Memory exhaustion from frontier-width explosion (**a realistic risk given the thousands-of-edges scale**) | High | Pre-estimation API, edge-order optimization, upper bound settings with graceful exceptions, progress callback |
+| `StackOverflowException` (immediate process death) from deep recursion | High | All operations implemented iteratively from the earliest design stage (§4.5). Guarded by regression tests |
+| `IDdSpec` received as an interface type causing virtual calls and a major slowdown | Medium | Enforce struct generic constraints via the API. Detected by an analyzer or benchmark |
+| Going net10-only means .NET Framework / Unity users are not reached | Medium | An accepted decision. Keeping the internal implementation as "plain arrays + int index" so `netstandard2.0` can be added later if needed |
+| `BigInteger` becomes a bottleneck | Medium | Default to a `double` approximation, with an explicit exact API |
+| License issues from reference-OSS code leaking in | Medium | Principle of reimplementing from papers. Maintain `THIRD-PARTY-NOTICES.md` |
+| Users unfamiliar with ZDD theory cannot use the library | Medium | Provide a high-level API in Graphillion's vocabulary, giving an entry point that does not require knowing ZDD internals |
+| Fixing the API too early and having to break it later | Low | Marked `[Experimental]`/pre-release until v1.0 |
 
 ## 13. リスクと対策
 
@@ -725,6 +1468,20 @@ graph.EstimateMaxFrontierSize();   // 実行前に見積り、大きすぎるな
 
 ---
 
+## 14. First Steps (v0.1 Implementation Order)
+
+1. Scaffolding for `Directory.Build.props`, `.editorconfig`, the solution, and CI workflow
+2. `Internal/`: hash functions, bit operations, nullable attribute polyfills
+3. `Core/NodeTable` (node array + open-addressed unique table + resizing)
+4. `Core/OperationCache`
+5. The `Zdd` struct and `ZddManager`, terminals, `Singleton`, `Change`, `OnSet`/`OffSet`
+6. Binary operations (iterative implementation): `Union` / `Intersect` / `Difference` / `Product` /
+   `Quotient` / `Remainder`
+7. `IDdEval` and bottom-up evaluation → `Count` / `CountApprox` / `MaxWeight`
+8. Enumeration, `ElementAt`, `Sample`
+9. Brute-force verification tests and property tests
+10. `ToDot()` (essential for debugging, so done early)
+
 ## 14. 最初の一歩（v0.1 の実装順）
 
 1. `Directory.Build.props`・`.editorconfig`・ソリューション・CI ワークフローの雛形
@@ -739,6 +1496,19 @@ graph.EstimateMaxFrontierSize();   // 実行前に見積り、大きすぎるな
 10. `ToDot()`（デバッグに必須なので早めに）
 
 ---
+
+## Appendix: Reference Links
+
+- TdZdd — https://github.com/kunisura/TdZdd (MIT, ERATO MINATO Project)
+- TdZdd User Guide — https://github.com/kunisura/TdZdd/blob/master/userguide.md
+- Graphillion — https://github.com/graphillion/graphillion (MIT)
+- Graphillion paper — Inoue et al., *Graphillion: software library for very large sets of labeled graphs*, STTT 2016
+- SAPPOROBDD — https://github.com/Shin-ichi-Minato/SAPPOROBDD (MIT)
+- frontier_basic_tdzdd (a minimal implementation example of the frontier method) — https://github.com/junkawahara/frontier_basic_tdzdd
+- Minato, *Zero-suppressed BDDs for Set Manipulation in Combinatorial Problems*, DAC 1993
+- Kawahara, Inoue, Iwashita, Minato, *Frontier-based Search for Enumerating All Constrained Subgraphs with Compressed Representation*, IEICE Trans. 2017
+- Knuth, *The Art of Computer Programming* Vol.4A, §7.1.4 (BDD/ZDD, SIMPATH)
+- OEIS A007764 (number of self-avoiding paths on a grid) — https://oeis.org/A007764
 
 ## 付録: 参考リンク
 

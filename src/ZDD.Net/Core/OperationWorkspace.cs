@@ -7,125 +7,92 @@ using ZDD.Net.Internal;
 namespace ZDD.Net.Core
 {
     /// <summary>
-    /// 反復（明示スタック）実装の作業領域。<b>作業スタック</b>と<b>途中結果表</b>の 2 つを持ち、
-    /// 演算 1 回ぶんの「再帰の代わり」を提供する。ZDD の演算はすべてこの型を使って書く。
+    /// Scratch space for the iterative (explicit-stack) implementation of operations: a work
+    /// stack plus an intermediate-result table, standing in for recursion for a single operation.
+    /// All ZDD operations are built on this type.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>なぜ必要か</b>（docs/PLAN.md §4.5）: 家族代数の演算は自然に書けば再帰になるが、
-    /// ZDD の深さは変数の個数そのもので、10 万規模になると <c>StackOverflowException</c> が起きる。
-    /// .NET ではこれを catch できず<b>プロセスが即死する</b>ため、本ライブラリは
-    /// <b>全演算を反復で書く</b>。その共通部分がこの型である。
+    /// Recursive implementations would overflow the stack at realistic variable counts, which
+    /// .NET cannot catch (the process dies), so every operation is written iteratively. See
+    /// <see cref="UnaryOperations.Apply"/> for the reference shape: push the root
+    /// (<see cref="PushVisit"/>); pop an entry; if it's a "combine" (<see cref="IsCombine"/>),
+    /// merge its children's results via <see cref="UniqueTable.GetNode"/> and
+    /// <see cref="SetResult"/>; otherwise, if the result isn't already known
+    /// (<see cref="TryGetResult"/>) or resolvable as a base case or from the
+    /// <see cref="OperationCache"/>, re-push self with <see cref="PushCombine"/> then push its
+    /// unresolved children — LIFO order guarantees children are handled before the combine.
     /// </para>
     /// <para>
-    /// <b>後続の演算はこの形に倣って書く</b>（M1-7 の集合演算 〜 M1-10 の極大・極小）。雛形は
-    /// <see cref="UnaryOperations.Apply"/> にあり、骨格は次の 5 段だけである。
-    /// </para>
-    /// <list type="number">
-    /// <item><description>根を <see cref="PushVisit"/> でスタックに積む。</description></item>
-    /// <item><description>
-    /// <see cref="TryPop"/> で 1 件取り出す。<see cref="IsCombine"/> が真なら 6 へ。
-    /// </description></item>
-    /// <item><description>
-    /// 途中結果表（<see cref="TryGetResult"/>）に答があれば何もしない。次に終端などの基底ケース、
-    /// 最後に演算キャッシュ（<see cref="OperationCache"/>）を見て、決まれば
-    /// <see cref="SetResult"/> して次へ。
-    /// </description></item>
-    /// <item><description>
-    /// どれでも決まらなければ、<b>自分を <see cref="PushCombine"/> で積み直してから</b>
-    /// 未計算の子を <see cref="PushVisit"/> で積む。スタックは LIFO なので、
-    /// 子は必ず自分の合成より先に片付く。
-    /// </description></item>
-    /// <item><description>
-    /// 合成として取り出されたら、子の結果を <see cref="TryGetResult"/> で引き、
-    /// <see cref="UniqueTable.GetNode"/> で 1 個のノードに合成して <see cref="SetResult"/> し、
-    /// 演算キャッシュにも書く。
-    /// </description></item>
-    /// <item><description>スタックが空になったら、根の途中結果がそのまま答。</description></item>
-    /// </list>
-    /// <para>
-    /// <b>キー</b>: スタックにも途中結果表にも <c>long</c> の「キー」を入れる。単項演算では
-    /// ノード ID をそのまま使い、二項演算では 2 つのノード ID を 32bit ずつ詰めた値を使う
-    /// （どちらも非負になる）。キーの負値は「合成として積み直したもの」を表す印
-    /// （<see cref="PushCombine"/> はビット反転して積む）に予約されている。
+    /// Stack and result-table entries are <c>long</c> keys: a node ID for unary ops, or two
+    /// node IDs packed 32 bits each for binary ops (both non-negative). A negative key marks a
+    /// "combine" entry (<see cref="PushCombine"/> bitwise-inverts it).
     /// </para>
     /// <para>
-    /// <b>途中結果表と演算キャッシュは役割が違う</b>: <see cref="OperationCache"/> は
-    /// 衝突したエントリを捨てる lossy な表で、<b>演算をまたいで</b>結果を使い回すためのもの。
-    /// 対してこちらは<b>取りこぼさない</b>表で、演算 1 回の中で「子の結果はもう出ている」ことを
-    /// 保証する。再帰なら呼び出し元のローカル変数が担っていた役割で、ここを lossy な表で代用すると、
-    /// 2 つの子が同じスロットを奪い合ったときに互いを追い出し続けて<b>停止しなくなる</b>。
+    /// Unlike the lossy, cross-operation <see cref="OperationCache"/>, the intermediate-result
+    /// table never drops entries within a single operation — losing one could make two children
+    /// evict each other's slot forever, so it never terminates.
     /// </para>
     /// <para>
-    /// <b>アロケーション</b>: <see cref="ZddManager"/> が 1 個を持ち回り、演算のたびに
-    /// <see cref="Reset"/> して使い回す。したがって配列の確保は「これまでで最大の演算」の
-    /// 分だけしか起きない。ノード 1 個ごとの割り当ては無い。後始末も表を舐めずに済むよう、
-    /// 途中結果表のスロットには<b>世代</b>を持たせてある（<see cref="Reset"/> は世代を進めるだけ）。
-    /// これがないと、一度きりの巨大な演算のあとに小さな演算を何度も回すたび、
-    /// 大きくなった表を消して回る手間を毎回払うことになる。
-    /// </para>
-    /// <para>
-    /// <b>スレッド安全性</b>: 他の内部表と同じくスレッドセーフではない。
+    /// One instance is reused across operations via <see cref="Reset"/>, which just advances a
+    /// generation counter instead of clearing the arrays, so cleanup cost is O(1) regardless of
+    /// how large the previous operation was. Not thread-safe.
     /// </para>
     /// </remarks>
     internal sealed class OperationWorkspace
     {
-        /// <summary>作業スタックの既定の初期段数。</summary>
+        /// <summary>Default initial depth of the work stack.</summary>
         public const int DefaultStackCapacity = 64;
 
-        /// <summary>途中結果表の既定の初期エントリ数。2 の冪。</summary>
+        /// <summary>Default initial entry count of the intermediate-result table (power of two).</summary>
         public const int DefaultResultCapacity = 64;
 
-        /// <summary>途中結果表の最小エントリ数。2 の冪で、2 より大きい（Fibonacci hashing の前提）。</summary>
+        /// <summary>Minimum entry count of the intermediate-result table (power of two, greater than 2).</summary>
         public const int MinimumResultCapacity = 4;
 
-        /// <summary>途中結果表を倍化する負荷率（%）。<see cref="UniqueTable"/> と揃えてある。</summary>
+        /// <summary>Load factor (%) at which the intermediate-result table grows; matches <see cref="UniqueTable"/>.</summary>
         public const int MaxLoadFactorPercent = 70;
 
-        /// <summary>途中結果表のエントリ数の上限。2 の冪。</summary>
+        /// <summary>Maximum entry count of the intermediate-result table (power of two).</summary>
         public const int MaxResultCapacity = 1 << 30;
 
-        /// <summary>まだ一度も使われていないスロットの世代。<see cref="_generation"/> は 1 から始まる。</summary>
+        /// <summary>Generation value for a slot that has never been written; <see cref="_generation"/> starts at 1.</summary>
         private const int UnusedGeneration = 0;
 
-        /// <summary>作業スタック。負の値は「合成として積み直したもの」（<see cref="PushCombine"/>）。</summary>
+        /// <summary>Work stack; negative entries are "combine" markers (<see cref="PushCombine"/>).</summary>
         private long[] _stack;
 
-        /// <summary>スタックに積まれている段数。</summary>
+        /// <summary>Number of entries currently on the stack.</summary>
         private int _top;
 
-        /// <summary>途中結果表のキー。<see cref="_generations"/> が現世代のスロットだけが有効。</summary>
+        /// <summary>Intermediate-result keys; only slots matching <see cref="_generations"/> are valid.</summary>
         private long[] _keys;
 
-        /// <summary><see cref="_keys"/> と同じ添字で対応する結果ノード ID。</summary>
+        /// <summary>Result node IDs, indexed in parallel with <see cref="_keys"/>.</summary>
         private int[] _values;
 
-        /// <summary>
-        /// スロットが最後に書かれた世代。<see cref="_generation"/> と一致しないスロットは空きとみなす。
-        /// </summary>
+        /// <summary>Generation each slot was last written in; a mismatch with <see cref="_generation"/> means empty.</summary>
         private int[] _generations;
 
-        /// <summary>
-        /// 現在の世代。<see cref="Reset"/> はこれを 1 つ進めるだけで、表を舐めない。
-        /// </summary>
+        /// <summary>Current generation; <see cref="Reset"/> just increments this.</summary>
         private int _generation;
 
-        /// <summary>途中結果表に入っているエントリ数。</summary>
+        /// <summary>Number of entries in the intermediate-result table.</summary>
         private int _count;
 
-        /// <summary>この数を超えた時点で途中結果表を倍化する。</summary>
+        /// <summary>Entry count above which the intermediate-result table grows.</summary>
         private int _growThreshold;
 
-        /// <summary>既定の大きさで作業領域を作る。</summary>
+        /// <summary>Creates a workspace with the default sizes.</summary>
         public OperationWorkspace()
             : this(DefaultStackCapacity, DefaultResultCapacity)
         {
         }
 
-        /// <summary>大きさを指定して作業領域を作る。どちらも足りなくなれば自動で倍化される。</summary>
-        /// <param name="stackCapacity">作業スタックの初期段数。1 以上。</param>
+        /// <summary>Creates a workspace with the given sizes; both grow automatically as needed.</summary>
+        /// <param name="stackCapacity">Initial work-stack depth; must be at least 1.</param>
         /// <param name="resultCapacity">
-        /// 途中結果表の初期エントリ数。<see cref="MinimumResultCapacity"/> 以上の 2 の冪に切り上げられる。
+        /// Initial intermediate-result table size, rounded up to a power of two at least <see cref="MinimumResultCapacity"/>.
         /// </param>
         public OperationWorkspace(int stackCapacity, int resultCapacity)
         {
@@ -151,31 +118,31 @@ namespace ZDD.Net.Core
             _growThreshold = ComputeGrowThreshold(capacity);
         }
 
-        /// <summary>いま作業スタックに積まれている段数。</summary>
+        /// <summary>Current work-stack depth.</summary>
         public int Depth => _top;
 
-        /// <summary>作業スタックが空かどうか。</summary>
+        /// <summary>Whether the work stack is empty.</summary>
         public bool IsEmpty => _top == 0;
 
-        /// <summary>途中結果表に入っているエントリ数。</summary>
+        /// <summary>Number of entries in the intermediate-result table.</summary>
         public int ResultCount => _count;
 
-        /// <summary>作業スタックの現在の段数上限（倍化で増える）。</summary>
+        /// <summary>Current work-stack capacity (grows automatically).</summary>
         public int StackCapacity => _stack.Length;
 
-        /// <summary>途中結果表の現在のエントリ数上限（倍化で増える）。</summary>
+        /// <summary>Current intermediate-result table capacity (grows automatically).</summary>
         public int ResultCapacity => _keys.Length;
 
-        /// <summary>スタックから取り出した項目が「合成」（子を積んだ後の積み直し）かどうか。</summary>
+        /// <summary>Whether a popped entry is a "combine" (re-pushed after its children were queued).</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool IsCombine(long entry) => entry < 0;
 
-        /// <summary>スタックから取り出した項目の、印を外した元のキー。</summary>
+        /// <summary>The original key of a popped entry, with the combine marker removed.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static long KeyOf(long entry) => entry < 0 ? ~entry : entry;
 
-        /// <summary>これから計算する部分問題としてキーを積む。</summary>
-        /// <param name="key">部分問題のキー（非負）。</param>
+        /// <summary>Pushes a key as a subproblem to visit.</summary>
+        /// <param name="key">Subproblem key (non-negative).</param>
         public void PushVisit(long key)
         {
             AssertKey(key);
@@ -183,21 +150,19 @@ namespace ZDD.Net.Core
         }
 
         /// <summary>
-        /// 子の結果が揃った後にもう一度取り出すために、キーを「合成」の印つきで積む。
-        /// <b>子を積むより先に</b>呼ぶこと（スタックは LIFO なので、後から積んだ子が先に片付く）。
+        /// Pushes a key marked as "combine", to be popped again once its children's results are ready.
+        /// Must be called before pushing the children (LIFO order pops children first).
         /// </summary>
-        /// <param name="key">部分問題のキー（非負）。</param>
+        /// <param name="key">Subproblem key (non-negative).</param>
         public void PushCombine(long key)
         {
             AssertKey(key);
             Push(~key);
         }
 
-        /// <summary>スタックから 1 件取り出す。</summary>
-        /// <param name="entry">
-        /// 取り出した項目。<see cref="IsCombine"/> と <see cref="KeyOf"/> で読み解く。
-        /// </param>
-        /// <returns>取り出せたら <see langword="true"/>、スタックが空なら <see langword="false"/>。</returns>
+        /// <summary>Pops one entry from the work stack.</summary>
+        /// <param name="entry">The popped entry; decode with <see cref="IsCombine"/> and <see cref="KeyOf"/>.</param>
+        /// <returns><see langword="true"/> if an entry was popped, <see langword="false"/> if the stack was empty.</returns>
         public bool TryPop(out long entry)
         {
             if (_top == 0)
@@ -210,12 +175,10 @@ namespace ZDD.Net.Core
             return true;
         }
 
-        /// <summary>途中結果表からキーに対する結果を引く。</summary>
-        /// <param name="key">部分問題のキー（非負）。</param>
-        /// <param name="result">
-        /// 見つかった結果ノード ID。見つからなければ <see cref="NodeTable.Bottom"/>。
-        /// </param>
-        /// <returns>計算済みなら <see langword="true"/>。</returns>
+        /// <summary>Looks up the result already computed for a key.</summary>
+        /// <param name="key">Subproblem key (non-negative).</param>
+        /// <param name="result">Result node ID if found, otherwise <see cref="NodeTable.Bottom"/>.</param>
+        /// <returns><see langword="true"/> if already computed.</returns>
         public bool TryGetResult(long key, out int result)
         {
             AssertKey(key);
@@ -230,7 +193,7 @@ namespace ZDD.Net.Core
             {
                 if (generations[slot] != generation)
                 {
-                    // 前の演算の名残か、一度も使われていないスロット。どちらも「空き」。
+                    // Either a leftover from a previous operation, or never used — either way, empty.
                     result = NodeTable.Bottom;
                     return false;
                 }
@@ -245,16 +208,16 @@ namespace ZDD.Net.Core
             }
         }
 
-        /// <summary>キーに対する結果が既に出ているかどうか。</summary>
-        /// <param name="key">部分問題のキー（非負）。</param>
+        /// <summary>Whether a result is already recorded for the key.</summary>
+        /// <param name="key">Subproblem key (non-negative).</param>
         public bool HasResult(long key) => TryGetResult(key, out _);
 
         /// <summary>
-        /// 途中結果表にキーと結果を記録する。同じキーへの再登録は上書きになる
-        /// （反復実装では同じ部分問題を 2 度計算しても同じ答になるので、上書きは無害）。
+        /// Records a key's result. Re-recording the same key overwrites the prior value, which is
+        /// safe since recomputing a subproblem always yields the same answer.
         /// </summary>
-        /// <param name="key">部分問題のキー（非負）。</param>
-        /// <param name="result">結果ノード ID。</param>
+        /// <param name="key">Subproblem key (non-negative).</param>
+        /// <param name="result">Result node ID.</param>
         public void SetResult(long key, int result)
         {
             AssertKey(key);
@@ -275,14 +238,10 @@ namespace ZDD.Net.Core
             _values[slot] = result;
         }
 
-        /// <summary>
-        /// 次の演算のために中身を空にする。確保済みの配列は手放さないので、
-        /// 使い回すぶんには追加のアロケーションが起きない。
-        /// </summary>
+        /// <summary>Clears the workspace for the next operation without releasing allocated arrays.</summary>
         /// <remarks>
-        /// 表を舐めて消すのではなく<b>世代を 1 つ進める</b>だけなので、直前の演算が
-        /// どれだけ大きくても後始末は一定時間で済む。大きな演算を 1 回やったあとに
-        /// 小さな演算を何度も回す、という使い方でも、毎回その大きさぶんを払うことにならない。
+        /// Advances the generation counter instead of clearing the tables, so cleanup is O(1)
+        /// regardless of how large the previous operation was.
         /// </remarks>
         public void Reset()
         {
@@ -291,7 +250,7 @@ namespace ZDD.Net.Core
 
             if (_generation == int.MaxValue)
             {
-                // 演算 21 億回に 1 度。ここでだけ本当に表を消して、世代を最初に戻す。
+                // Happens once per ~2.1 billion operations: actually clear and restart generations.
                 Array.Clear(_generations);
                 _generation = UnusedGeneration + 1;
                 return;
@@ -303,15 +262,12 @@ namespace ZDD.Net.Core
         private static int ComputeGrowThreshold(int capacity) =>
             (int)((long)capacity * MaxLoadFactorPercent / 100);
 
-        /// <summary>
-        /// キーからスロット添字を求める。キーは連番のノード ID（や、その組）なので下位ビットに
-        /// 強い規則性がある。<see cref="Hashing.Mix64"/> で撹拌してから Fibonacci hashing にかける。
-        /// </summary>
+        /// <summary>Computes the slot index for a key via <see cref="Hashing.Mix64"/> and Fibonacci hashing.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static int SlotOf(long key, int capacity) =>
             Hashing.IndexForPowerOfTwo(Hashing.Mix64((ulong)key), capacity);
 
-        /// <summary><paramref name="key"/> が入っているスロット、無ければ入れるべき空きスロット。</summary>
+        /// <summary>Finds the slot holding <paramref name="key"/>, or the empty slot it should go in.</summary>
         private static int FindSlot(long[] keys, int[] generations, int generation, long key)
         {
             int mask = keys.Length - 1;
@@ -354,7 +310,7 @@ namespace ZDD.Net.Core
             Array.Resize(ref _stack, capacity * 2);
         }
 
-        /// <summary>途中結果表を倍化して全エントリを入れ直す。</summary>
+        /// <summary>Doubles the intermediate-result table and reinserts all entries.</summary>
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void Grow()
         {
@@ -375,8 +331,8 @@ namespace ZDD.Net.Core
             long[] keys = new long[newCapacity];
             int[] values = new int[newCapacity];
 
-            // 新しい世代の配列はゼロ初期化されている（= どのスロットも現世代ではない）ので、
-            // 空きの印を書いて回る必要は無い。移し替えるのは現世代のエントリだけ。
+            // New arrays are zero-initialized, so no slot belongs to the current generation yet;
+            // only entries from the current generation need to be copied over.
             int[] generations = new int[newCapacity];
 
             for (int i = 0; i < oldKeys.Length; i++)
@@ -400,8 +356,8 @@ namespace ZDD.Net.Core
         }
 
         /// <summary>
-        /// キーが非負であることを表明する。負のキーは「合成」の印と衝突するため、
-        /// 取り違えるとスタックの読み解きが静かに壊れる。
+        /// Debug-only assertion that a key is non-negative, since a negative key would collide
+        /// with the "combine" marker.
         /// </summary>
         [Conditional("DEBUG")]
         private static void AssertKey(long key) =>
