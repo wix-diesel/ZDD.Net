@@ -1,5 +1,4 @@
 using System;
-using System.Diagnostics;
 using System.Numerics;
 
 namespace ZDD.Net.Internal
@@ -45,11 +44,23 @@ namespace ZDD.Net.Internal
 
         /// <summary>上限を決めて乱数源を作る。</summary>
         /// <param name="exclusiveUpperBound">返す値の上限。<b>1 以上</b>でなければならない。</param>
+        /// <remarks>
+        /// <b>検査は <c>Debug.Assert</c> ではなく実行時に行う</b>。上限が 0 以下のまま進むと、
+        /// 0 なら<b>常に 0 を返す</b>（範囲に値が無いのに答が出てしまう）、負なら<b>棄却が
+        /// 永遠に当たらず止まらなくなる</b>。どちらも Release ビルドで静かに壊れる形なので、
+        /// 呼び出し側の不備をその場で言い切る。検査は乱数 1 本につき 1 度で、引くたびではない。
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// <paramref name="exclusiveUpperBound"/> が 1 未満の場合。
+        /// </exception>
         public UniformBigInteger(BigInteger exclusiveUpperBound)
         {
-            Debug.Assert(
-                exclusiveUpperBound > BigInteger.Zero,
-                $"The exclusive upper bound must be positive, but was {exclusiveUpperBound}.");
+            if (exclusiveUpperBound < BigInteger.One)
+            {
+                ThrowHelper.ThrowArgumentOutOfRangeException(
+                    nameof(exclusiveUpperBound),
+                    $"'{nameof(exclusiveUpperBound)}' must be at least 1 so that the range holds a value, but was {exclusiveUpperBound}.");
+            }
 
             _bound = exclusiveUpperBound;
 
@@ -65,9 +76,12 @@ namespace ZDD.Net.Internal
 
         /// <summary><c>0</c> 以上 <c>bound</c> 未満の値を 1 つ、一様に返す。</summary>
         /// <param name="random">乱数の供給元。</param>
+        /// <exception cref="ArgumentNullException">
+        /// <paramref name="random"/> が <see langword="null"/> の場合。
+        /// </exception>
         public BigInteger Next(Random random)
         {
-            Debug.Assert(random is not null, "The random source must not be null.");
+            ThrowHelper.ThrowIfNull(random, nameof(random));
 
             if (_buffer.Length == 0)
             {

@@ -420,6 +420,24 @@ namespace ZDD.Net.Tests.Core
         }
 
         [Fact]
+        public void TheUniformBigIntegerSourceRejectsARangeThatHoldsNoValue()
+        {
+            // 0 以下の上限は Release ビルドでこそ危ない。0 なら「範囲に値が無いのに 0 を返す」、
+            // 負なら「棄却が永遠に当たらず止まらない」形で静かに壊れるので、その場で弾く。
+            foreach (BigInteger bound in new[] { BigInteger.Zero, BigInteger.MinusOne, new BigInteger(-5) })
+            {
+                ArgumentOutOfRangeException error =
+                    Assert.Throws<ArgumentOutOfRangeException>(() => new UniformBigInteger(bound));
+
+                Assert.Equal("exclusiveUpperBound", error.ParamName);
+            }
+
+            // 乱数源そのものの取り違えも、NullReferenceException ではなく引数の例外にする。
+            Assert.Throws<ArgumentNullException>(() => new UniformBigInteger(BigInteger.One).Next(null!));
+            Assert.Throws<ArgumentNullException>(() => new UniformBigInteger(new BigInteger(7)).Next(null!));
+        }
+
+        [Fact]
         public void TheUniformBigIntegerSourceCoversTheWholeRangeEvenly()
         {
             // 3 は 2 の冪ではないので、2 ビット引いて 3 が出たら捨てる形になる。

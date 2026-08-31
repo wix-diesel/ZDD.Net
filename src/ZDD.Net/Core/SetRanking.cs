@@ -105,15 +105,17 @@ namespace ZDD.Net.Core
         {
             SetEnumeration.EnsureDefinedOrder(order);
 
-            // 破棄済みならここで ObjectDisposedException になる。
+            // 破棄済みならここで ObjectDisposedException になり、範囲外の item は
+            // 降り始める前に弾かれる。
             NodeTable nodes = manager.Table.Nodes;
+            QueryOperations.EnsureItemsInRange(manager, items);
 
             int[] wanted = SortedDistinct(items);
 
-            // 属するかどうかだけなら表は要らない。属さない集合に順位は無いので先に弾く。
-            // 範囲外の item もここで（降り始める前に）弾かれる。この一手が
-            // 「順位を数える側は必ず経路に乗っている」ことを保証し、下の 2 つを短く保つ。
-            if (!QueryOperations.Contains(manager, rootId, wanted))
+            // 属するかどうかだけなら濃度の表は要らない。属さない集合に順位は無いので先に弾く。
+            // この一手が「順位を数える側は必ず経路に乗っている」ことを保証し、下の 2 つを短く保つ。
+            // 昇順・重複除去済みなので、並べ直さない版を呼ぶ（同じ集合を 2 度並べ替えないため）。
+            if (!QueryOperations.ContainsSorted(manager, rootId, wanted))
             {
                 return BigInteger.MinusOne;
             }
