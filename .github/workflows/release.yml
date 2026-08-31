@@ -1,22 +1,21 @@
 name: Release
 
-# v0.1.0-preview.1 のような "vX.Y.Z-suffix" 形式のタグを打つと、そのタグからバージョンを
-# 起こして dotnet pack し、.nupkg を生成する。v1.0 までは常にプレリリース版として扱う
-# 方針（docs/PLAN.md §13）なので、タグに付いたサフィックス（-preview.1 等）がそのまま
-# パッケージのプレリリースラベルになる。
+# vX.Y.Z のような正式版タグ（サフィックスなし）を main ブランチ上に打つと、そのタグから
+# バージョンを起こして dotnet pack し、.nupkg を生成する。あわせて GitHub Release を
+# 自動作成し（リリースノートは自動生成）、.nupkg を添付する。
 #
 # NuGet.org への実公開は任意。リポジトリの Secrets に NUGET_API_KEY を設定した場合のみ
-# 公開ステップが実行される（未設定なら .nupkg の生成とアーティファクトのアップロードだけ行う)。
+# 公開ステップが実行される（未設定なら .nupkg の生成・GitHub Release の作成までを行う）。
 on:
   push:
     tags:
-      - "v[0-9]+.[0-9]+.[0-9]+-*"
+      - "v[0-9]+.[0-9]+.[0-9]+"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  pack:
+  release:
     runs-on: ubuntu-latest
     steps:
       - name: チェックアウト
@@ -32,17 +31,14 @@ jobs:
         run: |
           set -euo pipefail
           tag="${GITHUB_REF#refs/tags/}"
-          # "v0.1.0-preview.1" -> version="0.1.0-preview.1"
+          # "v1.0.0" -> version="1.0.0"
           version="${tag#v}"
-          version_prefix="${version%%-*}"
-          version_suffix="${version#*-}"
-          if [ "$version_prefix" = "$version" ]; then
-            echo "error: tag '$tag' has no prerelease suffix (expected vX.Y.Z-suffix)" >&2
+          if [[ "$version" == *-* ]]; then
+            echo "error: tag '$tag' must be a formal release tag (expected vX.Y.Z, no suffix)" >&2
             exit 1
           fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "version_prefix=$version_prefix" >> "$GITHUB_OUTPUT"
-          echo "version_suffix=$version_suffix" >> "$GITHUB_OUTPUT"
 
       - name: リストア
         run: dotnet restore ZDD.Net.sln
@@ -63,24 +59,20 @@ jobs:
           --no-restore
           --configuration Release
           --output ./artifacts
-          -p:VersionPrefix=${{ steps.version.outputs.version_prefix }}
-          -p:VersionSuffix=${{ steps.version.outputs.version_suffix }}
+          -p:VersionPrefix=${{ steps.version.outputs.version }}
+          -p:VersionSuffix=
 
       - name: 生成されたバージョンの確認
-        # プレリリース版数がちゃんと .nupkg のファイル名に付いていることを確かめる
-        # （完了条件: 「生成された .nupkg にプレリリース版数が付く」）。
+        # 正式版タグどおりのバージョンで .nupkg ができていることを確かめる。
         run: |
           set -euo pipefail
-          shopt -s nullglob
-          files=(./artifacts/ZDD.Net.*.nupkg)
-          if [ ${#files[@]} -eq 0 ]; then
-            echo "error: no .nupkg produced" >&2
+          expected="./artifacts/ZDD.Net.${{ steps.version.outputs.version }}.nupkg"
+          if [ ! -f "$expected" ]; then
+            echo "error: expected package not found: $expected" >&2
+            ls ./artifacts >&2 || true
             exit 1
           fi
-          for f in "${files[@]}"; do
-            echo "$f"
-          done
-          echo "${files[@]}" | grep -q -- "-${{ steps.version.outputs.version_suffix }}"
+          echo "$expected"
 
       - name: .nupkg のアップロード
         uses: actions/upload-artifact@v7
@@ -88,6 +80,15 @@ jobs:
           name: nuget-packages
           path: ./artifacts/*.nupkg
           retention-days: 90
+
+      - name: GitHub Release の作成
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "${{ steps.version.outputs.tag }}"
+          ./artifacts/*.nupkg
+          --title "${{ steps.version.outputs.tag }}"
+          --generate-notes
 
       - name: NuGet.org への公開
         # NUGET_API_KEY が設定されていないリポジトリでは何もしない（実公開は任意）。
