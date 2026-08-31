@@ -64,6 +64,12 @@ jobs:
             dot -Tsvg "./dot/$family.gv" -o "./dot/$family.svg"
           done
 
+      - name: api-guide サンプルの実行
+        # docs/api-guide.md に載せているコード片(samples/Zdd.ApiGuide)を実際に動かし、
+        # ガイドのサンプルが壊れていないことを確かめる。
+        run: >
+          dotnet run --project samples/Zdd.ApiGuide --no-restore --no-build --configuration Release
+
       - name: DOT のアップロード
         uses: actions/upload-artifact@v7
         if: always()
