@@ -842,6 +842,246 @@ namespace ZDD.Net.Core
         public int[][] Sample(int count, Random random) => Manager.Sample(this, count, random);
 
         /// <summary>
+        /// この族の中で<b>重みが最大</b>の集合を、その重みとともに返す。
+        /// </summary>
+        /// <typeparam name="TWeight">重みの型。</typeparam>
+        /// <typeparam name="TOps">
+        /// 重みの演算（<see cref="IWeightOps{TWeight}"/> の実装）。
+        /// <b><c>struct</c> でなければならない</b>（docs/PLAN.md §10-2）。
+        /// </typeparam>
+        /// <param name="weights">
+        /// item ごとの重み。長さは <see cref="ZddManager.VariableCount"/> と等しいこと
+        /// （族が使っていない item のぶんも要る）。
+        /// </param>
+        /// <remarks>
+        /// <para>
+        /// <b>全解を並べない</b>。ZDD は DAG なので「重みが最大の集合」は<b>最長路</b>そのもので、
+        /// ノードを 1 度ずつ見るボトムアップ DP で求まる（docs/PLAN.md §5.3）。
+        /// 集合が 10^24 個ある族でも、手間はノード数に比例する。
+        /// </para>
+        /// <para>
+        /// <b>負の重みでよい</b>。最短路のように「非負」を仮定していない（ZDD は閉路を持たないため）。
+        /// </para>
+        /// <para>
+        /// <b>同じ重みの集合が複数あるとき</b>は、既定の列挙順
+        /// （<see cref="ZddEnumerationOrder.Default"/>）で最初に来るものが返る。
+        /// </para>
+        /// <para>
+        /// <b>組み込みの重み型</b>: <see cref="Int32WeightOps"/> / <see cref="Int64WeightOps"/> /
+        /// <see cref="DoubleWeightOps"/> / <see cref="BigIntegerWeightOps"/>。
+        /// <c>int</c> / <c>long</c> / <c>double</c> は型引数を書かない短い形
+        /// （<see cref="MaxWeight(ReadOnlySpan{int})"/> など）でも呼べる。
+        /// </para>
+        /// </remarks>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="weights"/> の長さが <see cref="ZddManager.VariableCount"/> と違う場合。
+        /// </exception>
+        /// <exception cref="InvalidOperationException">
+        /// <c>default(Zdd)</c> の場合、またはこの族が空（<see cref="IsEmpty"/>）で選べる集合が 1 つも無い場合。
+        /// </exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public WeightedSet<TWeight> MaxWeight<TWeight, TOps>(params ReadOnlySpan<TWeight> weights)
+            where TOps : struct, IWeightOps<TWeight> =>
+            Manager.MaxWeight<TWeight, TOps>(this, weights);
+
+        /// <inheritdoc cref="MaxWeight{TWeight, TOps}(ReadOnlySpan{TWeight})"/>
+        public WeightedSet<int> MaxWeight(params ReadOnlySpan<int> weights) =>
+            Manager.MaxWeight<int, Int32WeightOps>(this, weights);
+
+        /// <inheritdoc cref="MaxWeight{TWeight, TOps}(ReadOnlySpan{TWeight})"/>
+        public WeightedSet<long> MaxWeight(params ReadOnlySpan<long> weights) =>
+            Manager.MaxWeight<long, Int64WeightOps>(this, weights);
+
+        /// <inheritdoc cref="MaxWeight{TWeight, TOps}(ReadOnlySpan{TWeight})"/>
+        public WeightedSet<double> MaxWeight(params ReadOnlySpan<double> weights) =>
+            Manager.MaxWeight<double, DoubleWeightOps>(this, weights);
+
+        /// <summary>
+        /// この族の中で<b>重みが最小</b>の集合を、その重みとともに返す。
+        /// </summary>
+        /// <typeparam name="TWeight">重みの型。</typeparam>
+        /// <typeparam name="TOps">
+        /// 重みの演算（<see cref="IWeightOps{TWeight}"/> の実装）。<c>struct</c> でなければならない。
+        /// </typeparam>
+        /// <param name="weights">
+        /// item ごとの重み。長さは <see cref="ZddManager.VariableCount"/> と等しいこと。
+        /// </param>
+        /// <remarks>
+        /// <see cref="MaxWeight{TWeight, TOps}(ReadOnlySpan{TWeight})"/> の最短路版で、費用も同じ。
+        /// 重みの符号を反転して <c>MaxWeight</c> を呼ぶのと同じ答になるが、
+        /// 反転の要らない重み型（符号を持たない利用者定義の型）でもそのまま使える。
+        /// 同点のときは既定の列挙順で最初に来るものが返る。
+        /// </remarks>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="weights"/> の長さが <see cref="ZddManager.VariableCount"/> と違う場合。
+        /// </exception>
+        /// <exception cref="InvalidOperationException">
+        /// <c>default(Zdd)</c> の場合、またはこの族が空（<see cref="IsEmpty"/>）の場合。
+        /// </exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public WeightedSet<TWeight> MinWeight<TWeight, TOps>(params ReadOnlySpan<TWeight> weights)
+            where TOps : struct, IWeightOps<TWeight> =>
+            Manager.MinWeight<TWeight, TOps>(this, weights);
+
+        /// <inheritdoc cref="MinWeight{TWeight, TOps}(ReadOnlySpan{TWeight})"/>
+        public WeightedSet<int> MinWeight(params ReadOnlySpan<int> weights) =>
+            Manager.MinWeight<int, Int32WeightOps>(this, weights);
+
+        /// <inheritdoc cref="MinWeight{TWeight, TOps}(ReadOnlySpan{TWeight})"/>
+        public WeightedSet<long> MinWeight(params ReadOnlySpan<long> weights) =>
+            Manager.MinWeight<long, Int64WeightOps>(this, weights);
+
+        /// <inheritdoc cref="MinWeight{TWeight, TOps}(ReadOnlySpan{TWeight})"/>
+        public WeightedSet<double> MinWeight(params ReadOnlySpan<double> weights) =>
+            Manager.MinWeight<double, DoubleWeightOps>(this, weights);
+
+        /// <summary>
+        /// この族の集合を<b>重みの大きい順</b>に <paramref name="k"/> 個返す。
+        /// </summary>
+        /// <typeparam name="TWeight">重みの型。</typeparam>
+        /// <typeparam name="TOps">
+        /// 重みの演算（<see cref="IWeightOps{TWeight}"/> の実装）。<c>struct</c> でなければならない。
+        /// </typeparam>
+        /// <param name="weights">
+        /// item ごとの重み。長さは <see cref="ZddManager.VariableCount"/> と等しいこと。
+        /// </param>
+        /// <param name="k">取り出す個数。0 以上。</param>
+        /// <returns>
+        /// 重みの降順に並んだ最大 <paramref name="k"/> 個。族の濃度が <paramref name="k"/> に満たなければ、
+        /// ある分だけ返る（空の族なら長さ 0）。
+        /// </returns>
+        /// <remarks>
+        /// <para>
+        /// <b>計算量は <paramref name="k"/> に比例して重くなる</b>。到達できるノード数を <c>m</c>、
+        /// 変数の個数を <c>n</c> として、時間 <c>O(m · k + k · n)</c>、メモリ <c>O(m · k)</c>。
+        /// ノード 1 個につき「上位 <paramref name="k"/> 個の表」を持つためで、
+        /// <c>k</c> を族の濃度なみに大きく取ると、圧縮された表現の利点が消える。
+        /// 上位いくつかが要るだけの用途に向く。
+        /// </para>
+        /// <para>
+        /// <b>同じ重みの集合が複数あるとき</b>、どの集合が何番目に来るかは<b>規定しない</b>。
+        /// 規定するのは重みの並びだけで、これは全列挙を降順に並べた先頭 <paramref name="k"/> 個と
+        /// 必ず一致する。返る集合はどれも族に属し、互いに異なり、
+        /// <see cref="WeightedSet{TWeight}.Weight"/> はその集合の重みそのものである。
+        /// </para>
+        /// </remarks>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="weights"/> の長さが <see cref="ZddManager.VariableCount"/> と違う場合。
+        /// </exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="k"/> が負の場合。</exception>
+        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public WeightedSet<TWeight>[] TopK<TWeight, TOps>(ReadOnlySpan<TWeight> weights, int k)
+            where TOps : struct, IWeightOps<TWeight> =>
+            Manager.TopK<TWeight, TOps>(this, weights, k);
+
+        /// <inheritdoc cref="TopK{TWeight, TOps}(ReadOnlySpan{TWeight}, int)"/>
+        public WeightedSet<int>[] TopK(ReadOnlySpan<int> weights, int k) =>
+            Manager.TopK<int, Int32WeightOps>(this, weights, k);
+
+        /// <inheritdoc cref="TopK{TWeight, TOps}(ReadOnlySpan{TWeight}, int)"/>
+        public WeightedSet<long>[] TopK(ReadOnlySpan<long> weights, int k) =>
+            Manager.TopK<long, Int64WeightOps>(this, weights, k);
+
+        /// <inheritdoc cref="TopK{TWeight, TOps}(ReadOnlySpan{TWeight}, int)"/>
+        public WeightedSet<double>[] TopK(ReadOnlySpan<double> weights, int k) =>
+            Manager.TopK<double, DoubleWeightOps>(this, weights, k);
+
+        /// <summary>
+        /// 各 item が独立に確率 <paramref name="probabilities"/> で選ばれるとき、
+        /// 出来上がる集合がこの族に属する確率を返す。
+        /// </summary>
+        /// <param name="probabilities">
+        /// item ごとの確率。長さは <see cref="ZddManager.VariableCount"/> と等しく、各値は 0 以上 1 以下。
+        /// </param>
+        /// <returns>
+        /// <c>Σ_{A ∈ F} Π_{i ∈ A} p[i] · Π_{i ∉ A} (1 - p[i])</c>。0 以上 1 以下。
+        /// </returns>
+        /// <remarks>
+        /// <para>
+        /// <b>ネットワーク信頼性がそのまま書ける</b>（docs/PLAN.md §5.3）。族を
+        /// 「s–t を連結にする辺集合すべて」とし、各辺が確率 <c>p</c> で生きているとすると、
+        /// この値が s–t 連結確率になる。全列挙（2^辺数 通り）を避けられるのが ZDD の効き所である。
+        /// </para>
+        /// <para>
+        /// <b>宇宙はマネージャの全変数</b>（<see cref="Support"/> ではない。docs/OPEN-QUESTIONS.md B8）。
+        /// 族に一度も現れない item も「選ばれなかった」確率 <c>1 - p[i]</c> として掛かるので、
+        /// 同じ内容の族でも変数の個数が違えば答が変わる。
+        /// </para>
+        /// <para>
+        /// <b>境界</b>: 空の族は 0、<c>{∅}</c> は <c>Π (1 - p[i])</c>、冪集合 2^U は 1。
+        /// すべての <c>p[i]</c> を 1 にすると「必ず全体集合 U が選ばれる」ことになるので、
+        /// 答は <c>U</c> がこの族に属するときだけ 1、それ以外は 0 になる
+        /// （族が空でないことでは 1 にならない）。
+        /// </para>
+        /// </remarks>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="probabilities"/> の長さが <see cref="ZddManager.VariableCount"/> と違う場合。
+        /// </exception>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// <paramref name="probabilities"/> に 0 未満・1 超・<see cref="double.NaN"/> が含まれる場合。
+        /// </exception>
+        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public double Probability(params ReadOnlySpan<double> probabilities) =>
+            Manager.Probability(this, probabilities);
+
+        /// <summary>
+        /// この族から集合を 1 つ<b>一様に</b>選んだときの、その集合の重みの期待値を返す。
+        /// </summary>
+        /// <param name="weights">
+        /// item ごとの重み。長さは <see cref="ZddManager.VariableCount"/> と等しいこと。
+        /// </param>
+        /// <returns><c>(Σ_{A ∈ F} Σ_{i ∈ A} w[i]) / |F|</c>。</returns>
+        /// <remarks>
+        /// <para>
+        /// <b>分布は族の上の一様分布</b>（<see cref="Sample(Random)"/> と同じ）で、
+        /// <see cref="Probability"/> の独立な選び方とは別物である。値も一致しない。
+        /// </para>
+        /// <para>
+        /// 期待値の線形性から <c>Σ_i w[i] · ItemFrequency()[i]</c> に等しく、実装もそう計算する。
+        /// 集合を 1 つずつ数え上げる必要は無いので、手間は <see cref="ItemFrequency"/> と同じ。
+        /// </para>
+        /// </remarks>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="weights"/> の長さが <see cref="ZddManager.VariableCount"/> と違う場合。
+        /// </exception>
+        /// <exception cref="InvalidOperationException">
+        /// <c>default(Zdd)</c> の場合、またはこの族が空（<see cref="IsEmpty"/>）で期待値が定義できない場合。
+        /// </exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public double ExpectedValue(params ReadOnlySpan<double> weights) =>
+            Manager.ExpectedValue(this, weights);
+
+        /// <summary>
+        /// この族から集合を 1 つ<b>一様に</b>選んだとき、item ごとにそれが含まれる確率を返す。
+        /// </summary>
+        /// <returns>
+        /// 長さ <see cref="ZddManager.VariableCount"/> の配列。添字 <c>i</c> は
+        /// 「item <c>i</c> を含む集合の個数 ÷ 族の濃度」で、0 以上 1 以下。
+        /// 呼び出しごとに新しい配列が返る。
+        /// </returns>
+        /// <remarks>
+        /// <para>
+        /// <b>サンプリングの代わりに使える</b>。<see cref="Sample(int, Random)"/> で何度も引いて
+        /// 出現頻度を数えれば近似できるが、この API は<b>厳密な</b>確率を、ノード数に比例する手間で返す。
+        /// 「どの辺がよく使われる経路か」のような問いがそのまま解ける。
+        /// </para>
+        /// <para>
+        /// <b>個数は厳密に数える</b>。途中は <see cref="BigInteger"/> なので、
+        /// 10^24 個規模の族でも下位の桁が失われない。<see cref="double"/> にするのは最後の割り算だけ。
+        /// </para>
+        /// <para>
+        /// 族が一度も使っていない item（<see cref="Support"/> に無い item）の確率は 0 になる。
+        /// </para>
+        /// </remarks>
+        /// <exception cref="InvalidOperationException">
+        /// <c>default(Zdd)</c> の場合、またはこの族が空（<see cref="IsEmpty"/>）で確率が定義できない場合。
+        /// </exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public double[] ItemFrequency() => Manager.ItemFrequency(this);
+
+        /// <summary>
         /// この族の集合がすべて <paramref name="g"/> にも属するか（族としての包含 <c>F ⊆ G</c>）を返す。
         /// </summary>
         /// <param name="g">相手の族。このマネージャに属していなければならない。</param>
