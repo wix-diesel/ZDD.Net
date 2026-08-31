@@ -14,9 +14,11 @@ namespace ZDD.Net.Core
     /// 根から 1 本降りるだけ（O(変数の個数)）で済む。別々の API にすると DP をもう一度回すことになる。
     /// </para>
     /// <para>
-    /// <b><see cref="Items"/> は毎回新しい配列</b>で、昇順・重複なし。呼び出し側が書き換えても
-    /// 族には影響しない（列挙・<see cref="Zdd.ElementAt(System.Numerics.BigInteger, ZddEnumerationOrder)"/>
-    /// と同じ約束）。
+    /// <b><see cref="Items"/> の配列はこの結果が所有している</b>（昇順・重複なし）。族やマネージャとは
+    /// 共有していないので、書き換えても族は変わらず、次に最適化を呼べば新しい配列が返る
+    /// （列挙・<see cref="Zdd.ElementAt(System.Numerics.BigInteger, ZddEnumerationOrder)"/>
+    /// と同じ約束）。ただし<b>同じ結果からは毎回同じ配列が返る</b>ので、この値を写して回した先にも
+    /// 書き換えは見える。空集合のときは <see cref="Array.Empty{T}"/>（長さ 0）を返す。
     /// </para>
     /// </remarks>
     public readonly struct WeightedSet<TWeight>
@@ -35,7 +37,10 @@ namespace ZDD.Net.Core
         /// <summary>この集合の重み（属する item の重みの総和）。</summary>
         public TWeight Weight { get; }
 
-        /// <summary>この集合に属する item index。昇順・重複なし。空集合なら長さ 0。</summary>
+        /// <summary>
+        /// この集合に属する item index。昇順・重複なし。空集合なら長さ 0。
+        /// 配列はこの結果が所有していて族とは共有していないが、同じ結果からは毎回同じ配列が返る。
+        /// </summary>
         public int[] Items => _items ?? Array.Empty<int>();
 
         /// <summary>集合の要素数。</summary>

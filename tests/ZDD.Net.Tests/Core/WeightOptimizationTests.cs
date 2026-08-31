@@ -607,16 +607,21 @@ namespace ZDD.Net.Tests.Core
         }
 
         [Fact]
-        public void TheReturnedSetIsANewArrayEveryTime()
+        public void TheReturnedSetIsOwnedByTheResultAndNotSharedWithTheFamily()
         {
             using ZddManager manager = new ZddManager(4);
             Zdd family = ZddFamilies.Build(manager, new[] { 0, 2 });
 
             WeightedSet<int> best = family.MaxWeight(1, 1, 1, 1);
+
+            // 同じ結果からは同じ配列が返る（写しは作らない）。
+            Assert.Same(best.Items, best.Items);
+
             best.Items[0] = 99;
 
-            // 書き換えても族は変わらないし、次の呼び出しにも影響しない。
+            // 書き換えても族は変わらないし、次の呼び出しは新しい配列を返す。
             Assert.Equal(new[] { 0, 2 }, family.MaxWeight(1, 1, 1, 1).Items);
+            Assert.NotSame(best.Items, family.MaxWeight(1, 1, 1, 1).Items);
         }
 
         // ---- 深い ZDD（スタックオーバーフロー回帰テスト） ----
