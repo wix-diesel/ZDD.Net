@@ -71,7 +71,7 @@ Core レイヤは下から積むため、序盤の PR は `internal` のコー�
 | [x] | **M1-13** | 列挙とメンバシップ | `GetEnumerator()`（遅延・明示スタック・辞書順オプション）、`Contains(set)`、`IsSubsetOf`、`Overlaps` | 列挙数と `Count` が一致（変数 ≤ 16 全網羅） | 〜300 | M1-12 |
 | [x] | **M1-14** | ランキング／サンプリング | `ElementAt(BigInteger)`（unranking）、`IndexOf(set)`（ranking）、`Sample(Random)`、`Sample(n)` | 全走査で列挙と一致。一様性のカイ二乗検定 | 〜300 | M1-13 |
 | [x] | **M1-15** | 重み最適化 | `MaxWeight` / `MinWeight` / `TopK` / `Probability` / `ExpectedValue` / `ItemFrequency`、`IWeightOps<T>` 戦略 | 総当たり照合（小規模での最適解一致） | 〜350 | M1-12 |
-| [ ] | **M1-16** | 可視化・統計・ストレス | `ToDot()`、`ZddStatistics`、**深い ZDD（変数 10 万）でスタックオーバーフローしない回帰テスト**、`samples/Zdd.Cli` の最小版 | 変数 10 万のテストが CI で通る | 〜250 | M1-15 |
+| [x] | **M1-16** | 可視化・統計・ストレス | `ToDot()`、`ZddStatistics`、**深い ZDD（変数 10 万）でスタックオーバーフローしない回帰テスト**、`samples/Zdd.Cli` の最小版 | 変数 10 万のテストが CI で通る | 〜250 | M1-15 |
 | [ ] | **M1-17** | v0.1 リリース | `docs/api-guide.md`、README 更新、CHANGELOG、プレリリース版タグ | NuGet プレリリースが生成される | ドキュメント | M1-16 |
 
 **M1 の並行可能性**: M1-4 は M1-3 と並行可。M1-12〜M1-16 の系列は M1-7 完了後、M1-8〜M1-11 の系列と並行可能。

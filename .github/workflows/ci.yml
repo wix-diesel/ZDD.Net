@@ -49,6 +49,29 @@ jobs:
           --results-directory ./coverage
           --logger trx
 
+      - name: Graphviz のインストール
+        # DOT 出力（Zdd.ToDot）の文法を本物の dot に通して確かめるため。テスト側
+        # （tests/ZDD.Net.Tests/Harness/DotSyntax.cs）が見るのは構造だけで、文法そのものは見ない。
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y graphviz
+
+      - name: サンプル CLI の実行と DOT の検証
+        run: |
+          set -euo pipefail
+          mkdir -p ./dot
+          for family in powerset singletons full; do
+            dotnet run --project samples/Zdd.Cli --no-restore --no-build --configuration Release \
+              -- --family "$family" --items 6 --stats --dot "./dot/$family.gv"
+            dot -Tsvg "./dot/$family.gv" -o "./dot/$family.svg"
+          done
+
+      - name: DOT のアップロード
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: dot
+          path: ./dot
+          retention-days: 14
+
       - name: カバレッジのアップロード
         uses: actions/upload-artifact@v7
         if: always()
