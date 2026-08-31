@@ -80,6 +80,9 @@ namespace ZDD.Net.Core
         /// <summary>使用済みスロット数。終端 2 個を含むので、次に払い出す ID と一致する。</summary>
         private int _count;
 
+        /// <summary><see cref="_count"/> がこれまでに到達した最大値。</summary>
+        private int _peakCount;
+
         /// <summary>既定の初期容量でノード表を作る。</summary>
         public NodeTable()
             : this(DefaultCapacity, MaxCapacity)
@@ -119,6 +122,7 @@ namespace ZDD.Net.Core
             _capacityLimit = capacityLimit;
             _nodes = GC.AllocateUninitializedArray<ZddNode>(initialCapacity);
             _count = FirstNodeId;
+            _peakCount = FirstNodeId;
 
             // 終端はゼロ初期化されない配列上に置かれるので、明示的に書き込む。
             // 終端はどの変数にも属さないのでレベル 0、枝は自分自身を指さず 0 のままにする。
@@ -128,6 +132,17 @@ namespace ZDD.Net.Core
 
         /// <summary>確保済みの実ノード数（予約された終端 2 個は含まない）。</summary>
         public int Count => _count - FirstNodeId;
+
+        /// <summary>
+        /// <see cref="Count"/> がこれまでに到達した最大値。
+        /// </summary>
+        /// <remarks>
+        /// ノードを解放する手段がまだ無い（ノード GC は M5-3）ので、現状は常に
+        /// <see cref="Count"/> と等しい。それでも別に持つのは、統計
+        /// （<see cref="ZddStatistics.PeakNodeCount"/>）の意味を先に固定しておくためで、
+        /// GC が入っても「これまでに同時に生きた最大のノード数」を読み替えずに使える。
+        /// </remarks>
+        public int PeakCount => _peakCount - FirstNodeId;
 
         /// <summary>次の <see cref="Add"/> が返す ID。終端を含めた使用済みスロット数でもある。</summary>
         public int NextId => _count;
@@ -204,6 +219,12 @@ namespace ZDD.Net.Core
             node.Next = NoNext;
 
             _count = id + 1;
+
+            if (_count > _peakCount)
+            {
+                _peakCount = _count;
+            }
+
             return id;
         }
 

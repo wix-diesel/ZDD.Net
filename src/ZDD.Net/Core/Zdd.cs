@@ -1,9 +1,11 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using ZDD.Net.Internal;
+using ZDD.Net.Io;
 
 namespace ZDD.Net.Core
 {
@@ -1172,6 +1174,39 @@ namespace ZDD.Net.Core
         /// <summary>補 <c>2^U ∖ F</c>。<see cref="Complement"/> と同じ。</summary>
         /// <param name="operand">補を取る族。</param>
         public static Zdd operator ~(Zdd operand) => operand.Manager.Complement(operand);
+
+        /// <summary>
+        /// この族を Graphviz の DOT 形式で書き出す。<c>dot -Tsvg</c> に流せばそのまま絵になる。
+        /// </summary>
+        /// <returns>DOT のソース。改行は環境に依らず <c>\n</c>。</returns>
+        /// <remarks>
+        /// <para>
+        /// 0-枝は破線、1-枝は実線で、終端 ⊥（∅）と ⊤（<c>{∅}</c>）は箱で描く。同じ item のノードは
+        /// 同じ段に並び、段は根側が上になる。到達できないノードと、使われていない終端は出さない。
+        /// 絵の約束の詳細は <see cref="Io.DotWriter"/> にまとめてある。
+        /// </para>
+        /// <para>
+        /// <b>大きな族では <see cref="WriteDot"/> を使うこと</b>。こちらは出力を丸ごと
+        /// 文字列に載せるので、ノード 1 個あたり数十バイトがそのままメモリに乗る。
+        /// </para>
+        /// </remarks>
+        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public string ToDot() => DotWriter.Write(this);
+
+        /// <summary>
+        /// この族の DOT 表現を <paramref name="writer"/> へ流す。巨大な族をメモリに載せずに済む。
+        /// </summary>
+        /// <param name="writer">書き出し先。</param>
+        /// <remarks>
+        /// 出力の内容は <see cref="ToDot"/> と同じ。走査は明示スタックで、再帰しない
+        /// （docs/PLAN.md §4.5）。ただし段ごとに並べるため、到達ノードの一覧だけは一度
+        /// メモリに載る（ノード数に比例）。
+        /// </remarks>
+        /// <exception cref="ArgumentNullException"><paramref name="writer"/> が <see langword="null"/> の場合。</exception>
+        /// <exception cref="InvalidOperationException"><c>default(Zdd)</c> の場合。</exception>
+        /// <exception cref="ObjectDisposedException">所有マネージャが破棄済みの場合。</exception>
+        public void WriteDot(TextWriter writer) => DotWriter.Write(this, writer);
 
         /// <summary>デバッグ用の短い表現。族の中身は展開しない。</summary>
         public override string ToString()

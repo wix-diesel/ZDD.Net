@@ -38,7 +38,8 @@ namespace ZDD.Net.Core
     /// <b>破棄</b>: <see cref="Dispose"/> はノード表・一意化表・演算キャッシュへの参照を手放し、GC が回収できるようにする。
     /// アンマネージドな資源は持たないので、破棄を忘れてもリークはしない
     /// （大きな配列の回収が GC 任せになるだけ）。破棄後は、<b>表を読む操作</b>
-    /// （<see cref="Empty"/> / <see cref="Base"/> / <see cref="Singleton"/> / <see cref="NodeCount"/> と、
+    /// （<see cref="Empty"/> / <see cref="Base"/> / <see cref="Singleton"/> / <see cref="NodeCount"/> /
+    /// <see cref="GetStatistics"/> と、
     /// これに属する <see cref="Zdd"/> の <see cref="Zdd.NodeCount"/> / <see cref="Zdd.Support"/>）が
     /// <see cref="ObjectDisposedException"/> になる。表を読まないもの
     /// （<see cref="VariableCount"/> / <see cref="IsDisposed"/> と、<see cref="Zdd"/> の等値比較・
@@ -162,6 +163,42 @@ namespace ZDD.Net.Core
 
             // item を含まない集合は 1 つも無いので 0-枝は ⊥、item を除いた残りは空集合なので 1-枝は ⊤。
             return new Zdd(this, table.GetNode(level, NodeTable.Bottom, NodeTable.Top));
+        }
+
+        /// <summary>
+        /// 内部の表がいまどうなっているかを 1 つの値にまとめて返す（docs/PLAN.md §4.6）。
+        /// </summary>
+        /// <returns>
+        /// 呼び出した時点の写し。以後マネージャが変わっても、返した値は変わらない。
+        /// </returns>
+        /// <remarks>
+        /// <para>
+        /// 表を読むだけで、族の走査は行わない（<see cref="Zdd.NodeCount"/> と違って定数時間）。
+        /// 統計をどう読むかは <see cref="ZddStatistics"/> の解説にまとめてある。
+        /// </para>
+        /// <para>
+        /// 演算キャッシュのカウンタはマネージャを作ってからの積算値なので、区間で見たいときは
+        /// 前後 2 回呼んで差を取る。
+        /// </para>
+        /// </remarks>
+        /// <exception cref="ObjectDisposedException">このマネージャが破棄済みの場合。</exception>
+        public ZddStatistics GetStatistics()
+        {
+            UniqueTable table = Table;
+            OperationCache cache = Cache;
+            NodeTable nodes = table.Nodes;
+
+            return new ZddStatistics(
+                nodeCount: nodes.Count,
+                peakNodeCount: nodes.PeakCount,
+                nodeTableCapacity: nodes.Capacity,
+                uniqueTableCapacity: table.Capacity,
+                uniqueTableCollisions: table.Collisions,
+                cacheCapacity: cache.Capacity,
+                maxCacheCapacity: cache.MaxCapacity,
+                cacheLookups: cache.Lookups,
+                cacheHits: cache.Hits,
+                cacheOverwrites: cache.Collisions);
         }
 
         /// <summary>

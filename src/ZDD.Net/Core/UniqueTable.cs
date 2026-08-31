@@ -74,6 +74,9 @@ namespace ZDD.Net.Core
         /// <summary>この数を超えた時点で倍化する。<c>_slots.Length * 70 / 100</c>。</summary>
         private int _growThreshold;
 
+        /// <summary>線形探索で読み飛ばした「別のキーが入っていたスロット」の延べ個数。</summary>
+        private long _collisions;
+
         /// <summary>既定の初期容量で、新しいノード表の上に一意化表を作る。</summary>
         public UniqueTable()
             : this(new NodeTable(), DefaultCapacity)
@@ -122,6 +125,7 @@ namespace ZDD.Net.Core
             _slots = new int[capacity];
             _count = 0;
             _growThreshold = ComputeGrowThreshold(capacity);
+            _collisions = 0;
         }
 
         /// <summary>この一意化表が使っているノード表。</summary>
@@ -135,6 +139,19 @@ namespace ZDD.Net.Core
 
         /// <summary>この数を超えたエントリ数になった時点で倍化が走る。</summary>
         public int GrowThreshold => _growThreshold;
+
+        /// <summary>
+        /// 線形探索が「別のキーが入っていたスロット」を読み飛ばした延べ回数。
+        /// </summary>
+        /// <remarks>
+        /// 数えるのは <see cref="GetNode"/> / <see cref="TryGetExisting"/> が引きに応えるための
+        /// 探索だけで、倍化に伴う再ハッシュと、その直後に入れ先を取り直す
+        /// <see cref="FindEmptySlot"/> の探索は含めない。前者は利用者の引きではなく、
+        /// 後者は同じ引きを二重に数えることになるためである。
+        /// 負荷率（<see cref="Count"/> / <see cref="Capacity"/>）と併せて見ると、
+        /// 初期容量やハッシュの散り具合の目安になる（<see cref="ZddStatistics"/>）。
+        /// </remarks>
+        public long Collisions => _collisions;
 
         /// <summary>
         /// <c>(level, lo, hi)</c> に対応するノード ID を返す。同じ三つ組に対しては常に同じ ID を返す。
@@ -186,6 +203,7 @@ namespace ZDD.Net.Core
                     return id;
                 }
 
+                _collisions++;
                 slot = (slot + 1) & mask;
             }
 
@@ -230,6 +248,7 @@ namespace ZDD.Net.Core
                     return true;
                 }
 
+                _collisions++;
                 slot = (slot + 1) & mask;
             }
         }
