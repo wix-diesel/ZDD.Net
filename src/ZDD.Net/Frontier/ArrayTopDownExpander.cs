@@ -69,6 +69,12 @@ namespace ZDD.Net.Frontier
             BuildOptions effective = options ?? new BuildOptions();
             int arrayLength = spec.ArrayLength;
 
+            if (arrayLength < 0)
+            {
+                ThrowHelper.ThrowInvalidOperationException(
+                    $"The spec's ArrayLength returned {arrayLength}, which is negative; it must be 0 or more.");
+            }
+
             Span<int> rootState = arrayLength == 0 ? default : new int[arrayLength];
             int rootLevel = spec.GetRoot(rootState);
 
@@ -82,6 +88,15 @@ namespace ZDD.Net.Frontier
                 ThrowHelper.ThrowInvalidOperationException(
                     $"The spec's GetRoot returned {rootLevel}, which is neither a level (1 or above) nor a " +
                     $"terminal ({DdResult.False} = bottom, {DdResult.True} = top).");
+            }
+
+            if (arrayLength == 0)
+            {
+                ThrowHelper.ThrowInvalidOperationException(
+                    "The spec's ArrayLength is 0, so it has no state to distinguish states with, but GetRoot " +
+                    $"returned level {rootLevel} instead of a terminal; a zero-length array spec can only ever " +
+                    "build a terminal family. Give the spec at least one array slot, or write it against " +
+                    "IDdSpec<TState> instead.");
             }
 
             ArrayTopDownExpander<TSpec> expander = new ArrayTopDownExpander<TSpec>(spec, arrayLength, rootLevel, effective);

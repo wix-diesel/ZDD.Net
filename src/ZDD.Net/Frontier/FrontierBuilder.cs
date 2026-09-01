@@ -24,6 +24,9 @@ namespace ZDD.Net.Frontier
         /// <param name="options">Limits, cancellation and progress for the top-down pass; defaults when null.</param>
         /// <returns>The family <paramref name="spec"/> describes, canonical within <paramref name="manager"/>.</returns>
         /// <exception cref="System.ArgumentNullException"><paramref name="manager"/> is null.</exception>
+        /// <exception cref="System.InvalidOperationException">
+        /// The spec's root level exceeds <paramref name="manager"/>'s <see cref="ZddManager.VariableCount"/>.
+        /// </exception>
         /// <exception cref="BuildLimitExceededException">A limit of <paramref name="options"/> was passed.</exception>
         /// <exception cref="System.OperationCanceledException">The options' token was cancelled.</exception>
         /// <exception cref="System.ObjectDisposedException"><paramref name="manager"/> has been disposed.</exception>
@@ -33,6 +36,7 @@ namespace ZDD.Net.Frontier
             ThrowHelper.ThrowIfNull(manager, nameof(manager));
 
             TemporaryNodeTable table = TopDownExpander<TSpec, TState>.Expand(spec, options);
+            EnsureFitsManager(manager, table);
             return BottomUpReducer.Reduce(manager, table);
         }
 
@@ -43,6 +47,10 @@ namespace ZDD.Net.Frontier
         /// <param name="options">Limits, cancellation and progress for the top-down pass; defaults when null.</param>
         /// <returns>The family <paramref name="spec"/> describes, canonical within <paramref name="manager"/>.</returns>
         /// <exception cref="System.ArgumentNullException"><paramref name="manager"/> is null.</exception>
+        /// <exception cref="System.InvalidOperationException">
+        /// The spec's <see cref="IArrayDdSpec.ArrayLength"/> is negative, or its root level exceeds
+        /// <paramref name="manager"/>'s <see cref="ZddManager.VariableCount"/>.
+        /// </exception>
         /// <exception cref="BuildLimitExceededException">A limit of <paramref name="options"/> was passed.</exception>
         /// <exception cref="System.OperationCanceledException">The options' token was cancelled.</exception>
         /// <exception cref="System.ObjectDisposedException"><paramref name="manager"/> has been disposed.</exception>
@@ -52,7 +60,24 @@ namespace ZDD.Net.Frontier
             ThrowHelper.ThrowIfNull(manager, nameof(manager));
 
             TemporaryNodeTable table = ArrayTopDownExpander<TSpec>.Expand(spec, options);
+            EnsureFitsManager(manager, table);
             return BottomUpReducer.Reduce(manager, table);
+        }
+
+        /// <summary>
+        /// Rejects a table whose root level does not fit <paramref name="manager"/>: a family built
+        /// from it would hold nodes at levels <see cref="ZddManager.ItemOf"/> cannot convert back to
+        /// an item, which later operations would surface as a confusing failure deep inside Core.
+        /// </summary>
+        private static void EnsureFitsManager(ZddManager manager, TemporaryNodeTable table)
+        {
+            if (table.RootLevel > manager.VariableCount)
+            {
+                ThrowHelper.ThrowInvalidOperationException(
+                    $"The spec's root level ({table.RootLevel}) exceeds the manager's VariableCount " +
+                    $"({manager.VariableCount}); use a manager with enough variables for the spec, or make " +
+                    "the spec return lower levels.");
+            }
         }
     }
 }

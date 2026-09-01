@@ -309,6 +309,114 @@ namespace ZDD.Net.Tests.Frontier
                 () => FrontierBuilder.Build<PowerSetSpec, int>(null!, new PowerSetSpec(3)));
         }
 
+        /// <summary>A spec whose root level ignores the manager entirely, always returning a fixed level.</summary>
+        private readonly struct FixedLevelSpec : IDdSpec<int>
+        {
+            private readonly int _level;
+
+            public FixedLevelSpec(int level) => _level = level;
+
+            public int GetRoot(ref int state)
+            {
+                state = 0;
+                return _level;
+            }
+
+            public int GetChild(ref int state, int level, int value) =>
+                level == 1 ? DdResult.True : level - 1;
+
+            public bool StateEquals(in int left, in int right) => true;
+
+            public int StateHashCode(in int state) => 0;
+        }
+
+        /// <summary>
+        /// A spec's levels are decided independently of the manager it will be built into; a root
+        /// level above <see cref="ZddManager.VariableCount"/> must be rejected up front rather than
+        /// producing a handle that later fails deep inside an unrelated operation.
+        /// </summary>
+        [Fact]
+        public void BuildThrowsWhenTheSpecsRootLevelExceedsTheManagersVariableCount()
+        {
+            using ZddManager manager = new ZddManager(3);
+
+            InvalidOperationException error = Assert.Throws<InvalidOperationException>(
+                () => FrontierBuilder.Build<FixedLevelSpec, int>(manager, new FixedLevelSpec(5)));
+
+            Assert.Contains("5", error.Message, StringComparison.Ordinal);
+            Assert.Contains("3", error.Message, StringComparison.Ordinal);
+        }
+
+        /// <summary>The array-spec overload guards the same way as the struct-state one.</summary>
+        private readonly struct FixedLevelArraySpec : IArrayDdSpec
+        {
+            private readonly int _level;
+
+            public FixedLevelArraySpec(int level) => _level = level;
+
+            public int ArrayLength => 1;
+
+            public int GetRoot(Span<int> state)
+            {
+                state.Clear();
+                return _level;
+            }
+
+            public int GetChild(Span<int> state, int level, int value) =>
+                level == 1 ? DdResult.True : level - 1;
+        }
+
+        [Fact]
+        public void TheArrayOverloadAlsoThrowsWhenTheRootLevelExceedsTheManagersVariableCount()
+        {
+            using ZddManager manager = new ZddManager(2);
+
+            Assert.Throws<InvalidOperationException>(
+                () => FrontierBuilder.Build(manager, new FixedLevelArraySpec(4)));
+        }
+
+        /// <summary>An array spec that reports a negative <see cref="IArrayDdSpec.ArrayLength"/>.</summary>
+        private readonly struct NegativeArrayLengthSpec : IArrayDdSpec
+        {
+            public int ArrayLength => -1;
+
+            public int GetRoot(Span<int> state) => DdResult.True;
+
+            public int GetChild(Span<int> state, int level, int value) => DdResult.True;
+        }
+
+        [Fact]
+        public void TheArrayOverloadRejectsANegativeArrayLength()
+        {
+            using ZddManager manager = new ZddManager(1);
+
+            InvalidOperationException error = Assert.Throws<InvalidOperationException>(
+                () => FrontierBuilder.Build(manager, new NegativeArrayLengthSpec()));
+
+            Assert.Contains("ArrayLength", error.Message, StringComparison.Ordinal);
+        }
+
+        /// <summary>An array spec with no slots at all, whose root nonetheless asks for a real level.</summary>
+        private readonly struct ZeroArrayLengthNonTerminalSpec : IArrayDdSpec
+        {
+            public int ArrayLength => 0;
+
+            public int GetRoot(Span<int> state) => 1;
+
+            public int GetChild(Span<int> state, int level, int value) => DdResult.True;
+        }
+
+        [Fact]
+        public void TheArrayOverloadRejectsAZeroArrayLengthWithANonTerminalRoot()
+        {
+            using ZddManager manager = new ZddManager(1);
+
+            InvalidOperationException error = Assert.Throws<InvalidOperationException>(
+                () => FrontierBuilder.Build(manager, new ZeroArrayLengthNonTerminalSpec()));
+
+            Assert.Contains("ArrayLength", error.Message, StringComparison.Ordinal);
+        }
+
         private static BigInteger Binomial(int n, int k)
         {
             if (k < 0 || k > n)
