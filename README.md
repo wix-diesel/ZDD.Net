@@ -33,6 +33,7 @@ C# ネイティブ実装の ZDD（Zero-suppressed Decision Diagram）／フロ�
 格子パスの実例（5×5 格子の対角 s–t 単純パスを 1 本も展開せずに数える）:
 
 ```csharp
+using System;
 using ZDD.Net.Core;
 using ZDD.Net.Frontier;
 using ZDD.Net.Graphs;

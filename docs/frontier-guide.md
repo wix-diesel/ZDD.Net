@@ -4,9 +4,10 @@
 「スペックを書けば ZDD が自動構築される」という本ライブラリの中核価値を、実際に手を動かして確かめられる
 ところまでを狙っている。Core（`ZddManager`/`Zdd`）の使い方は [docs/api-guide.md](api-guide.md) を参照。
 
-このガイドに載っているコード片は、すべて
+このガイドに載っている中心的なコード片（1 節・3〜7 節の実行例）は
 [`samples/Zdd.FrontierGuide/Program.cs`](../samples/Zdd.FrontierGuide/Program.cs) にそのまま置いてあり、
 CI が毎回ビルドして実行している（`.github/workflows/ci.yml` の「frontier-guide サンプルの実行」）。
+2 節（`Graph` の作り方）の一部の断片は、示し方の一例として載せているだけで、サンプルには含まれない。
 手元で確かめたいときは:
 
 ```sh
@@ -29,6 +30,7 @@ ZDD を知らない読者向けに一言で言うと: フロンティア法は�
 8,512 という厳密な個数を `Zdd.Count` で求めている。パスの経路そのものは 1 本も展開していない）。
 
 ```csharp
+using System;
 using ZDD.Net.Core;
 using ZDD.Net.Frontier;
 using ZDD.Net.Graphs;

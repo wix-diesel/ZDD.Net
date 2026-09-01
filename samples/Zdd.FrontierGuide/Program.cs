@@ -124,8 +124,11 @@ namespace ZDD.Net.Samples.FrontierGuide
 
             // IProgress<BuildProgress> には水準ごとに 1 回、フロンティア幅の履歴が届く
             // （bench/ZDD.Net.Benchmarks がピークフロンティア幅を記録するのに使っているのと同じ仕組み）。
+            // System.Progress<T> は SynchronizationContext 経由で非同期に届く（コンソールアプリでは
+            // スレッドプールにポストされる）ため、Build 呼び出し直後に数を検証すると届く前に読んでしまう
+            // ことがある。ここでは同期的に呼ばれる InlineProgress を使い、確定的に検証する。
             int levelsReported = 0;
-            var progress = new Progress<BuildProgress>(_ => levelsReported++);
+            var progress = new InlineProgress<BuildProgress>(_ => levelsReported++);
             var progressOptions = new BuildOptions { Progress = progress };
             FrontierBuilder.Build<PathSpec>(manager, spec, progressOptions);
 
@@ -189,6 +192,21 @@ namespace ZDD.Net.Samples.FrontierGuide
                 throw new InvalidOperationException($"assertion failed: {message}");
             }
         }
+    }
+
+    /// <summary>
+    /// <see cref="System.Progress{T}"/> と異なり、<see cref="Report"/> の呼び出しスレッド上で
+    /// 同期的にハンドラを呼ぶ <see cref="IProgress{T}"/>。<c>System.Progress&lt;T&gt;</c> は
+    /// <c>SynchronizationContext</c> 経由で非同期に届く（コンソールアプリではスレッドプールにポスト
+    /// される）ため、呼び出し直後に結果を検証するテスト・サンプルでは確定的でない。
+    /// </summary>
+    internal sealed class InlineProgress<T> : IProgress<T>
+    {
+        private readonly Action<T> _handler;
+
+        public InlineProgress(Action<T> handler) => _handler = handler;
+
+        public void Report(T value) => _handler(value);
     }
 
     /// <summary>
