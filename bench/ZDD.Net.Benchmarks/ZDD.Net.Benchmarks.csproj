@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <!-- Benchmarks are not a public API surface; XML docs on every [Benchmark] method add nothing. -->
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <!-- PLAN.md §10-7: measure under ServerGC + TieredPGO, the configuration ZDD.Net's own build-heavy -->
+    <!-- workloads are expected to run under, not the workstation-GC default dotnet run would otherwise use. -->
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+    <TieredPGO>true</TieredPGO>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- BenchmarkDotNet's PackageReference is added only here: src/ZDD.Net stays at zero external -->
+    <!-- dependencies (Directory.Packages.props, docs/OPEN-QUESTIONS.md B1). -->
+    <PackageReference Include="BenchmarkDotNet" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\ZDD.Net\ZDD.Net.csproj" />
+  </ItemGroup>
+
+</Project>
