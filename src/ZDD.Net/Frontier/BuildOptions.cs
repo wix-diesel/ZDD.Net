@@ -68,9 +68,12 @@ namespace ZDD.Net.Frontier
         /// <value>Defaults to <see cref="CancellationToken.None"/>.</value>
         public CancellationToken CancellationToken { get; set; }
 
-        /// <summary>Receives one <see cref="BuildProgress"/> per finished level, from the root level down.</summary>
+        /// <summary>Receives one <see cref="BuildProgress"/> per level, from the root level down to 1.</summary>
         /// <value>Defaults to <see langword="null"/>, which reports nothing.</value>
-        /// <remarks>Called on the building thread, so a slow handler slows the build down.</remarks>
+        /// <remarks>
+        /// A level no branch reached is reported as well, with a frontier size of 0, so the reports
+        /// count down one level at a time. Called on the building thread: a slow handler slows the build.
+        /// </remarks>
         public IProgress<BuildProgress>? Progress { get; set; }
     }
 }

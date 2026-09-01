@@ -127,6 +127,8 @@ namespace ZDD.Net.Frontier
                     DropTable(level);
                 }
 
+                // Every level is reported, the empty ones included: the reports are then the width of
+                // each level in turn, and a build that skips levels still counts down one at a time.
                 _progress?.Report(new BuildProgress(_rootLevel, level, _levels[level].Length, _nodeCount));
             }
 

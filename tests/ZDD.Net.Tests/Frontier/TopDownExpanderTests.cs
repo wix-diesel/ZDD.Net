@@ -263,6 +263,24 @@ namespace ZDD.Net.Tests.Frontier
             Assert.Equal(table.NodeCount, reports[^1].NodeCount);
         }
 
+        /// <summary>飛ばされた水準も、幅 0 として進捗に出る。</summary>
+        /// <remarks>
+        /// 進捗を水準ごとに 1 回ずつ出すのは、報告を並べるとそのまま<b>水準ごとの幅</b>になるためで、
+        /// 幅が膨らんだ構築を診断するときに要るのはこの並びである。飛ばした水準を黙って抜かすと、
+        /// 受け手から見て進捗が飛ぶうえ、幅 0 だったのか報告漏れなのか区別が付かない。
+        /// </remarks>
+        [Fact]
+        public void SkippedLevelsAreReportedWithNoWidth()
+        {
+            List<BuildProgress> reports = new List<BuildProgress>();
+            BuildOptions options = new BuildOptions { Progress = new RecordingProgress(reports) };
+
+            Expand(new SkipEveryOtherLevelSpec(5), options);
+
+            Assert.Equal(new[] { 5, 4, 3, 2, 1 }, reports.ConvertAll(report => report.Level));
+            Assert.Equal(new[] { 1, 0, 1, 0, 1 }, reports.ConvertAll(report => report.FrontierSize));
+        }
+
         /// <summary>
         /// 変数 10 万でも <c>StackOverflowException</c> にならない（展開が反復であることの回帰テスト）。
         /// </summary>
