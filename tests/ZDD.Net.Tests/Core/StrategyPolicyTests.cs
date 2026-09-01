@@ -114,6 +114,54 @@ namespace ZDD.Net.Tests.Core
                 $"These type parameters carry a strategy constraint without 'struct': {string.Join(", ", offenders)}.");
         }
 
+        /// <summary>
+        /// 型そのものが戦略を型引数で持つ場合（状態表など）も、<c>struct</c> 制約が付いていること。
+        /// </summary>
+        /// <remarks>
+        /// メソッドの型引数だけ見ていると、<c>class StructLevelStateTable&lt;TSpec, TState&gt;</c> のように
+        /// 型のほうで戦略を受ける実装が素通りする。フィールドに置いた戦略は
+        /// 状態 1 個ごとに呼ばれるので、ここが仮想呼び出しになると影響はいちばん大きい。
+        /// </remarks>
+        [Fact]
+        public void EveryStrategyTypeParameterOfATypeIsConstrainedToAStruct()
+        {
+            List<string> offenders = new List<string>();
+            int checkedParameters = 0;
+
+            foreach (Type type in typeof(Zdd).Assembly.GetTypes())
+            {
+                if (!type.IsGenericTypeDefinition)
+                {
+                    continue;
+                }
+
+                foreach (Type argument in type.GetGenericArguments())
+                {
+                    if (!argument.GetGenericParameterConstraints().Any(IsStrategyInterface))
+                    {
+                        continue;
+                    }
+
+                    checkedParameters++;
+
+                    bool isStruct = argument.GenericParameterAttributes
+                        .HasFlag(GenericParameterAttributes.NotNullableValueTypeConstraint);
+
+                    if (!isStruct)
+                    {
+                        offenders.Add($"{type.Name}<{argument.Name}>");
+                    }
+                }
+            }
+
+            Assert.True(
+                offenders.Count == 0,
+                $"These type parameters carry a strategy constraint without 'struct': {string.Join(", ", offenders)}.");
+
+            // 検査対象が 1 つも無ければ、この検査は何も守っていない。
+            Assert.True(checkedParameters > 0, "No type takes a strategy as a type parameter, so this check proves nothing.");
+        }
+
         /// <summary>そもそも戦略を型引数で受ける API が実在することを確かめる（上の 2 つが空振りしないように）。</summary>
         [Fact]
         public void TheWeightApisAreGenericOverTheStrategy()
