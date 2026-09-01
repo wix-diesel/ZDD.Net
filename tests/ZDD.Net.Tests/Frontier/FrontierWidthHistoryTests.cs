@@ -45,15 +45,22 @@ namespace ZDD.Net.Tests.Frontier
                 int predictedVertexCount = frontierManager.FrontierSize(edgeIndex);
 
                 Assert.True(
-                    report.FrontierSize <= (1 << predictedVertexCount),
+                    report.FrontierSize <= TwoToThePowerOf(predictedVertexCount),
                     $"Level {report.Level}: observed width {report.FrontierSize} exceeds the " +
                     $"2^{predictedVertexCount} bound FrontierManager.FrontierSize predicts for edge {edgeIndex}.");
 
                 observedPeak = Math.Max(observedPeak, report.FrontierSize);
             }
 
-            Assert.True(observedPeak <= (1 << frontierManager.MaxFrontierSize));
+            Assert.True(observedPeak <= TwoToThePowerOf(frontierManager.MaxFrontierSize));
         }
+
+        /// <summary>
+        /// <c>2^exponent</c> as a <see cref="long"/>, saturating to <see cref="long.MaxValue"/> instead of
+        /// overflowing: an <c>int</c> shift (<c>1 &lt;&lt; exponent</c>) wraps around and can flip sign once
+        /// <paramref name="exponent"/> reaches 31, which would silently turn this bound check meaningless.
+        /// </summary>
+        private static long TwoToThePowerOf(int exponent) => exponent >= 62 ? long.MaxValue : 1L << exponent;
 
         private sealed class RecordingProgress : IProgress<BuildProgress>
         {

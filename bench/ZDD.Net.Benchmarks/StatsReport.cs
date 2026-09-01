@@ -35,9 +35,14 @@ namespace ZDD.Net.Benchmarks
                     peakWidth = Math.Max(peakWidth, report.FrontierSize);
                 }
 
+                // manager.NodeCount reads the node table in constant time (unlike Zdd.NodeCount, which
+                // re-traverses the family). It is not quite "result's own node count" for the Union/Product
+                // cases, whose primary build is only one operand — but no node is ever removed once
+                // created (no GC yet), so it is the manager's full node footprint for the case, which is
+                // what "final node count" is meant to convey here.
                 Console.WriteLine(
                     $"{name,-40} {stopwatch.Elapsed.TotalMilliseconds,8:F1}ms {result.Count,22} " +
-                    $"{peakWidth,10} {result.NodeCount,11}");
+                    $"{peakWidth,10} {manager.NodeCount,11}");
             }
         }
 

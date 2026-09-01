@@ -28,7 +28,7 @@ Median 列を参照する方が実態に近い。
 # 時間計測（BenchmarkDotNet 本体）
 dotnet run -c Release --project bench/ZDD.Net.Benchmarks
 
-# ピークフロンティア幅・最終ノード数（IProgress の履歴から。時間計測は行わない）
+# ピークフロンティア幅（IProgress の履歴から）・最終ノード数（時間計測は行わない）
 dotnet run -c Release --project bench/ZDD.Net.Benchmarks -- stats
 ```
 
@@ -44,15 +44,17 @@ dotnet run -c Release --project bench/ZDD.Net.Benchmarks -- stats
 | `Cardinality_5000Choose2400To2600` | 5000 項目、サイズ 2400〜2600 | 8.33 s | 894.8 MB | 約 10¹⁵⁰⁵（1,506 桁） | 2,600 | 6,722,600 |
 | `LinearConstraint_1000ItemsKnapsack` | 1000 項目、線形不等式制約 | 4.31 s | 949.1 MB | 約 10³⁰⁰（301 桁） | 12,751 | 6,361,364 |
 | `Forest_Grid5x5_TwoComponents` | 5×5 格子、成分数 2 の森 | 6.20 ms | 366.0 KB | 3,366,192,128 | 126 | 2,052 |
-| `Union_TwoGrid6x6Paths` | 6×6 格子、2 つの `PathSpec` の `Union` | 50.60 ms | 3,426.6 KB | 436,619,868 | 1,745 | 15,520 |
-| `Product_Grid5x5PathsAndCardinality` | 5×5 格子パス × カーディナリティ制約の `Product` | 772.5 ms | 5,215.0 KB | 151,724,411,004 | 125 | 13,373 |
+| `Union_TwoGrid6x6Paths` | 6×6 格子、2 つの `PathSpec` の `Union` | 50.60 ms | 3,426.6 KB | 436,619,868 | 1,745 | 17,631 |
+| `Product_Grid5x5PathsAndCardinality` | 5×5 格子パス × カーディナリティ制約の `Product` | 772.5 ms | 5,215.0 KB | 151,724,411,004 | 125 | 41,828 |
 
 割り当てメモリは BenchmarkDotNet の `MemoryDiagnoser`（1 回のビルドが確保した総バイト数、GC 済みの
 一時領域も含む）。「集合数 (Count)」は各ケースが表す族の要素数（`Zdd.Count`）で、桁数が大きいものは
-概数と桁数のみ記載する（生の `BigInteger` は `stats` の出力を参照）。「ピークフロンティア幅」と
-「最終ノード数」は主となる `FrontierBuilder.Build` 呼び出し 1 回分（`Union` / `Product` ケースでは
-その左オペランドの構築）を `BuildOptions.Progress` で記録した履歴の最大値・[bench/ZDD.Net.Benchmarks/Cases.cs](../bench/ZDD.Net.Benchmarks/Cases.cs)
-参照。
+概数と桁数のみ記載する（生の `BigInteger` は `stats` の出力を参照）。「ピークフロンティア幅」は
+主となる `FrontierBuilder.Build` 呼び出し 1 回分（`Union` / `Product` ケースではその左オペランドの
+構築）を `BuildOptions.Progress` で記録した履歴の最大値（[bench/ZDD.Net.Benchmarks/Cases.cs](../bench/ZDD.Net.Benchmarks/Cases.cs) 参照）。
+「最終ノード数」は `ZddManager.NodeCount`（定数時間、ノード表の現在サイズ）で、ノードはまだ
+GC されないため、`Union` / `Product` ケースでは両オペランドの構築ぶんも含む——そのケースがマネージャに
+残す実際のノード総数であり、演算そのものの寄与も反映される。
 
 生の BenchmarkDotNet レポートは `bench/ZDD.Net.Benchmarks` 実行時に
 `BenchmarkDotNet.Artifacts/results/` 配下へ出力される（このリポジトリでは追跡しない）。

@@ -37,7 +37,11 @@ namespace ZDD.Net.Benchmarks
         {
             (_, Func<ZddManager, BuildOptions?, Zdd> build, int variableCount) = Find(Case);
             using ZddManager manager = new ZddManager(variableCount);
-            return build(manager, null).NodeCount;
+            build(manager, null);
+
+            // manager.NodeCount reads the table in constant time; Zdd.NodeCount re-traverses the
+            // family on every call (see its doc remark) and would fold that traversal into the timing.
+            return manager.NodeCount;
         }
 
         private static (string Name, Func<ZddManager, BuildOptions?, Zdd> Build, int VariableCount) Find(string name)
