@@ -4,18 +4,21 @@ using System.Linq;
 using System.Reflection;
 using Xunit;
 using ZDD.Net.Core;
+using ZDD.Net.Frontier;
 
 namespace ZDD.Net.Tests.Core
 {
     /// <summary>
-    /// 戦略インタフェース（<see cref="IDdEval{TValue}"/> / <see cref="IWeightOps{TWeight}"/>）が
+    /// 戦略インタフェース（<see cref="IDdEval{TValue}"/> / <see cref="IWeightOps{TWeight}"/> /
+    /// <see cref="IDdSpec{TState}"/> ほかのスペック）が
     /// <b>interface 型として受け渡されていない</b>ことを機械的に確かめる。
     /// </summary>
     /// <remarks>
     /// <para>
-    /// この 2 つは「型引数 ＋ <c>struct</c> 制約で受ける」と決めてある（docs/PLAN.md §10-2）。
-    /// interface 型で受けると、ノード 1 個ごとに走る <c>EvalNode</c> / <c>Add</c> / <c>Compare</c> が
-    /// 仮想呼び出しになり、同じコードが数倍遅くなる。ボックス化も起きる。
+    /// これらは「型引数 ＋ <c>struct</c> 制約で受ける」と決めてある
+    /// （docs/PLAN.md §10-2、スペックは docs/ROADMAP.md のレビュー観点）。
+    /// interface 型で受けると、ノードや状態 1 個ごとに走る <c>EvalNode</c> / <c>Add</c> / <c>Compare</c> /
+    /// <c>GetChild</c> が仮想呼び出しになり、同じコードが数倍遅くなる。ボックス化も起きる。
     /// </para>
     /// <para>
     /// <b>約束は約束のままでは守られない</b>ので、テストにしておく。公開 API の署名は
@@ -31,6 +34,9 @@ namespace ZDD.Net.Tests.Core
         {
             typeof(IDdEval<>),
             typeof(IWeightOps<>),
+            typeof(IDdSpec<>),
+            typeof(IArrayDdSpec),
+            typeof(IHybridDdSpec<>),
         };
 
         [Fact]
@@ -64,6 +70,7 @@ namespace ZDD.Net.Tests.Core
                     $"{nameof(NestedStrategyUser)}.{nameof(NestedStrategyUser.Consume)}(evaluators)",
                     $"{nameof(NestedStrategyUser)}.{nameof(NestedStrategyUser.Factory)}() -> Func`2",
                     $"{nameof(NestedStrategyUser)}.{nameof(NestedStrategyUser.Evaluators)}",
+                    $"{nameof(NestedStrategyUser)}.{nameof(NestedStrategyUser.ArraySpec)}",
                 },
                 offenders);
         }
@@ -149,7 +156,8 @@ namespace ZDD.Net.Tests.Core
 
             if (!type.IsGenericType)
             {
-                return false;
+                // IArrayDdSpec のようにジェネリックでない戦略もあるので、素の型でも照合する。
+                return StrategyInterfaces.Contains(type);
             }
 
             return StrategyInterfaces.Contains(type.GetGenericTypeDefinition())
@@ -193,6 +201,9 @@ namespace ZDD.Net.Tests.Core
         {
             /// <summary>配列に包んだ戦略。</summary>
             public IDdEval<int>[]? Evaluators = null;
+
+            /// <summary>ジェネリックでない戦略（型引数に包まれていないので、素の照合で捕まえる）。</summary>
+            public IArrayDdSpec? ArraySpec = null;
 
             /// <summary>コレクションに包んだ戦略。</summary>
             public static void Consume(IEnumerable<IDdEval<int>> evaluators) => _ = evaluators;

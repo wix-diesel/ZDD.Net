@@ -292,6 +292,7 @@ ZDD.Net は大量の小さな配列（ノード表・一意化表・演算キャ
 
 ## 6. さらに詳しく
 
+- スペックの書き方（フロンティア法。v0.2 開発中）: [docs/frontier-spec-guide.md](frontier-spec-guide.md)
 - 仕様・アーキテクチャの全体像: [docs/PLAN.md](PLAN.md)
 - マイルストーン別の実装計画: [docs/ROADMAP.md](ROADMAP.md)
 - 未確定事項: [docs/OPEN-QUESTIONS.md](OPEN-QUESTIONS.md)
