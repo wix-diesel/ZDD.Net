@@ -5,8 +5,8 @@ namespace ZDD.Net.Frontier
     /// Any other return value is the level of the child state, which must be positive.
     /// </summary>
     /// <remarks>
-    /// The encoding (<c>0</c> = &#8869;, <c>-1</c> = &#8868;, positive = level) is the one TdZdd uses,
-    /// kept deliberately so that a specification written against TdZdd's <c>DdSpec</c> ports unchanged.
+    /// The encoding is TdZdd's, kept deliberately so that a specification written against
+    /// TdZdd's <c>DdSpec</c> ports unchanged.
     /// </remarks>
     public static class DdResult
     {
@@ -19,8 +19,8 @@ namespace ZDD.Net.Frontier
         /// </summary>
         public const int True = -1;
 
-        /// <summary>Tests whether a returned value is a terminal rather than the level of a child state.</summary>
+        /// <summary>Tests whether a returned value is one of the two terminals rather than a level.</summary>
         /// <param name="result">A value returned by <c>GetRoot</c> or <c>GetChild</c>.</param>
-        public static bool IsTerminal(int result) => result <= 0;
+        public static bool IsTerminal(int result) => result is False or True;
     }
 }
