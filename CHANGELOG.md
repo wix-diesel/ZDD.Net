@@ -22,11 +22,22 @@ M2「フロンティア法フレームワーク」（v0.2）に向けた変更�
   どちらもオープンアドレス法で、状態の重複除去（同じ状態になった枝を 1 本にまとめる）を担う。
   レベルの切り替えは `LevelStateTablePair<TTable>` が表 2 枚を回して行い、
   バッファは `ArrayPool` から借りるので、ピークメモリは深さによらず 2 レベル分に収まる
+- トップダウン幅優先展開（internal）: `TopDownExpander<TSpec, TState>` が根の水準から 1 まで
+  水準を 1 つずつ降りながら `GetChild` をたどり、**一時ノード表** `TemporaryNodeTable`
+  （レベルごとの `(lo, hi)` 配列。ZDD の削減規則はまだ適用していない）を作る。
+  同じ状態に至った枝は 1 つの一時ノードに合流する。展開は反復で、変数 10 万でも
+  スタックオーバーフローしない
+- `BuildOptions`: 構築の上限とフック。`MaxNodeCount`（一時ノードの総数）/
+  `MaxFrontierSize`（1 水準の状態の種類数）を超えると `BuildLimitExceededException` で止まる
+  （メモリを使い切って落ちる代わりに、原因の分かる例外で止める。docs/PLAN.md §13）。
+  `CancellationToken` で中断でき、`IProgress<BuildProgress>` に水準ごとの進捗が届く
 
 ### Notes
 
-- **契約（インタフェース）と内部の状態表のみで、構築器 `FrontierBuilder` はまだ無い**。
-  スペックを書いても ZDD を構築できるようになるのは M2-4 以降
+- **契約（インタフェース）・状態表・トップダウン展開までで、構築器 `FrontierBuilder` はまだ無い**。
+  スペックを書いても ZDD を構築できるようになるのは M2-4（ボトムアップ削減と Core への取り込み）以降
+- トップダウン展開が扱えるのは今のところ `IDdSpec<TState>`（固定長 struct 状態）だけで、
+  `IArrayDdSpec` / `IHybridDdSpec<TScalar>` の展開は未対応（mate 配列を使う M2-8 までに入れる）
 
 ## [0.1.0] - 2026-08-31
 
