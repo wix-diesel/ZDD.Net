@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using ZDD.Net.Graphs;
 
@@ -11,10 +12,16 @@ namespace ZDD.Net.Tests.Harness
     /// </summary>
     internal static class BitmaskMatchingCounter
     {
+        /// <summary>
+        /// The largest vertex count this counter can handle: masks are packed into an <see cref="int"/>,
+        /// same limit as <see cref="BruteForceFamily.MaxVariableCount"/>.
+        /// </summary>
+        public const int MaxVertexCount = 30;
+
         /// <summary>The number of matchings of <paramref name="graph"/>, of any size (the empty matching counts).</summary>
         public static BigInteger CountMatchings(Graph graph)
         {
-            int n = graph.VertexCount;
+            int n = ValidateVertexCount(graph);
             int[][] neighbors = Neighbors(graph);
             int fullMask = n == 0 ? 0 : (1 << n) - 1;
             var memo = new BigInteger?[fullMask + 1];
@@ -52,7 +59,7 @@ namespace ZDD.Net.Tests.Harness
         /// <summary>The number of perfect matchings of <paramref name="graph"/> (0 if <c>VertexCount</c> is odd).</summary>
         public static BigInteger CountPerfectMatchings(Graph graph)
         {
-            int n = graph.VertexCount;
+            int n = ValidateVertexCount(graph);
             if ((n & 1) != 0)
             {
                 return BigInteger.Zero;
@@ -90,6 +97,20 @@ namespace ZDD.Net.Tests.Harness
                 memo[used] = total;
                 return total;
             }
+        }
+
+        private static int ValidateVertexCount(Graph graph)
+        {
+            int n = graph.VertexCount;
+            if (n > MaxVertexCount)
+            {
+                throw new ArgumentException(
+                    $"BitmaskMatchingCounter packs vertex subsets into an int and cannot handle {n} vertices " +
+                    $"(max {MaxVertexCount}).",
+                    nameof(graph));
+            }
+
+            return n;
         }
 
         private static int LowestUnsetBit(int used, int n)
