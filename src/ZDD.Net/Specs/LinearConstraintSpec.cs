@@ -36,24 +36,27 @@ namespace ZDD.Net.Specs
         private readonly long[] _suffixMinSum;
 
         /// <summary>Creates a spec enforcing <c>Σ coefficients[i] x[i] {op} bound</c>.</summary>
-        /// <param name="coefficients">The per-item coefficients <c>a[i]</c>; may contain negatives.</param>
+        /// <param name="coefficients">
+        /// The per-item coefficients <c>a[i]</c>; may contain negatives. Copied, so later mutating the
+        /// array passed in has no effect on the spec.
+        /// </param>
         /// <param name="op">The comparison to enforce.</param>
         /// <param name="bound">The bound <c>b</c>.</param>
         public LinearConstraintSpec(int[] coefficients, LinearConstraintOperator op, long bound)
         {
             ArgumentNullException.ThrowIfNull(coefficients);
 
-            _coefficients = coefficients;
+            _coefficients = (int[])coefficients.Clone();
             _op = op;
             _bound = bound;
 
-            int n = coefficients.Length;
+            int n = _coefficients.Length;
             _suffixMaxSum = new long[n + 1];
             _suffixMinSum = new long[n + 1];
 
             for (int i = n - 1; i >= 0; i--)
             {
-                long c = coefficients[i];
+                long c = _coefficients[i];
                 _suffixMaxSum[i] = _suffixMaxSum[i + 1] + Math.Max(c, 0);
                 _suffixMinSum[i] = _suffixMinSum[i + 1] + Math.Min(c, 0);
             }

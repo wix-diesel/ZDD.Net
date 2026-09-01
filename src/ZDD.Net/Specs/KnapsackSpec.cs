@@ -26,7 +26,10 @@ namespace ZDD.Net.Specs
         private readonly long[] _suffixWeightSum;
 
         /// <summary>Creates a spec accepting subsets whose weights sum to at most <paramref name="capacity"/>.</summary>
-        /// <param name="weights">The per-item weights; must all be non-negative.</param>
+        /// <param name="weights">
+        /// The per-item weights; must all be non-negative. Copied, so later mutating the array passed
+        /// in has no effect on the spec.
+        /// </param>
         /// <param name="capacity">
         /// The capacity. Negative is accepted and simply describes the empty family (not even the empty
         /// set fits a negative capacity), matching how <see cref="CardinalitySpec"/> treats <c>min &gt; n</c>.
@@ -43,14 +46,14 @@ namespace ZDD.Net.Specs
                 }
             }
 
-            _weights = weights;
+            _weights = (int[])weights.Clone();
             _capacity = capacity;
 
-            int n = weights.Length;
+            int n = _weights.Length;
             _suffixWeightSum = new long[n + 1];
             for (int i = n - 1; i >= 0; i--)
             {
-                _suffixWeightSum[i] = _suffixWeightSum[i + 1] + weights[i];
+                _suffixWeightSum[i] = _suffixWeightSum[i + 1] + _weights[i];
             }
         }
 

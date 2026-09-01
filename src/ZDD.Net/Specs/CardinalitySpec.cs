@@ -9,8 +9,11 @@ namespace ZDD.Net.Specs
     /// <remarks>
     /// <b>State</b>: the count of items included so far (an <c>int</c>). Which items were chosen never
     /// affects whether the final count lands in range, so the count alone is enough — states with the
-    /// same running count are always interchangeable from that point on, which is exactly what keeps
-    /// the diagram's width down to <c>max - min + 2</c> at most.
+    /// same running count are always interchangeable from that point on. The pruning in
+    /// <see cref="GetChild"/> keeps every live state in <c>[0, max]</c> (anything higher is cut
+    /// immediately), so the diagram's width is at most <c>max + 1</c>; it only approaches <c>max - min + 1</c>
+    /// once enough items have been decided that counts below <c>min</c> can no longer catch up and get
+    /// pruned too.
     /// </remarks>
     public readonly struct CardinalitySpec : IDdSpec<int>
     {
