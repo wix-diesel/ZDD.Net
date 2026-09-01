@@ -11,28 +11,45 @@ C# ネイティブ実装の ZDD（Zero-suppressed Decision Diagram）／フロ�
 比例する手間で行える。.NET にはこれのネイティブ実装が事実上存在しない（CUDD の P/Invoke ラッパ
 しか選択肢がない）ことが、このライブラリの動機になっている。
 
-## 到達点（v0.1 = Core のみ）
+## 到達点（v0.2 = Core + フロンティア法フレームワーク）
 
-現在のバージョンは **Core レイヤ（ZDD エンジン）のみ**を提供する:
+- **Core レイヤ（ZDD エンジン）**: `ZddManager` / `Zdd` によるノード表・一意化表・演算キャッシュと、
+  家族代数の全演算（和・積・差・対称差・積(`*`)・商・剰余・Meet・`SupersetsOf`/`SubsetsOf` などの
+  ふるい・`Change`/`OnSet`/`OffSet`・`Maximal`/`Minimal`/`HittingSets`/`Complement`）、濃度
+  （`Count` / `CountApprox` / `CountBySize`）・列挙（`Sets`）・unranking/ranking
+  （`ElementAt` / `IndexOf`）・一様ランダムサンプリング（`Sample`）、重み最適化
+  （`MaxWeight` / `MinWeight` / `TopK`）、確率・期待値（`Probability` / `ExpectedValue` /
+  `ItemFrequency`）、Graphviz DOT 出力（`ToDot` / `WriteDot`）
+- **フロンティア法フレームワーク（Frontier）**: `FrontierBuilder.Build` に「スペック」
+  （`IDdSpec<TState>` / `IArrayDdSpec`）を渡すだけで ZDD が自動構築される。集合を 1 つも展開しない
+  ので、解の個数が `10^24` を超える族でも状態の種類の数だけの手間で構築できる
+  （[docs/frontier-guide.md](docs/frontier-guide.md)）
+- **グラフ問題 API（Graphs / Specs）**: `Graph`（格子・完全グラフ・閉路・パスの組み込みショートカット
+  つき）と、その上に実装された組み込みスペック `PowerSetSpec` / `CardinalitySpec` /
+  `LinearConstraintSpec` / `KnapsackSpec` / `PathSpec`（s–t 単純パス） / `SpanningTreeSpec` /
+  `ForestSpec` / `MatchingSpec`。いずれも正しさを検証済み（OEIS A007764・Kirchhoff の行列木定理・
+  パーマネント照合。[docs/benchmarks.md](docs/benchmarks.md) に実行時間・フロンティア幅の基準値）
 
-- `ZddManager` / `Zdd` によるノード表・一意化表・演算キャッシュと、家族代数の全演算
-  （和・積・差・対称差・積(`*`)・商・剰余・Meet・`SupersetsOf`/`SubsetsOf` などのふるい・
-  `Change`/`OnSet`/`OffSet`・`Maximal`/`Minimal`/`HittingSets`/`Complement`）
-- 濃度（`Count` / `CountApprox` / `CountBySize`）・列挙（`Sets`）・unranking/ranking
-  （`ElementAt` / `IndexOf`）・一様ランダムサンプリング（`Sample`）
-- 重み最適化（`MaxWeight` / `MinWeight` / `TopK`）、確率・期待値（`Probability` /
-  `ExpectedValue` / `ItemFrequency`）
-- Graphviz DOT 出力（`ToDot` / `WriteDot`）
+格子パスの実例（5×5 格子の対角 s–t 単純パスを 1 本も展開せずに数える）:
 
-**フロンティア法フレームワーク（Frontier）とグラフ問題 API（Graphs）は v0.2 以降**。
-「経路列挙・数え上げ」のような高レベルなグラフ操作が要る場合は、それらが揃うまで待つか、
-Core の家族代数を直接組み合わせて構築する必要がある。
+```csharp
+using ZDD.Net.Core;
+using ZDD.Net.Frontier;
+using ZDD.Net.Graphs;
+using ZDD.Net.Specs;
+
+Graph grid = Graph.Grid(5, 5);
+using ZddManager manager = new ZddManager(grid.EdgeCount);
+
+Zdd paths = FrontierBuilder.Build<PathSpec>(manager, new PathSpec(grid, s: 0, t: grid.VertexCount - 1));
+Console.WriteLine(paths.Count); // 8512（OEIS A007764）
+```
 
 **API はまだ確定していない**（プレリリース版）。v1.0 まではブレーキングチェンジがあり得る。
 
 ## インストール
 
-NuGet パッケージは v0.1.0 のプレリリースタグから生成される（プレリリース版のため `--prerelease` が要る）。
+NuGet パッケージは v0.2.0 のプレリリースタグから生成される（プレリリース版のため `--prerelease` が要る）。
 
 ```sh
 dotnet add package ZDD.Net --prerelease
@@ -61,12 +78,17 @@ foreach (int[] set in containingItem0.Sets())
 
 もう少し長い例（家族代数演算・列挙・unranking・一様サンプリング・重み最適化・カスタム評価器）は
 [docs/api-guide.md](docs/api-guide.md) と、実際に動く [`samples/Zdd.ApiGuide`](samples/Zdd.ApiGuide) を参照。
+フロンティア法・グラフ問題 API の例は [docs/frontier-guide.md](docs/frontier-guide.md) と
+[`samples/Zdd.FrontierGuide`](samples/Zdd.FrontierGuide)。
 CLI から触ってみたい場合は [`samples/Zdd.Cli`](samples/Zdd.Cli)（`dotnet run --project samples/Zdd.Cli -- --help`）。
 
 ## ドキュメント
 
 - **[docs/api-guide.md](docs/api-guide.md)** — API ガイド（`ZddManager`/`Zdd` の使い方、演算一覧、性能上の注意）
-- **[docs/frontier-spec-guide.md](docs/frontier-spec-guide.md)** — スペックの書き方（フロンティア法。v0.2 開発中）
+- **[docs/frontier-guide.md](docs/frontier-guide.md)** — フロンティア法ガイド（フロンティア法とは何か、
+  組み込みスペック一覧、`Graph`/`FrontierManager`/`BuildOptions`、性能の勘所、独自スペックの実例）
+- **[docs/frontier-spec-guide.md](docs/frontier-spec-guide.md)** — スペックの書き方（`IDdSpec` 等の契約）
+- **[docs/benchmarks.md](docs/benchmarks.md)** — ベンチ基準値（代表ケースの実行時間・フロンティア幅・ノード数）
 - **[docs/PLAN.md](docs/PLAN.md)** — 機能・仕様・アーキテクチャ
 - **[docs/ROADMAP.md](docs/ROADMAP.md)** — マイルストーン別の PR 単位タスク分割
 - **[docs/OPEN-QUESTIONS.md](docs/OPEN-QUESTIONS.md)** — 未確定事項

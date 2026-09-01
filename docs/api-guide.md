@@ -12,7 +12,7 @@
 dotnet run --project samples/Zdd.ApiGuide
 ```
 
-- 対象バージョン: v0.1（Core エンジンのみ。フロンティア法・グラフ API は v0.2 以降）
+- 対象バージョン: v0.2（Core エンジン。フロンティア法・グラフ API は [docs/frontier-guide.md](frontier-guide.md) を参照）
 
 ---
 
@@ -292,7 +292,8 @@ ZDD.Net は大量の小さな配列（ノード表・一意化表・演算キャ
 
 ## 6. さらに詳しく
 
-- スペックの書き方（フロンティア法。v0.2 開発中）: [docs/frontier-spec-guide.md](frontier-spec-guide.md)
+- フロンティア法フレームワーク・グラフ問題 API の使い方: [docs/frontier-guide.md](frontier-guide.md)
+- スペックの規約の詳しい説明: [docs/frontier-spec-guide.md](frontier-spec-guide.md)
 - 仕様・アーキテクチャの全体像: [docs/PLAN.md](PLAN.md)
 - マイルストーン別の実装計画: [docs/ROADMAP.md](ROADMAP.md)
 - 未確定事項: [docs/OPEN-QUESTIONS.md](OPEN-QUESTIONS.md)

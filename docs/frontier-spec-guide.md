@@ -3,10 +3,11 @@
 「利用者は**状態遷移だけ**を書き、ZDD は自動で構築される」——これが本ライブラリの中核価値であり、
 その契約が `ZDD.Net.Frontier` の**スペック**インタフェースである。この資料はその規約をまとめる。
 
-- 対象バージョン: v0.2 開発中
-- **M2-4 で公開の構築器 `FrontierBuilder.Build` が入った**。`IDdSpec<TState>` と `IArrayDdSpec`
-  の両方に対応するオーバーロードがあり、ここに載っているコードはそのまま呼べる
-  （[docs/ROADMAP.md](ROADMAP.md) の M2-4）。`IHybridDdSpec<TScalar>` 版のオーバーロードは未対応。
+- 対象バージョン: v0.2
+- 公開の構築器 `FrontierBuilder.Build` は `IDdSpec<TState>` と `IArrayDdSpec` の両方に対応する
+  オーバーロードを持ち、ここに載っているコードはそのまま呼べる。組み込みスペックの一覧や
+  `Graph`/`FrontierManager`/`BuildOptions` の使い方は [docs/frontier-guide.md](frontier-guide.md) を参照。
+  `IHybridDdSpec<TScalar>` 版のオーバーロードは未対応（v0.3 以降）。
 - 設計の背景は [docs/PLAN.md](PLAN.md) §6
 
 ---
@@ -191,6 +192,8 @@ public static Zdd Build<TSpec>(ZddManager manager, TSpec spec, BuildOptions? opt
 
 ## 8. 参考
 
+- [docs/frontier-guide.md](frontier-guide.md) — フロンティア法フレームワーク全体の使い方
+  （組み込みスペック一覧・`Graph`/`FrontierManager`/`BuildOptions`・性能の勘所）
 - [TdZdd ユーザガイド](https://github.com/kunisura/TdZdd/blob/master/userguide.md) — 戻り値の規約の出典
 - [docs/PLAN.md](PLAN.md) §6（フロンティア法フレームワーク）・§7（組み込みスペック）
 - [docs/ROADMAP.md](ROADMAP.md) M2（このフレームワークの PR 分割）

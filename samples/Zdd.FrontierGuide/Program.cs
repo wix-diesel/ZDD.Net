@@ -1,0 +1,247 @@
+using System;
+using System.Numerics;
+using ZDD.Net.Core;
+using ZDD.Net.Frontier;
+using ZDD.Net.Graphs;
+using ZDD.Net.Specs;
+
+namespace ZDD.Net.Samples.FrontierGuide
+{
+    /// <summary>
+    /// docs/frontier-guide.md に載せているコード片をそのまま集めたサンプル。
+    /// ここに書いたコードは <c>dotnet run --project samples/Zdd.FrontierGuide</c> で実際に動く
+    /// （CI もこれを実行して確かめる。.github/workflows/ci.yml を参照）。
+    /// ガイドの本文を直すときは、対応するメソッドも一緒に直すこと。
+    /// </summary>
+    internal static class Program
+    {
+        private static int Main()
+        {
+            WhatIsTheFrontierMethod();
+            BuiltInSpecs();
+            GraphAndFrontierManager();
+            BuildOptionsLimits();
+            CustomSpecNoThreeConsecutive();
+
+            Console.Out.WriteLine("all frontier-guide samples passed");
+            return 0;
+        }
+
+        /// <summary>
+        /// 「フロンティア法とは何か」節: 5x5 格子の対角 s-t 単純パスを、パスを 1 本も展開せずに数える。
+        /// </summary>
+        private static void WhatIsTheFrontierMethod()
+        {
+            Graph grid = Graph.Grid(5, 5);
+            using ZddManager manager = new ZddManager(grid.EdgeCount);
+
+            int s = 0;
+            int t = grid.VertexCount - 1;
+            Zdd paths = FrontierBuilder.Build<PathSpec>(manager, new PathSpec(grid, s, t));
+
+            // OEIS A007764（n×n 格子の対角単純パス数）: n=5 は 8512。
+            Assert(paths.Count == 8512, "5x5 grid has 8512 diagonal s-t paths");
+        }
+
+        /// <summary>「組み込みスペック」節: PowerSet / Cardinality / LinearConstraint / Knapsack の使い方。</summary>
+        private static void BuiltInSpecs()
+        {
+            const int itemCount = 5;
+            using ZddManager manager = new ZddManager(itemCount);
+
+            // PowerSetSpec: n 要素の冪集合そのもの（2^n 個）。
+            Zdd powerSet = FrontierBuilder.Build<PowerSetSpec, byte>(manager, new PowerSetSpec(itemCount));
+            Assert(powerSet.Count == BigInteger.Pow(2, itemCount), "PowerSetSpec: 2^n subsets");
+
+            // CardinalitySpec: 要素数が [min, max] に収まる部分集合。
+            Zdd sizeTwoOrThree = FrontierBuilder.Build<CardinalitySpec, int>(
+                manager, new CardinalitySpec(itemCount, min: 2, max: 3));
+            Assert(sizeTwoOrThree.Count == 10 + 10, "CardinalitySpec: C(5,2) + C(5,3) = 20");
+
+            // LinearConstraintSpec: Σ a[i] x[i] {<=, ==, >=} b。
+            int[] coefficients = { 3, 1, 4, 1, 5 };
+            Zdd atMostSeven = FrontierBuilder.Build<LinearConstraintSpec, long>(
+                manager, new LinearConstraintSpec(coefficients, LinearConstraintOperator.LessOrEqual, bound: 7));
+            Assert(atMostSeven.Count > 0, "LinearConstraintSpec: at least the empty set satisfies <= 7");
+
+            // KnapsackSpec: Σ weights[i] x[i] <= capacity（LinearConstraintSpec の特化版）。
+            int[] weights = { 2, 3, 4, 5, 9 };
+            Zdd fitsCapacity = FrontierBuilder.Build<KnapsackSpec, long>(
+                manager, new KnapsackSpec(weights, capacity: 10));
+            Assert(fitsCapacity.Count > 0, "KnapsackSpec: at least the empty set fits capacity 10");
+
+            // グラフ問題（Path / SpanningTree / Forest / Matching）は GraphAndFrontierManager() を参照。
+        }
+
+        /// <summary>「Graph の作り方」「FrontierManager による事前見積り」節。</summary>
+        private static void GraphAndFrontierManager()
+        {
+            // Graph.Grid / Complete / Cycle / Path はよく使う形の組み込みショートカット。
+            // 辺の順序がフロンティア法の変数順序そのものになる（性能の勘所節を参照）。
+            Graph grid = Graph.Grid(3, 3);
+
+            // スペックを書く前、ZDD を構築する前に、辺順序だけからフロンティア幅の見積りができる。
+            FrontierManager frontierManager = new FrontierManager(grid);
+            Assert(frontierManager.MaxFrontierSize > 0, "MaxFrontierSize is the width the build will need");
+
+            using ZddManager manager = new ZddManager(grid.EdgeCount);
+
+            // SpanningTreeSpec: 全域木。Kirchhoff の行列木定理と照合済み（tests/.../SpanningTreeSpecTests.cs）。
+            Zdd spanningTrees = FrontierBuilder.Build<SpanningTreeSpec>(manager, new SpanningTreeSpec(grid));
+            Assert(spanningTrees.Count > 0, "SpanningTreeSpec: a 3x3 grid has spanning trees");
+
+            // ForestSpec: 成分数を指定した森（components: 1 は SpanningTreeSpec と同じ族になる）。
+            Zdd forest = FrontierBuilder.Build<ForestSpec>(manager, new ForestSpec(grid, components: 1));
+            Assert(forest == spanningTrees, "ForestSpec(components: 1) matches SpanningTreeSpec");
+
+            // MatchingSpec: マッチング（perfect: true で完全マッチングだけに絞れる）。
+            Zdd matchings = FrontierBuilder.Build<MatchingSpec>(manager, new MatchingSpec(grid));
+            Assert(matchings.Count > 0, "MatchingSpec: a 3x3 grid has matchings (at least the empty one)");
+        }
+
+        /// <summary>「BuildOptions による上限設定」節: 上限超過で例外になること、進捗が届くことを確かめる。</summary>
+        private static void BuildOptionsLimits()
+        {
+            Graph grid = Graph.Grid(6, 6);
+            using ZddManager manager = new ZddManager(grid.EdgeCount);
+            var spec = new PathSpec(grid, s: 0, t: grid.VertexCount - 1);
+
+            // 見積りより小さい上限を指定すると BuildLimitExceededException で止まる
+            // （メモリを使い切って落ちる代わりに、原因の分かる例外で止める）。
+            var frontierManager = new FrontierManager(grid);
+            var tightOptions = new BuildOptions { MaxFrontierSize = frontierManager.MaxFrontierSize - 1 };
+            bool threw = false;
+            try
+            {
+                FrontierBuilder.Build<PathSpec>(manager, spec, tightOptions);
+            }
+            catch (BuildLimitExceededException)
+            {
+                threw = true;
+            }
+
+            Assert(threw, "MaxFrontierSize below the real width throws BuildLimitExceededException");
+
+            // IProgress<BuildProgress> には水準ごとに 1 回、フロンティア幅の履歴が届く
+            // （bench/ZDD.Net.Benchmarks がピークフロンティア幅を記録するのに使っているのと同じ仕組み）。
+            int levelsReported = 0;
+            var progress = new Progress<BuildProgress>(_ => levelsReported++);
+            var progressOptions = new BuildOptions { Progress = progress };
+            FrontierBuilder.Build<PathSpec>(manager, spec, progressOptions);
+
+            Assert(levelsReported == grid.EdgeCount, "one BuildProgress report per level");
+        }
+
+        /// <summary>
+        /// 「独自スペックを書く」節の実例: n 個のアイテムから、連続する 3 要素を同時に選べない部分集合。
+        /// 状態は「直近 2 個で何個選んだか」だけでよい（それ以前の選択は以降の判定に影響しない）。
+        /// </summary>
+        private static void CustomSpecNoThreeConsecutive()
+        {
+            const int itemCount = 8;
+            using ZddManager manager = new ZddManager(itemCount);
+
+            Zdd family = FrontierBuilder.Build<NoThreeConsecutiveSpec, int>(
+                manager, new NoThreeConsecutiveSpec(itemCount));
+
+            // ブルートフォースで独立に数え、フロンティア法の結果と一致することを確かめる
+            // （完了条件: チュートリアルどおりに書けば独自スペックが作れることの確認）。
+            BigInteger expected = CountByBruteForce(itemCount);
+            Assert(family.Count == expected, $"NoThreeConsecutiveSpec matches brute force ({expected})");
+        }
+
+        private static BigInteger CountByBruteForce(int itemCount)
+        {
+            BigInteger count = 0;
+            for (int mask = 0; mask < (1 << itemCount); mask++)
+            {
+                int run = 0;
+                bool ok = true;
+                for (int i = 0; i < itemCount && ok; i++)
+                {
+                    if ((mask & (1 << i)) != 0)
+                    {
+                        run++;
+                        if (run >= 3)
+                        {
+                            ok = false;
+                        }
+                    }
+                    else
+                    {
+                        run = 0;
+                    }
+                }
+
+                if (ok)
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        private static void Assert(bool condition, string message)
+        {
+            if (!condition)
+            {
+                throw new InvalidOperationException($"assertion failed: {message}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// 「連続する 3 要素を同時に選べない」制約のスペック。docs/frontier-guide.md の
+    /// 「独自スペックを書く」節にそのまま載せている実装。
+    /// </summary>
+    /// <remarks>
+    /// 状態は「直近に連続して選んだ個数（0, 1, または 2）」だけでよい。3 個目を選んだ時点で
+    /// アイテムの並び上のどこであろうと不正なので、以降の判定に「これまで何を選んだか」は要らない
+    /// —— これが状態を正準に小さく保つということ（frontier-spec-guide.md §4「状態は『以降の遷移に
+    /// 影響する情報だけ』を持つ」）。
+    /// </remarks>
+    public readonly struct NoThreeConsecutiveSpec : IDdSpec<int>
+    {
+        private readonly int _itemCount;
+
+        public NoThreeConsecutiveSpec(int itemCount)
+        {
+            _itemCount = itemCount;
+        }
+
+        public int GetRoot(ref int run)
+        {
+            run = 0;
+            return _itemCount;
+        }
+
+        public int GetChild(ref int run, int level, int value)
+        {
+            if (value == 0)
+            {
+                run = 0;
+            }
+            else
+            {
+                run++;
+                if (run >= 3)
+                {
+                    return DdResult.False; // 枝刈り: 3 連続に達したら以降は全部不正
+                }
+            }
+
+            int remaining = level - 1;
+            if (remaining == 0)
+            {
+                return DdResult.True;
+            }
+
+            return remaining;
+        }
+
+        public bool StateEquals(in int left, in int right) => left == right;
+
+        public int StateHashCode(in int state) => state;
+    }
+}

@@ -70,6 +70,12 @@ jobs:
         run: >
           dotnet run --project samples/Zdd.ApiGuide --no-restore --no-build --configuration Release
 
+      - name: frontier-guide サンプルの実行
+        # docs/frontier-guide.md に載せているコード片(samples/Zdd.FrontierGuide)を実際に動かし、
+        # ガイドのサンプルが壊れていないことを確かめる。
+        run: >
+          dotnet run --project samples/Zdd.FrontierGuide --no-restore --no-build --configuration Release
+
       - name: DOT のアップロード
         uses: actions/upload-artifact@v7
         if: always()
