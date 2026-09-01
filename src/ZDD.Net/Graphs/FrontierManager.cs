@@ -114,15 +114,16 @@ namespace ZDD.Net.Graphs
                 }
             }
 
-            // Slot assignment: on introduction, reuse the lowest-numbered slot freed by an already-forgotten
-            // vertex, or allocate a fresh one; on forgetting (after the edge that forgets it), return the
-            // slot to the free list. Because a new slot is only ever allocated when none is free, the total
-            // number of distinct slots used equals the frontier's peak size.
+            // Slot assignment: on introduction, reuse any slot freed by an already-forgotten vertex, or
+            // allocate a fresh one; on forgetting (after the edge that forgets it), return the slot to the
+            // free pool. A new slot is only ever allocated when the pool is empty, so the total number of
+            // distinct slots used equals the frontier's peak size, regardless of which freed slot is reused
+            // first — a LIFO pool (Stack) keeps push/pop O(1), which is what keeps this pass O(V + E).
             _slotOfVertex = new int[vertexCount];
             Array.Fill(_slotOfVertex, -1);
             _frontierSizeByEdge = new int[edgeCount];
 
-            var freeSlots = new SortedSet<int>();
+            var freeSlots = new Stack<int>();
             int nextSlot = 0;
             int frontierCount = 0;
 
@@ -130,16 +131,7 @@ namespace ZDD.Net.Graphs
             {
                 foreach (int v in _introducedByEdge[i])
                 {
-                    int slot;
-                    if (freeSlots.Count > 0)
-                    {
-                        slot = freeSlots.Min;
-                        freeSlots.Remove(slot);
-                    }
-                    else
-                    {
-                        slot = nextSlot++;
-                    }
+                    int slot = freeSlots.Count > 0 ? freeSlots.Pop() : nextSlot++;
 
                     _slotOfVertex[v] = slot;
                     frontierCount++;
@@ -149,7 +141,7 @@ namespace ZDD.Net.Graphs
 
                 foreach (int v in _forgottenByEdge[i])
                 {
-                    freeSlots.Add(_slotOfVertex[v]);
+                    freeSlots.Push(_slotOfVertex[v]);
                     frontierCount--;
                 }
             }

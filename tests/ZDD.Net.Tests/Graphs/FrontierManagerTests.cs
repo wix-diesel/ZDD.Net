@@ -9,7 +9,7 @@ namespace ZDD.Net.Tests.Graphs
     /// M2-7 completion criteria for <see cref="FrontierManager"/>: introduced/forgotten vertices, frontier
     /// size and <see cref="FrontierManager.MaxFrontierSize"/> against hand-computed values for small graphs,
     /// mate-slot reuse and uniqueness, edge-order sensitivity, disconnected/isolated-vertex graphs, and
-    /// linear-time construction.
+    /// successful construction on larger grids.
     /// </summary>
     public class FrontierManagerTests
     {
@@ -205,7 +205,7 @@ namespace ZDD.Net.Tests.Graphs
         [InlineData(3, 3)]
         [InlineData(4, 4)]
         [InlineData(50, 50)]
-        public void ConstructionCompletesQuicklyForLargerGraphs(int rows, int cols)
+        public void ConstructionSucceedsAndMaxFrontierSizeIsSaneForLargerGraphs(int rows, int cols)
         {
             var graph = Graph.Grid(rows, cols);
 
