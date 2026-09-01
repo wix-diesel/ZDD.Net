@@ -16,10 +16,16 @@ M2「フロンティア法フレームワーク」（v0.2）に向けた変更�
   `IDdSpec<TState>` / `IArrayDdSpec` / `IHybridDdSpec<TScalar>` と、終端の定数 `DdResult`
   （戻り値の規約は TdZdd 互換: `0` = ⊥、`-1` = ⊤、正数 = 次の水準）
 - `docs/frontier-spec-guide.md`: スペックの書き方（規約と実装例）
+- レベル単位の状態表（internal）: 固定長 struct 状態用
+  `StructLevelStateTable<TSpec, TState>`（スペックの `StateEquals` / `StateHashCode` で照合）と、
+  可変長配列状態用 `ArrayLevelStateTable`（1 本の `int[]` に詰めて要素ごとに照合）。
+  どちらもオープンアドレス法で、状態の重複除去（同じ状態になった枝を 1 本にまとめる）を担う。
+  レベルの切り替えは `LevelStateTablePair<TTable>` が表 2 枚を回して行い、
+  バッファは `ArrayPool` から借りるので、ピークメモリは深さによらず 2 レベル分に収まる
 
 ### Notes
 
-- **契約（インタフェース）のみで、構築器 `FrontierBuilder` はまだ無い**。
+- **契約（インタフェース）と内部の状態表のみで、構築器 `FrontierBuilder` はまだ無い**。
   スペックを書いても ZDD を構築できるようになるのは M2-4 以降
 
 ## [0.1.0] - 2026-08-31

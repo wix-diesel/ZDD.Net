@@ -462,6 +462,9 @@ public static class FrontierBuilder
    「状態 → 一時ノード ID」のハッシュ表で管理しつつ `GetChild` を適用。
    - 状態表はレベルごとに作って捨てる（ピークメモリ = 最大 2 レベル分）。
    - 状態が固定長 struct なら、状態の配列 + オープンアドレス表でノーアロケーション。
+   - 表の実装は `StructLevelStateTable<TSpec, TState>`（固定長 struct 状態）と
+     `ArrayLevelStateTable`（可変長配列状態）の 2 種類。レベルの切り替えは
+     `LevelStateTablePair<TTable>` が表 2 枚を回して行う（M2-2）。
 2. **削減（ボトムアップ）**: レベル 1 → N の順に ZDD 削減規則を適用
    - 規則 A: `Hi == ⊥` のノードは `Lo` に置換（ゼロサプレス規則）
    - 規則 B: `(Level, Lo, Hi)` が同一のノードを共有

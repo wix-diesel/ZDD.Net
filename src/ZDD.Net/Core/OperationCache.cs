@@ -216,7 +216,7 @@ namespace ZDD.Net.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static long KeyOf(int a, int b) => (long)(((ulong)(uint)a << 32) | (uint)b);
 
-        /// <summary>Computes the slot index for <c>(op, a, b)</c> via <see cref="Hashing.Combine"/>.</summary>
+        /// <summary>Computes the slot index for <c>(op, a, b)</c> via <see cref="Hashing.Combine(int, int, int)"/>.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static int SlotOf(ZddOperation op, int a, int b, int capacity) =>
             (int)(Hashing.Combine((int)op, a, b) & (ulong)(capacity - 1));

@@ -1,3 +1,4 @@
+using System;
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -5,9 +6,10 @@ using System.Runtime.CompilerServices;
 namespace ZDD.Net.Internal
 {
     /// <summary>
-    /// 64-bit hash functions for the node unique table (an open-addressing hash table keyed on
-    /// <c>(level, lo, hi)</c>). Lighter weight than <see cref="System.HashCode"/>, which pays for
-    /// a per-process randomized seed that this hot path doesn't need.
+    /// 64-bit hash functions for the open-addressing tables (the node unique table keyed on
+    /// <c>(level, lo, hi)</c>, and the frontier level state tables). Lighter weight than
+    /// <see cref="System.HashCode"/>, which pays for a per-process randomized seed that these
+    /// hot paths don't need.
     /// </summary>
     internal static class Hashing
     {
@@ -34,6 +36,26 @@ namespace ZDD.Net.Internal
             hash = Mix64(hash ^ (uint)level);
             hash = Mix64(hash ^ (uint)lo);
             hash = Mix64(hash ^ (uint)hi);
+            return hash;
+        }
+
+        /// <summary>
+        /// Mixes a single hash code, such as the one a frontier spec returns for a state, so that a
+        /// poorly distributed user hash still spreads over the slots.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong Combine(int value) => Mix64(GoldenRatio64 ^ (uint)value);
+
+        /// <summary>Combines a variable-length state array into a single 64-bit hash, element-wise.</summary>
+        public static ulong Combine(ReadOnlySpan<int> values)
+        {
+            ulong hash = GoldenRatio64;
+
+            for (int i = 0; i < values.Length; i++)
+            {
+                hash = Mix64(hash ^ (uint)values[i]);
+            }
+
             return hash;
         }
 
