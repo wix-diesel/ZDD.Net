@@ -734,7 +734,7 @@ graph.EstimateMaxFrontierSize();   // 実行前に見積り、大きすぎるな
 | `BigInteger` がボトルネックになる | 中 | `double` 近似版を既定に、厳密版は明示 API |
 | 参考 OSS のコード混入によるライセンス問題 | 中 | 論文からの再実装を原則化。`THIRD-PARTY-NOTICES.md` を整備 |
 | ZDD の理論を知らない利用者が使えない | 中 | Graphillion 語彙の高レベル API を用意し、ZDD を知らなくても使える入口を作る |
-| API を早期に固めすぎて後で壊す | 小 | v1.0 まで `[Experimental]`／プレリリース版で明示 |
+| API を早期に固めすぎて後で壊す | 小 | v1.0 まで `[Experimental]`／プレリリース版で明示（`vX.Y.Z-suffix` タグから NuGet プレリリースパッケージを生成する） |
 
 ---
 
