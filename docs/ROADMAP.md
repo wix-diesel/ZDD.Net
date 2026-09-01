@@ -94,7 +94,7 @@ Core レイヤは下から積むため、序盤の PR は `internal` のコー�
 | [x] | **M2-1** | スペックのインタフェース定義 | `IDdSpec<TState>`、`IArrayDdSpec`、`IHybridDdSpec`、`DdResult`（⊥/⊤ 定数）、規約のドキュメント | コンパイルとドキュメントのみ（実装は次 PR） | 〜150 | M1-17 |
 | [x] | **M2-2** | レベル単位の状態表 | 固定長 struct 状態／可変長配列状態のオープンアドレス表、レベルごとの生成・破棄 | 状態の重複除去が正しいこと、大量状態の単体テスト | 〜300 | M2-1 |
 | [x] | **M2-3** | トップダウン幅優先展開 | レベル N→1 の展開、一時ノード表の生成、`BuildOptions`（ノード数上限・キャンセル） | 手書きの簡単なスペックで一時ノード表が期待通り | 〜350 | M2-2 |
-| [ ] | **M2-4** | ボトムアップ削減と Core への取り込み | ZDD 削減規則の適用、`ZddManager` の一意化表への登録、`FrontierBuilder.Build` の完成 | `PowerSetSpec` を構築して `Count == 2^n` | 〜300 | M2-3 |
+| [x] | **M2-4** | ボトムアップ削減と Core への取り込み | ZDD 削減規則の適用、`ZddManager` の一意化表への登録、`FrontierBuilder.Build` の完成 | `PowerSetSpec` を構築して `Count == 2^n` | 〜300 | M2-3 |
 | [ ] | **M2-5** | 基本スペック | `PowerSetSpec` / `CardinalitySpec(min,max)` / `LinearConstraintSpec` / `KnapsackSpec` | 二項係数・部分和 DP と照合 | 〜300 | M2-4 |
 | [ ] | **M2-6** | グラフデータ構造 | `Graph`（無向・辺リスト・辺順序）、`Graph.Grid/Complete/Cycle/Path`、辺 index ↔ 変数 index | 生成グラフの構造テスト | 〜250 | M1-17（M2 と並行可） |
 | [ ] | **M2-7** | `FrontierManager` | 各辺の introduced / forgotten 頂点、mate スロット割当、`MaxFrontierSize`、**構築前の見積り API** | 手計算できる小グラフでフロンティアが一致 | 〜300 | M2-6 |

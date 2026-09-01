@@ -4,11 +4,9 @@
 その契約が `ZDD.Net.Frontier` の**スペック**インタフェースである。この資料はその規約をまとめる。
 
 - 対象バージョン: v0.2 開発中
-- **現時点（M2-3）では、契約（インタフェース）・状態表・トップダウン展開までが入っている。
-  公開の構築器 `FrontierBuilder` は未実装**（[docs/ROADMAP.md](ROADMAP.md) の M2-4）。
-  ここに載っているコードは**構築器が入るまで実際には呼べない**。規約を先に固めるための資料である。
-- トップダウン展開が扱うのは今のところ `IDdSpec<TState>` だけで、`IArrayDdSpec` /
-  `IHybridDdSpec<TScalar>` の展開は未対応である（規約は 6 節のとおりで変わらない）。
+- **M2-4 で公開の構築器 `FrontierBuilder.Build` が入った**。`IDdSpec<TState>` と `IArrayDdSpec`
+  の両方に対応するオーバーロードがあり、ここに載っているコードはそのまま呼べる
+  （[docs/ROADMAP.md](ROADMAP.md) の M2-4）。`IHybridDdSpec<TScalar>` 版のオーバーロードは未対応。
 - 設計の背景は [docs/PLAN.md](PLAN.md) §6
 
 ---
@@ -178,9 +176,12 @@ public readonly struct ExactlyKSpec : IDdSpec<int>
 構築器はスペックを**型引数 + `struct` 制約**で受ける（`where TSpec : struct, IDdSpec<TState>`）。
 
 ```csharp
-// 構築器の署名（M2-4 で実装予定）
+// 構築器の署名（M2-4 で実装済み）
 public static Zdd Build<TSpec, TState>(ZddManager manager, TSpec spec, BuildOptions? options = null)
     where TSpec : struct, IDdSpec<TState>;
+
+public static Zdd Build<TSpec>(ZddManager manager, TSpec spec, BuildOptions? options = null)
+    where TSpec : struct, IArrayDdSpec;
 ```
 
 `class` で書いても動くが、`GetChild` は**状態 1 個 × 枝 2 本ごと**に呼ばれる最も内側のループなので、
