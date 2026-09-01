@@ -460,11 +460,18 @@ public static class FrontierBuilder
 
 1. **幅優先展開（トップダウン）**: レベル N → 1 の順に、各レベルの状態集合を
    「状態 → 一時ノード ID」のハッシュ表で管理しつつ `GetChild` を適用。
-   - 状態表はレベルごとに作って捨てる（ピークメモリ = 最大 2 レベル分）。
+   - 状態表はレベルごとに作って捨てる（水準を飛ばさないスペックならピークメモリ = 2 レベル分）。
    - 状態が固定長 struct なら、状態の配列 + オープンアドレス表でノーアロケーション。
    - 表の実装は `StructLevelStateTable<TSpec, TState>`（固定長 struct 状態）と
-     `ArrayLevelStateTable`（可変長配列状態）の 2 種類。レベルの切り替えは
-     `LevelStateTablePair<TTable>` が表 2 枚を回して行う（M2-2）。
+     `ArrayLevelStateTable`（可変長配列状態）の 2 種類（M2-2）。
+   - 展開は `TopDownExpander<TSpec, TState>`（M2-3）。**待ちの状態がある水準ごとに表を持つ**：
+     `GetChild` は `level - 1` より小さい水準を返してよく（水準飛ばし）、飛び先の水準の状態も
+     どこかに置かねばならないため。表は担当の水準を展開した時点で捨てるので、
+     水準を飛ばさないスペックでは同時に生きる表は 2 枚のままである
+     （`LevelStateTablePair<TTable>` の 2 枚回しは、飛び先の状態の置き場が無いのでここでは使えない）。
+   - 出力は**一時ノード表** `TemporaryNodeTable`（レベルごとの `(lo, hi)` 配列。まだ削減していない）。
+   - 上限・キャンセル・進捗は `BuildOptions`。`MaxNodeCount` / `MaxFrontierSize` の超過は
+     `BuildLimitExceededException`（§13 の「上限設定と graceful な例外」）。
 2. **削減（ボトムアップ）**: レベル 1 → N の順に ZDD 削減規則を適用
    - 規則 A: `Hi == ⊥` のノードは `Lo` に置換（ゼロサプレス規則）
    - 規則 B: `(Level, Lo, Hi)` が同一のノードを共有
