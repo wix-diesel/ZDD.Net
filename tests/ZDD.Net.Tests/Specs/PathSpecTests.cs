@@ -210,7 +210,11 @@ namespace ZDD.Net.Tests.Specs
             int rootLevel = spec.GetRoot(state);
 
             // Warm up: first calls may allocate lazily (JIT, etc.) and shouldn't count against the hot path.
+            // GetRoot is only contracted to work from a zero-filled span (IArrayDdSpec), so clear the
+            // array explicitly before re-deriving the root — reusing it dirty from the warm-up run would
+            // start the measured pass from a bogus, already-mutated state instead of the real root.
             RunOneEdgePerLevel(spec, state, rootLevel);
+            Array.Clear(state);
             spec.GetRoot(state);
 
             long before = GC.GetAllocatedBytesForCurrentThread();
@@ -287,6 +291,16 @@ namespace ZDD.Net.Tests.Specs
         {
             var accepted = new List<int>();
             int edgeCount = graph.EdgeCount;
+
+            // 1 << edgeCount overflows (and would silently under-enumerate) at 31+ edges; this helper
+            // is only ever meant for the small graphs a full 2^edgeCount scan is affordable for.
+            if (edgeCount >= 31)
+            {
+                throw new ArgumentException(
+                    $"BruteForcePaths enumerates all 2^edgeCount subsets and cannot handle {edgeCount} edges.",
+                    nameof(graph));
+            }
+
             int bound = 1 << edgeCount;
 
             for (int mask = 0; mask < bound; mask++)
@@ -326,7 +340,6 @@ namespace ZDD.Net.Tests.Specs
 
             for (int v = 0; v < graph.VertexCount; v++)
             {
-                int expected = v == s || v == t ? 1 : 0;
                 if (v != s && v != t && degree[v] is not (0 or 2))
                 {
                     return false;
@@ -336,8 +349,6 @@ namespace ZDD.Net.Tests.Specs
                 {
                     return false;
                 }
-
-                _ = expected;
             }
 
             // Union-find over the chosen edges: must form exactly one component containing s and t,
