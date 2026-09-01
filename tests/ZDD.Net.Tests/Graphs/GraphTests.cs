@@ -1,5 +1,4 @@
 using System;
-using System.Linq;
 using Xunit;
 using ZDD.Net.Graphs;
 
@@ -18,10 +17,15 @@ namespace ZDD.Net.Tests.Graphs
 
             var graph = new Graph(3, edges);
 
-            Assert.Equal(edges, graph.Edges);
+            Assert.Equal(edges.Length, graph.EdgeCount);
             for (int i = 0; i < edges.Length; i++)
             {
-                Assert.Equal(edges[i], graph.GetEdge(i));
+                // Edge equality is order-independent (see Edge remarks), so U/V are asserted explicitly
+                // here to also catch a regression that swaps endpoints.
+                Assert.Equal(edges[i].U, graph.Edges[i].U);
+                Assert.Equal(edges[i].V, graph.Edges[i].V);
+                Assert.Equal(edges[i].U, graph.GetEdge(i).U);
+                Assert.Equal(edges[i].V, graph.GetEdge(i).V);
             }
         }
 

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 
 namespace ZDD.Net.Graphs
 {
@@ -27,6 +28,8 @@ namespace ZDD.Net.Graphs
     {
         private readonly Edge[] _edges;
         private readonly int[][] _incidentEdgesByVertex;
+        private readonly ReadOnlyCollection<Edge> _edgesView;
+        private readonly ReadOnlyCollection<int>[] _incidentEdgesByVertexView;
 
         /// <summary>Creates a graph from an explicit vertex count and edge list.</summary>
         /// <param name="vertexCount">The number of vertices; must be positive. Vertices are indexed <c>0 .. vertexCount - 1</c>.</param>
@@ -96,6 +99,13 @@ namespace ZDD.Net.Graphs
                 _incidentEdgesByVertex[edge.U][fillIndex[edge.U]++] = i;
                 _incidentEdgesByVertex[edge.V][fillIndex[edge.V]++] = i;
             }
+
+            _edgesView = new ReadOnlyCollection<Edge>(_edges);
+            _incidentEdgesByVertexView = new ReadOnlyCollection<int>[vertexCount];
+            for (int v = 0; v < vertexCount; v++)
+            {
+                _incidentEdgesByVertexView[v] = new ReadOnlyCollection<int>(_incidentEdgesByVertex[v]);
+            }
         }
 
         /// <summary>The number of vertices, indexed <c>0 .. VertexCount - 1</c>.</summary>
@@ -105,7 +115,8 @@ namespace ZDD.Net.Graphs
         public int EdgeCount => _edges.Length;
 
         /// <summary>The edges, in variable order (edge index <c>i</c> is variable index <c>i</c>).</summary>
-        public IReadOnlyList<Edge> Edges => _edges;
+        /// <remarks>A read-only view over the backing storage: it cannot be downcast to mutate the graph.</remarks>
+        public IReadOnlyList<Edge> Edges => _edgesView;
 
         /// <summary>Returns the edge at <paramref name="edgeIndex"/>.</summary>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="edgeIndex"/> is outside <c>0 .. EdgeCount - 1</c>.</exception>
@@ -123,6 +134,7 @@ namespace ZDD.Net.Graphs
         /// The indices (into <see cref="Edges"/>) of the edges incident to <paramref name="vertex"/>,
         /// in edge order.
         /// </summary>
+        /// <remarks>A read-only view over the backing storage: it cannot be downcast to mutate the graph.</remarks>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="vertex"/> is outside <c>0 .. VertexCount - 1</c>.</exception>
         public IReadOnlyList<int> IncidentEdges(int vertex)
         {
@@ -131,7 +143,7 @@ namespace ZDD.Net.Graphs
                 throw new ArgumentOutOfRangeException(nameof(vertex), vertex, $"Must be in 0 .. {VertexCount - 1}.");
             }
 
-            return _incidentEdgesByVertex[vertex];
+            return _incidentEdgesByVertexView[vertex];
         }
 
         /// <summary>The number of edges incident to <paramref name="vertex"/>.</summary>
