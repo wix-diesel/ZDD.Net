@@ -272,14 +272,14 @@ namespace ZDD.Net.Graphs
         /// </para>
         /// <para>
         /// Runs in <c>O(VertexCount + EdgeCount)</c>, except under
-        /// <see cref="StartVertexSelection.BestOfCandidates"/>, which costs that per candidate start vertex.
-        /// <see cref="EdgeOrderStrategy.Grid"/> falls back to <see cref="EdgeOrderStrategy.Bfs"/> unless the
-        /// graph is a grid numbered row-major, the way <see cref="Grid"/> numbers one.
+        /// <see cref="StartVertexSelection.BestOfCandidates"/>, which costs that per candidate start vertex,
+        /// and under <see cref="EdgeOrderStrategy.BeamSearchPathWidth"/>, which costs more (see its own
+        /// docs). <see cref="EdgeOrderStrategy.Grid"/> falls back to <see cref="EdgeOrderStrategy.Bfs"/>
+        /// unless the graph is a grid numbered row-major, the way <see cref="Grid"/> numbers one.
         /// </para>
         /// </remarks>
         /// <param name="strategy">The ordering heuristic; <see cref="EdgeOrderStrategy.Bfs"/> by default.</param>
         /// <param name="options">Which vertex the traversal starts from; minimum degree by default.</param>
-        /// <exception cref="NotSupportedException"><paramref name="strategy"/> is <see cref="EdgeOrderStrategy.BeamSearchPathWidth"/>, which arrives in M3-3.</exception>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="strategy"/> is not a known strategy, or a specified start vertex is outside <c>0 .. VertexCount - 1</c>.</exception>
         public Graph Optimize(EdgeOrderStrategy strategy = EdgeOrderStrategy.Bfs, EdgeOrderOptions options = default) =>
             WithEdgeOrder(EdgeOrdering.Compute(this, strategy, options));
@@ -304,7 +304,6 @@ namespace ZDD.Net.Graphs
         /// </summary>
         /// <param name="strategy">The ordering heuristic to evaluate.</param>
         /// <param name="options">Which vertex the traversal starts from; minimum degree by default.</param>
-        /// <exception cref="NotSupportedException"><paramref name="strategy"/> is <see cref="EdgeOrderStrategy.BeamSearchPathWidth"/>, which arrives in M3-3.</exception>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="strategy"/> is not a known strategy, or a specified start vertex is outside <c>0 .. VertexCount - 1</c>.</exception>
         public int EstimateMaxFrontierSize(EdgeOrderStrategy strategy, EdgeOrderOptions options = default) =>
             EdgeOrdering.MaxFrontierSize(this, EdgeOrdering.Compute(this, strategy, options));

@@ -13,8 +13,8 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
 - `ZDD.Net.Graphs`: 辺順序（＝フロンティア法の変数順序）の最適化（M3-1、issue #33）
   - `Graph.Optimize(EdgeOrderStrategy, EdgeOrderOptions)`: 辺を並べ替えた**新しい `Graph`** を返す
     （元のグラフは変更しない）。戦略は `AsGiven` / `Bfs`（既定。Graphillion と同じ）/ `Dfs` /
-    `Grid`（格子専用の蛇行順序。格子でなければ `Bfs` にフォールバック）。
-    `BeamSearchPathWidth` は列挙子だけ用意してあり、呼ぶと `NotSupportedException`（M3-3 で実装）
+    `Grid`（格子専用の蛇行順序。格子でなければ `Bfs` にフォールバック）/ `BeamSearchPathWidth`
+    （M3-3、下記）
   - `EdgeOrderOptions`: 探索の開始頂点の選び方（次数最小＝既定 / `FromVertex` で指定 /
     `BestOfCandidates` で複数試して最良）
   - `Graph.SourceOrder`（`EdgeOrderMapping`）: 並べ替え後の辺 index ↔ 元の辺 index の対応表。
@@ -26,6 +26,20 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
   - 効果: 辺が任意の順に並んだ 40×40 格子（3,120 辺）でフロンティア幅 1,408 → 42、
     3×9 格子の s–t パス構築が 2,065 ms → 0.3 ms（[docs/benchmarks.md](docs/benchmarks.md) の M3-1 節）。
     `dotnet run -c Release --project bench/ZDD.Net.Benchmarks -- edge-order` で再現できる
+- `ZDD.Net.Graphs`: `EdgeOrderStrategy.BeamSearchPathWidth` ——頂点順序のビームサーチによる
+  パス幅近似最小化（厳密最小化は NP 困難）（M3-3、issue #35）
+  - 頂点を 1 つずつ追加する探索で、候補はそのつど「これまでの最大フロンティア幅」を主、
+    同点なら「BFS が次に訪れる頂点への距離」を副、「幅の総和」をさらに副にして選ぶ。
+    幅だけの貪欲は局所構造を持つグラフで安く見える袋小路に迷い込みやすく、実測で `Bfs` の
+    2〜3 倍まで悪化することがあった——BFS の訪問順を同点時の指針にすることでこれを避けている
+    （選定理由は `BeamSearchPathWidth.cs` のコメント、効果は docs/benchmarks.md の M3-3 節）
+  - `EdgeOrderOptions.BeamWidth` / `CancellationToken` を追加。既定のビーム幅は 8、
+    既定では次数最小の頂点から 3 通りを試す（`Bfs` / `Dfs` は既定 1 通り——複数の開始頂点を
+    試すこと自体がこの戦略の一部）。キャンセルされた探索は例外を投げず、その時点までの
+    最良の順序をそのまま返す
+  - 効果（[docs/benchmarks.md](docs/benchmarks.md) の M3-3 節）: 格子ではない不規則なグラフ
+    （道路網・電力網を模した最近傍グラフ、数百〜数千辺）で `Bfs` 比 17〜28% 改善。
+    前処理は数千辺で数秒以内。格子では `Bfs`/`Grid` が既に近い最適なので伸びしろは薄い（2%）
 
 ### Changed
 

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
+using System.Threading;
 using Xunit;
 using ZDD.Net.Core;
 using ZDD.Net.Frontier;
@@ -25,6 +26,7 @@ namespace ZDD.Net.Tests.Graphs
             EdgeOrderStrategy.Bfs,
             EdgeOrderStrategy.Dfs,
             EdgeOrderStrategy.Grid,
+            EdgeOrderStrategy.BeamSearchPathWidth,
         };
 
         public static TheoryData<EdgeOrderStrategy> Strategies()
@@ -295,13 +297,98 @@ namespace ZDD.Net.Tests.Graphs
         }
 
         [Fact]
-        public void BeamSearchPathWidthIsNotImplementedYet()
+        public void BeamSearchNarrowsThePeakFrontierBeyondBfsOnAnIrregularGraph()
         {
-            Graph graph = Graph.Grid(3, 3);
+            // M3-3's completion criteria: beam search should beat Bfs by at least 20% on a representative
+            // bench case. Random500v2000e from docs/benchmarks.md's M3-1 section is exactly that case —
+            // a dense-ish irregular graph, standing in for a road/power network, not a grid.
+            Graph graph = RandomGraph(vertexCount: 500, edgeCount: 2000, seed: 5);
 
-            Assert.Throws<NotSupportedException>(() => graph.Optimize(EdgeOrderStrategy.BeamSearchPathWidth));
-            Assert.Throws<NotSupportedException>(
-                () => graph.EstimateMaxFrontierSize(EdgeOrderStrategy.BeamSearchPathWidth));
+            int bfs = graph.EstimateMaxFrontierSize(EdgeOrderStrategy.Bfs);
+            int beam = graph.EstimateMaxFrontierSize(EdgeOrderStrategy.BeamSearchPathWidth);
+
+            Assert.True(
+                beam * 100 <= bfs * 80,
+                $"BeamSearchPathWidth ({beam}) should be at least 20% narrower than Bfs ({bfs}).");
+        }
+
+        [Fact]
+        public void WiderBeamsAreNeverWorse()
+        {
+            Graph graph = Shuffle(Graph.Grid(6, 10), seed: 17);
+
+            int narrow = graph.EstimateMaxFrontierSize(
+                EdgeOrderStrategy.BeamSearchPathWidth, EdgeOrderOptions.Default.WithBeamWidth(1));
+            int medium = graph.EstimateMaxFrontierSize(
+                EdgeOrderStrategy.BeamSearchPathWidth, EdgeOrderOptions.Default.WithBeamWidth(4));
+            int wide = graph.EstimateMaxFrontierSize(
+                EdgeOrderStrategy.BeamSearchPathWidth, EdgeOrderOptions.Default.WithBeamWidth(16));
+
+            Assert.True(medium <= narrow, $"BeamWidth=4 ({medium}) should not be worse than BeamWidth=1 ({narrow}).");
+            Assert.True(wide <= medium, $"BeamWidth=16 ({wide}) should not be worse than BeamWidth=4 ({medium}).");
+        }
+
+        [Fact]
+        public void BeamSearchStartVertexOptionsAreHonored()
+        {
+            Graph graph = Graph.Path(6);
+
+            Graph fromEnd = graph.Optimize(EdgeOrderStrategy.BeamSearchPathWidth, EdgeOrderOptions.FromVertex(5));
+            Assert.Equal(new[] { 4, 3, 2, 1, 0 }, fromEnd.SourceOrder!.ToSourceEdgeIndices);
+
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => graph.Optimize(EdgeOrderStrategy.BeamSearchPathWidth, EdgeOrderOptions.FromVertex(6)));
+
+            // BestOfCandidates(1) tries exactly one (the lowest-degree) start vertex, same as FromVertex(0)
+            // or FromVertex(5) on a path — every vertex here has degree <= 2, so the two ends tie for
+            // lowest degree and the lower index wins.
+            Graph bestOfOne = graph.Optimize(EdgeOrderStrategy.BeamSearchPathWidth, EdgeOrderOptions.BestOfCandidates(1));
+            Assert.Equal(new[] { 0, 1, 2, 3, 4 }, bestOfOne.SourceOrder!.ToSourceEdgeIndices);
+        }
+
+        [Fact]
+        public void BeamWidthMustBePositive()
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() => EdgeOrderOptions.Default.WithBeamWidth(0));
+            Assert.Throws<ArgumentOutOfRangeException>(() => EdgeOrderOptions.Default.WithBeamWidth(-1));
+        }
+
+        [Fact]
+        public void CancellationReturnsAValidCompleteOrderQuickly()
+        {
+            // A graph large enough that an uninterrupted beam search takes a noticeable amount of time
+            // (thousands of edges), cancelled from the very start.
+            Graph graph = RandomGraph(vertexCount: 800, edgeCount: 3200, seed: 9);
+
+            using var cts = new CancellationTokenSource();
+            cts.Cancel();
+            var options = EdgeOrderOptions.Default.WithCancellationToken(cts.Token);
+
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            Graph optimized = graph.Optimize(EdgeOrderStrategy.BeamSearchPathWidth, options);
+            stopwatch.Stop();
+
+            AssertIsPermutationOfEdges(graph, optimized);
+            Assert.True(
+                stopwatch.Elapsed.TotalSeconds < 5.0,
+                $"Cancelling up front should finish quickly; took {stopwatch.Elapsed.TotalMilliseconds:F0} ms.");
+        }
+
+        [Fact]
+        public void BeamSearchPreprocessingTimeStaysWithinBudgetOnThousandsOfEdges()
+        {
+            // The M3-3 completion criterion this stands in for: default parameters keep preprocessing to a
+            // few seconds even on a thousands-of-edges graph.
+            Graph graph = RandomGraph(vertexCount: 1000, edgeCount: 4000, seed: 21);
+
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            Graph optimized = graph.Optimize(EdgeOrderStrategy.BeamSearchPathWidth);
+            stopwatch.Stop();
+
+            AssertIsPermutationOfEdges(graph, optimized);
+            Assert.True(
+                stopwatch.Elapsed.TotalSeconds < 10.0,
+                $"BeamSearchPathWidth on {graph.EdgeCount} edges took {stopwatch.Elapsed.TotalSeconds:F1} s.");
         }
 
         [Fact]
@@ -413,6 +500,50 @@ namespace ZDD.Net.Tests.Graphs
             }
 
             return graph.WithEdgeOrder(order);
+        }
+
+        /// <summary>
+        /// A connected pseudo-random graph (a spanning backbone plus extra edges), from a fixed generator —
+        /// the same construction bench/ZDD.Net.Benchmarks/EdgeOrderReport.cs uses for its irregular cases.
+        /// </summary>
+        private static Graph RandomGraph(int vertexCount, int edgeCount, int seed)
+        {
+            var edges = new List<Edge>(edgeCount);
+            var seen = new HashSet<Edge>();
+            uint state = (uint)seed + 0x9E3779B9u;
+
+            int Next(int bound)
+            {
+                state = (state * 1664525u) + 1013904223u;
+                return (int)(state % (uint)bound);
+            }
+
+            for (int v = 1; v < vertexCount; v++)
+            {
+                var edge = new Edge(Next(v), v);
+                if (seen.Add(edge))
+                {
+                    edges.Add(edge);
+                }
+            }
+
+            while (edges.Count < edgeCount)
+            {
+                int u = Next(vertexCount);
+                int v = Next(vertexCount);
+                if (u == v)
+                {
+                    continue;
+                }
+
+                var edge = new Edge(u, v);
+                if (seen.Add(edge))
+                {
+                    edges.Add(edge);
+                }
+            }
+
+            return new Graph(vertexCount, edges);
         }
     }
 }

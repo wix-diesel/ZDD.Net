@@ -10,9 +10,10 @@ using ZDD.Net.Specs;
 namespace ZDD.Net.Benchmarks
 {
     /// <summary>
-    /// The before/after comparison docs/benchmarks.md's "M3-1 辺順序最適化" section is made of: what
-    /// <see cref="Graph.Optimize"/> does to the peak frontier of a thousands-of-edges graph, and what that
-    /// does to an actual build. <c>dotnet run -c Release -- edge-order</c> runs it (issue #33).
+    /// The before/after comparison docs/benchmarks.md's "M3-1 辺順序最適化" and "M3-3 ビームサーチ"
+    /// sections are made of: what <see cref="Graph.Optimize"/> does to the peak frontier of a
+    /// thousands-of-edges graph, and what that does to an actual build. <c>dotnet run -c Release -- edge-order</c>
+    /// runs it (issues #33, #35).
     /// </summary>
     /// <remarks>
     /// The graphs here arrive in an arbitrary edge order, which is the realistic case — an edge list read
@@ -26,6 +27,10 @@ namespace ZDD.Net.Benchmarks
             ReportWidths();
             Console.WriteLine();
             ReportBuilds();
+            Console.WriteLine();
+            ReportBeamSearch();
+            Console.WriteLine();
+            ReportBeamWidthTrend();
         }
 
         private static void ReportWidths()
@@ -86,6 +91,114 @@ namespace ZDD.Net.Benchmarks
             yield return ("Grid30x60_Shuffled", Shuffle(Graph.Grid(30, 60), 11));
             yield return ("Torus30x30_Shuffled", Shuffle(Torus(30, 30), 3));
             yield return ("Random500v2000e", RandomGraph(500, 2000, 5));
+        }
+
+        /// <summary>
+        /// The before/after comparison docs/benchmarks.md's "M3-3 ビームサーチ" section is made of:
+        /// <see cref="EdgeOrderStrategy.BeamSearchPathWidth"/> against <see cref="EdgeOrderStrategy.Bfs"/>
+        /// on the M3-1 irregular case plus a set of geometric graphs, standing in for the "thousands of
+        /// edges, not a grid" real graphs the issue targets — roads and power grids are mostly local, not
+        /// uniform-random, so <see cref="GeometricGraph"/>'s nearest-neighbor construction is closer to
+        /// that than <c>RandomGraph</c>'s uniform edges are (issue #35).
+        /// </summary>
+        private static void ReportBeamSearch()
+        {
+            Console.WriteLine("=== BeamSearchPathWidth vs Bfs (no build) ===");
+            Console.WriteLine($"{"Case",-24} {"Edges",6} {"Bfs",6} {"BeamSearch",10} {"Improvement",11} {"Preprocessing",13}");
+
+            foreach ((string name, Graph graph) in BeamSearchCases())
+            {
+                int bfs = graph.EstimateMaxFrontierSize(EdgeOrderStrategy.Bfs);
+
+                Stopwatch stopwatch = Stopwatch.StartNew();
+                int beam = graph.EstimateMaxFrontierSize(EdgeOrderStrategy.BeamSearchPathWidth);
+                stopwatch.Stop();
+
+                double improvement = 100.0 * (bfs - beam) / bfs;
+                Console.WriteLine(
+                    $"{name,-24} {graph.EdgeCount,6} {bfs,6} {beam,10} {improvement,10:F0}% " +
+                    $"{stopwatch.Elapsed.TotalMilliseconds,11:F0}ms");
+            }
+        }
+
+        /// <summary>
+        /// The completion criterion "widening the beam does not get worse" (issue #35), measured on two
+        /// representative cases at beam widths 1 / 4 / 8 (the default) / 16.
+        /// </summary>
+        private static void ReportBeamWidthTrend()
+        {
+            Console.WriteLine("=== BeamSearchPathWidth by beam width ===");
+            Console.WriteLine($"{"Case",-24} {"Edges",6} {"K=1",6} {"K=4",6} {"K=8",6} {"K=16",6}");
+
+            foreach ((string name, Graph graph) in new[]
+            {
+                ("Random500v2000e", RandomGraph(500, 2000, 5)),
+                ("Geo1000_k4", GeometricGraph(1000, 4, 3)),
+            })
+            {
+                int k1 = graph.EstimateMaxFrontierSize(EdgeOrderStrategy.BeamSearchPathWidth, EdgeOrderOptions.Default.WithBeamWidth(1));
+                int k4 = graph.EstimateMaxFrontierSize(EdgeOrderStrategy.BeamSearchPathWidth, EdgeOrderOptions.Default.WithBeamWidth(4));
+                int k8 = graph.EstimateMaxFrontierSize(EdgeOrderStrategy.BeamSearchPathWidth, EdgeOrderOptions.Default.WithBeamWidth(8));
+                int k16 = graph.EstimateMaxFrontierSize(EdgeOrderStrategy.BeamSearchPathWidth, EdgeOrderOptions.Default.WithBeamWidth(16));
+
+                Console.WriteLine($"{name,-24} {graph.EdgeCount,6} {k1,6} {k4,6} {k8,6} {k16,6}");
+            }
+        }
+
+        private static IEnumerable<(string Name, Graph Graph)> BeamSearchCases()
+        {
+            yield return ("Random500v2000e", RandomGraph(500, 2000, 5));
+            yield return ("Random300v900e", RandomGraph(300, 900, 5));
+            yield return ("Random1000v4000e", RandomGraph(1000, 4000, 21));
+            yield return ("Geo800_k4", GeometricGraph(800, 4, 2));
+            yield return ("Geo1000_k4", GeometricGraph(1000, 4, 3));
+            yield return ("Geo2000_k4", GeometricGraph(2000, 4, 4));
+            yield return ("Grid40x40_Shuffled", Shuffle(Graph.Grid(40, 40), 7));
+        }
+
+        /// <summary>
+        /// A "road/power network"-like graph: <paramref name="vertexCount"/> points placed uniformly at
+        /// random in the unit square, each connected to its <paramref name="k"/> nearest neighbors. Unlike
+        /// <see cref="RandomGraph"/>'s uniform-random edges, this has real local structure — closer to what
+        /// M3-3 targets — while still being irregular, unlike <see cref="Graph.Grid"/>.
+        /// </summary>
+        private static Graph GeometricGraph(int vertexCount, int k, int seed)
+        {
+            uint state = (uint)seed + 0x9E3779B9u;
+            double NextDouble()
+            {
+                state = (state * 1664525u) + 1013904223u;
+                return (state >> 8) / (double)(1u << 24);
+            }
+
+            var x = new double[vertexCount];
+            var y = new double[vertexCount];
+            for (int i = 0; i < vertexCount; i++)
+            {
+                x[i] = NextDouble();
+                y[i] = NextDouble();
+            }
+
+            var seen = new HashSet<Edge>();
+            var edges = new List<Edge>();
+            for (int i = 0; i < vertexCount; i++)
+            {
+                IEnumerable<int> nearest = Enumerable.Range(0, vertexCount)
+                    .Where(j => j != i)
+                    .OrderBy(j => ((x[i] - x[j]) * (x[i] - x[j])) + ((y[i] - y[j]) * (y[i] - y[j])))
+                    .Take(k);
+
+                foreach (int j in nearest)
+                {
+                    var edge = new Edge(Math.Min(i, j), Math.Max(i, j));
+                    if (seen.Add(edge))
+                    {
+                        edges.Add(edge);
+                    }
+                }
+            }
+
+            return new Graph(vertexCount, edges);
         }
 
         private static IEnumerable<(string Name, Graph Graph, Func<Graph, ZddManager, BuildOptions, Zdd> Build)> BuildCases()

@@ -21,7 +21,14 @@ namespace ZDD.Net.Graphs
         /// </summary>
         Dfs = 2,
 
-        /// <summary>Approximate path-width minimization by beam search. Not implemented yet (M3-3).</summary>
+        /// <summary>
+        /// Approximates minimum path-width (exact minimization is NP-hard) with a beam search over vertex
+        /// orders, trying several start vertices and keeping the narrowest result. Slower than
+        /// <see cref="Bfs"/> / <see cref="Dfs"/> / <see cref="Grid"/> — worth it on an irregular graph with
+        /// thousands of edges, where a narrower frontier pays for the extra search time many times over
+        /// (M3-3, PLAN.md §8). Tune with <see cref="EdgeOrderOptions.BeamWidth"/> and
+        /// <see cref="EdgeOrderOptions.CancellationToken"/>.
+        /// </summary>
         BeamSearchPathWidth = 3,
 
         /// <summary>
