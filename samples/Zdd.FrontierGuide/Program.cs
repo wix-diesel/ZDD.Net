@@ -20,6 +20,7 @@ namespace ZDD.Net.Samples.FrontierGuide
             WhatIsTheFrontierMethod();
             BuiltInSpecs();
             GraphAndFrontierManager();
+            EdgeOrderOptimization();
             BuildOptionsLimits();
             CustomSpecNoThreeConsecutive();
 
@@ -81,8 +82,13 @@ namespace ZDD.Net.Samples.FrontierGuide
             Graph grid = Graph.Grid(3, 3);
 
             // スペックを書く前、ZDD を構築する前に、辺順序だけからフロンティア幅の見積りができる。
+            // 手軽な方（Graph に直接聞く）と、前計算した表ごと欲しい方（FrontierManager）がある。
+            Assert(grid.EstimateMaxFrontierSize() > 0, "EstimateMaxFrontierSize is the width the build will need");
+
             FrontierManager frontierManager = new FrontierManager(grid);
-            Assert(frontierManager.MaxFrontierSize > 0, "MaxFrontierSize is the width the build will need");
+            Assert(
+                frontierManager.MaxFrontierSize == grid.EstimateMaxFrontierSize(),
+                "FrontierManager.MaxFrontierSize and Graph.EstimateMaxFrontierSize are the same number");
 
             using ZddManager manager = new ZddManager(grid.EdgeCount);
 
@@ -97,6 +103,85 @@ namespace ZDD.Net.Samples.FrontierGuide
             // MatchingSpec: マッチング（perfect: true で完全マッチングだけに絞れる）。
             Zdd matchings = FrontierBuilder.Build<MatchingSpec>(manager, new MatchingSpec(grid));
             Assert(matchings.Count > 0, "MatchingSpec: a 3x3 grid has matchings (at least the empty one)");
+        }
+
+        /// <summary>
+        /// 「性能の勘所 - 辺順序でフロンティア幅が変わる」節: <c>Optimize</c> で辺順序を並べ替え、
+        /// 辺 index の対応表を通して元のグラフの辺として読み直す。
+        /// </summary>
+        private static void EdgeOrderOptimization()
+        {
+            // ファイルから読んだ辺リストのように、辺が任意の順に並んだ 40x40 格子（3,120 辺）。
+            Graph large = Shuffle(Graph.Grid(40, 40), seed: 7);
+
+            Graph optimizedLarge = large.Optimize(EdgeOrderStrategy.Bfs);   // 既定は Bfs
+            Assert(large.EstimateMaxFrontierSize() == 1408, "an arbitrary edge order is 1408 wide here");
+            Assert(optimizedLarge.EstimateMaxFrontierSize() == 42, "Bfs brings it down to 42");
+
+            // 並べ替え後のグラフを作らずに、戦略ごとの幅だけを比べることもできる。
+            Assert(
+                large.EstimateMaxFrontierSize(EdgeOrderStrategy.Grid) <= large.EstimateMaxFrontierSize(EdgeOrderStrategy.Bfs),
+                "on a grid, the Grid strategy is no wider than Bfs");
+
+            // 開始頂点も選べる（既定は次数最小の頂点）。
+            Assert(
+                large.Optimize(EdgeOrderStrategy.Bfs, EdgeOrderOptions.BestOfCandidates(20)).EstimateMaxFrontierSize() > 0,
+                "BestOfCandidates tries several start vertices and keeps the narrowest order");
+
+            // ここからが最も事故りやすい点: 並べ替えたグラフの辺 index は元のグラフのものと違う。
+            Graph graph = Shuffle(Graph.Grid(3, 4), seed: 3);
+            Graph optimized = graph.Optimize();
+            EdgeOrderMapping mapping = optimized.SourceOrder!;
+
+            using ZddManager manager = new ZddManager(optimized.EdgeCount);
+            Zdd paths = FrontierBuilder.Build<PathSpec>(
+                manager, new PathSpec(optimized, s: 0, t: optimized.VertexCount - 1));
+
+            int pathCount = 0;
+            foreach (int[] edgeSet in paths.Sets())
+            {
+                // 並べ替え後の辺 index → 元のグラフの辺 index（昇順に整列して返る）。
+                int[] original = mapping.ToSourceEdgeSet(edgeSet);
+
+                foreach (int edgeIndex in original)
+                {
+                    Edge edge = graph.GetEdge(edgeIndex);   // 元のグラフの辺として読める
+                    Assert(edge.U != edge.V, "a translated index names a real edge of the source graph");
+                }
+
+                pathCount++;
+            }
+
+            // 辺順序を変えても構築される族は同じ。変わるのは構築にかかる手間だけ。
+            using ZddManager sourceManager = new ZddManager(graph.EdgeCount);
+            Zdd sourcePaths = FrontierBuilder.Build<PathSpec>(
+                sourceManager, new PathSpec(graph, s: 0, t: graph.VertexCount - 1));
+
+            Assert(sourcePaths.Count == paths.Count, "reordering the edges does not change the family");
+            Assert(pathCount == (int)paths.Count, "every set came back through the mapping");
+        }
+
+        /// <summary>
+        /// 辺を任意の順に並べ替える（ファイルから読んだ辺リストの代わり）。固定の線形合同法なので、
+        /// 実行するたびに同じ順序になる。
+        /// </summary>
+        private static Graph Shuffle(Graph graph, int seed)
+        {
+            var order = new int[graph.EdgeCount];
+            for (int i = 0; i < order.Length; i++)
+            {
+                order[i] = i;
+            }
+
+            uint state = (uint)seed + 0x9E3779B9u;
+            for (int i = order.Length - 1; i > 0; i--)
+            {
+                state = (state * 1664525u) + 1013904223u;
+                int j = (int)(state % (uint)(i + 1));
+                (order[i], order[j]) = (order[j], order[i]);
+            }
+
+            return graph.WithEdgeOrder(order);
         }
 
         /// <summary>「BuildOptions による上限設定」節: 上限超過で例外になること、進捗が届くことを確かめる。</summary>

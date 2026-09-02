@@ -14,7 +14,7 @@ CI が毎回ビルドして実行している（`.github/workflows/ci.yml` の�
 dotnet run --project samples/Zdd.FrontierGuide
 ```
 
-- 対象バージョン: v0.2（M2 フロンティア法フレームワーク完成版）
+- 対象バージョン: v0.2（M2 フロンティア法フレームワーク完成版）＋ M3-1（辺順序の最適化。次期リリース）
 
 ---
 
@@ -69,6 +69,9 @@ var custom = new Graph(vertexCount: 4, new[] { new Edge(0, 1), new Edge(1, 2), n
 
 // 既存のグラフを、別の辺順序で作り直す（変数順序の最適化を自分で試したいとき）。
 Graph reordered = grid.WithEdgeOrder(new[] { 2, 0, 1, /* ... */ });
+
+// 辺順序を自動で最適化する（6.1 節）。元の grid は変更されない。
+Graph optimized = grid.Optimize(EdgeOrderStrategy.Bfs);
 ```
 
 `Graph.EdgeCount` が、そのグラフに対する ZDD の変数の個数（`ZddManager` に渡す `variableCount`）になる。
@@ -123,7 +126,7 @@ Zdd matchings = FrontierBuilder.Build<MatchingSpec>(manager, new MatchingSpec(gr
 Kirchhoff の行列木定理、`MatchingSpec` はパーマネント照合と一致することを CI のテストで確認している
 （`tests/ZDD.Net.Tests/Specs/`）。
 
-## 4. `FrontierManager` による事前見積り
+## 4. 構築前の見積り（`EstimateMaxFrontierSize` / `FrontierManager`）
 
 `ZDD.Net.Graphs.FrontierManager` は、スペックも ZDD の構築もまだ行わずに、**辺順序だけ**から
 フロンティア幅（＝計算量とメモリの見積り）を求められる。「大きなグラフを渡す前に、この辺順序で
@@ -132,9 +135,20 @@ Kirchhoff の行列木定理、`MatchingSpec` はパーマネント照合と一�
 ```csharp
 Graph grid = Graph.Grid(3, 3);
 
+// 手軽な方
+Console.WriteLine(grid.EstimateMaxFrontierSize());              // この辺順序でのフロンティア幅の最大値
+Console.WriteLine(grid.EstimateMaxFrontierSize(EdgeOrderStrategy.Bfs)); // 並べ替えたら幅がどうなるか
+
+// 前計算した表ごと欲しい方（スペックを書くときはこちら）
 FrontierManager frontierManager = new FrontierManager(grid);
-Console.WriteLine(frontierManager.MaxFrontierSize); // この辺順序でのフロンティア幅の最大値
+Console.WriteLine(frontierManager.MaxFrontierSize);             // 上の 1 行目と同じ値
 ```
+
+`Graph.EstimateMaxFrontierSize()` は `FrontierManager.MaxFrontierSize` と同じ値を、`FrontierManager`
+の残りの前計算をせずに返す。どちらも `O(VertexCount + EdgeCount)` なので、数千辺のグラフでも
+「構築を始める前に」呼べる。数の意味に注意: ここでの**フロンティア幅は頂点の個数**（スペックが
+状態を持たなければならない頂点の数）で、`BuildOptions.MaxFrontierSize`（5 節）が数える
+「1 水準の状態の種類数」とは別物。前者は後者の指数の肩に乗る量、という関係にある。
 
 グラフ問題のスペックを自分で書くときも、`FrontierManager` はそのまま部品として使える:
 `IntroducedVertices(edgeIndex)` / `ForgottenVertices(edgeIndex)` で各辺が持ち込む・手放す頂点を、
@@ -164,8 +178,9 @@ Zdd result = FrontierBuilder.Build<PathSpec>(manager, spec, options);
 ```
 
 上限を超えると、メモリを使い切って落ちる代わりに `BuildLimitExceededException` で止まる
-（原因が「この上限を超えた」とはっきり分かる形で失敗する）。`FrontierManager.MaxFrontierSize`
-（4 節）で事前に見積った値を `BuildOptions.MaxFrontierSize` の目安にすることが多い。
+（原因が「この上限を超えた」とはっきり分かる形で失敗する）。4 節の見積り（フロンティア幅＝頂点の
+個数）が大きいグラフほど、ここで数える状態の種類数は指数的に増える——見積りが大きいときこそ
+`MaxFrontierSize` / `MaxNodeCount` に許容できる上限を入れておく、という使い方になる。
 
 ## 6. 性能の勘所
 
@@ -174,10 +189,74 @@ Zdd result = FrontierBuilder.Build<PathSpec>(manager, spec, options);
 グラフ問題では、**辺の並び順がそのままフロンティア法の変数順序になる**（`Graph.Edges` の順序
 ＝スペックが辺を決めていく順序）。同じグラフでも辺順序が変わればフロンティア幅（＝計算量と
 メモリ）は大きく変わりうる。`Graph.Grid` が「行ごとに水平辺→次行への垂直辺」という順序を既定に
-しているのは、格子グラフでこの順序がフロンティアを狭く保つ経験則があるため。自分でグラフを
-組み立てるときや `WithEdgeOrder` で並べ替えるときは、4 節の `FrontierManager.MaxFrontierSize` で
-見積ってから `FrontierBuilder.Build` を呼ぶとよい。変数順序の自動最適化はまだ実装しておらず、
-今のところ利用者が辺順序を選ぶ（M3 以降の課題）。
+しているのは、格子グラフでこの順序がフロンティアを狭く保つ経験則があるため。
+
+一方、ファイルから読んだ辺リストのように**任意の順で並んだグラフ**は、そのままでは幅が桁違いに
+大きいことがある。`Graph.Optimize` はそれを並べ替える:
+
+```csharp
+Graph optimized = graph.Optimize(EdgeOrderStrategy.Bfs);   // 既定は Bfs
+
+Console.WriteLine(graph.EstimateMaxFrontierSize());        // 例: 1408（並べ替え前）
+Console.WriteLine(optimized.EstimateMaxFrontierSize());    // 例: 42（並べ替え後）
+```
+
+| 戦略 | 内容 | 向いているグラフ |
+|---|---|---|
+| `AsGiven` | 何もしない（比較の基準） | 既に良い順序だと分かっているとき |
+| `Bfs` | 幅優先で頂点を訪問し、両端が訪問済みになった時点で辺を出す（既定） | 大半のグラフ。Graphillion と同じ既定 |
+| `Dfs` | 深さ優先版 | 中心から長い鎖が何本も伸びるグラフ（`Bfs` は全ての枝を同時に進めてしまう） |
+| `Grid` | 格子専用の蛇行順序（短い辺に沿って折り返しながら長い辺方向へ進む） | 格子。格子でなければ `Bfs` にフォールバックする |
+| `BeamSearchPathWidth` | パス幅の近似最小化 | **未実装（M3-3）**。呼ぶと `NotSupportedException` |
+
+どの戦略が勝つかはグラフによる（[docs/benchmarks.md](benchmarks.md) の M3-1 節に実測値がある）。
+`EstimateMaxFrontierSize(strategy)` は並べ替え後のグラフを作らずに幅だけを返すので、構築前に
+戦略を比較できる:
+
+```csharp
+foreach (EdgeOrderStrategy strategy in new[] { EdgeOrderStrategy.Bfs, EdgeOrderStrategy.Dfs, EdgeOrderStrategy.Grid })
+{
+    Console.WriteLine($"{strategy}: {graph.EstimateMaxFrontierSize(strategy)}");
+}
+```
+
+探索の開始頂点も選べる（既定は次数最小の頂点）。開始頂点だけで幅が何倍も変わることがある:
+
+```csharp
+graph.Optimize(EdgeOrderStrategy.Bfs, EdgeOrderOptions.FromVertex(0));        // 頂点を指定する
+graph.Optimize(EdgeOrderStrategy.Bfs, EdgeOrderOptions.BestOfCandidates());   // 全頂点を試して最良を採る
+graph.Optimize(EdgeOrderStrategy.Bfs, EdgeOrderOptions.BestOfCandidates(20)); // 次数の小さい 20 個だけ試す
+```
+
+#### 辺 index の対応表を必ず通すこと
+
+**ここが辺順序最適化で最も事故りやすい点**。`Optimize` は新しい `Graph` を返し（元のグラフは
+変更されない）、その中で**辺が振り直される**。つまり並べ替え後のグラフで構築した ZDD は
+「並べ替え後の辺 index」で表されていて、そのまま元のグラフの辺として読むと**黙って間違った答え**に
+なる。`Graph.SourceOrder`（`EdgeOrderMapping`）がその対応表:
+
+```csharp
+Graph optimized = graph.Optimize();
+EdgeOrderMapping mapping = optimized.SourceOrder!;   // Optimize / WithEdgeOrder が返したグラフには必ず付く
+
+using ZddManager manager = new ZddManager(optimized.EdgeCount);
+Zdd paths = FrontierBuilder.Build<PathSpec>(manager, new PathSpec(optimized, 0, optimized.VertexCount - 1));
+
+foreach (int[] edgeSet in paths.Sets())
+{
+    // 並べ替え後の辺 index → 元のグラフの辺 index（昇順に整列して返る）
+    int[] original = mapping.ToSourceEdgeSet(edgeSet);
+
+    foreach (int edgeIndex in original)
+    {
+        Edge edge = graph.GetEdge(edgeIndex);   // 元のグラフの辺として読める
+    }
+}
+```
+
+1 個だけ変換するなら `mapping.ToSourceEdgeIndex(i)`、逆向きは `mapping.FromSourceEdgeIndex(i)`。
+`mapping.Source` は「並べ替えの直前のグラフ」なので、並べ替えを 2 回重ねたときは
+`optimized.SourceOrder.Source.SourceOrder` と鎖をたどるか、毎回元のグラフから並べ替える。
 
 ### 6.2 `TSpec` を interface 型で受けないこと
 

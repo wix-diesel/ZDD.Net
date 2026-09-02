@@ -115,7 +115,7 @@ Core レイヤは下から積むため、序盤の PR は `internal` のコー�
 
 | 完了 | ID | タイトル | 内容 | 受け入れ条件 | 目安 | 依存 |
 |---|---|---|---|---|---|---|
-| [ ] | **M3-1** | 辺順序（基本） | `EdgeOrderStrategy.Bfs/Dfs/Grid`、`Graph.Optimize()`、`EstimateMaxFrontierSize()` の実用化 | 数千辺の実グラフでフロンティア幅が既定順より改善 | 〜250 | M2-12 |
+| [x] | **M3-1** | 辺順序（基本） | `EdgeOrderStrategy.Bfs/Dfs/Grid`、`Graph.Optimize()`、`EstimateMaxFrontierSize()` の実用化 | 数千辺の実グラフでフロンティア幅が既定順より改善 | 〜250 | M2-12 |
 | [ ] | **M3-2** | フロンティア状態の bit-packing | 状態を `byte`/`short`/ビットフィールドに圧縮、状態表のインライン格納 | **メモリ 50% 以上削減、結果は不変**（M2 のテストが全て通る） | 〜350 | M3-1 |
 | [ ] | **M3-3** | 辺順序（ビームサーチ） | パス幅近似最小化。幅の見積りに基づく探索 | 主要ベンチで M3-1 比 20% 以上の改善 | 〜350 | M3-2 |
 | [ ] | **M3-4** | サイクル・ハミルトン | `CycleSpec`（単一／複数）、`HamiltonianPathSpec`、`HamiltonianCycleSpec` | 完全グラフ・Petersen グラフの既知値と一致 | 〜300 | M2-12 |
