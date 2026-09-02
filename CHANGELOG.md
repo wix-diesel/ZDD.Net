@@ -8,6 +8,25 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
 
 ## [Unreleased]
 
+### Added
+
+- `ZDD.Net.Graphs`: 辺順序（＝フロンティア法の変数順序）の最適化（M3-1、issue #33）
+  - `Graph.Optimize(EdgeOrderStrategy, EdgeOrderOptions)`: 辺を並べ替えた**新しい `Graph`** を返す
+    （元のグラフは変更しない）。戦略は `AsGiven` / `Bfs`（既定。Graphillion と同じ）/ `Dfs` /
+    `Grid`（格子専用の蛇行順序。格子でなければ `Bfs` にフォールバック）。
+    `BeamSearchPathWidth` は列挙子だけ用意してあり、呼ぶと `NotSupportedException`（M3-3 で実装）
+  - `EdgeOrderOptions`: 探索の開始頂点の選び方（次数最小＝既定 / `FromVertex` で指定 /
+    `BestOfCandidates` で複数試して最良）
+  - `Graph.SourceOrder`（`EdgeOrderMapping`）: 並べ替え後の辺 index ↔ 元の辺 index の対応表。
+    並べ替え後のグラフで構築した ZDD は並べ替え後の辺 index で表されるため、元のグラフの辺として
+    読むには `ToSourceEdgeIndex` / `ToSourceEdgeSet` を通す必要がある（最も事故りやすい点）
+  - `Graph.EstimateMaxFrontierSize()` / `EstimateMaxFrontierSize(EdgeOrderStrategy, EdgeOrderOptions)`:
+    構築を始める前の見積り API（`O(VertexCount + EdgeCount)`）。後者は並べ替え後のグラフを作らずに
+    戦略ごとの幅を比較できる
+  - 効果: 辺が任意の順に並んだ 40×40 格子（3,120 辺）でフロンティア幅 1,408 → 42、
+    3×9 格子の s–t パス構築が 2,065 ms → 0.3 ms（[docs/benchmarks.md](docs/benchmarks.md) の M3-1 節）。
+    `dotnet run -c Release --project bench/ZDD.Net.Benchmarks -- edge-order` で再現できる
+
 ## [0.2.0] - 2026-09-01
 
 M2「フロンティア法フレームワーク」マイルストーン（[docs/PLAN.md](docs/PLAN.md) §12）の内容。

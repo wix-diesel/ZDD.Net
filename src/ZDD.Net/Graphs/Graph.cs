@@ -108,6 +108,13 @@ namespace ZDD.Net.Graphs
             }
         }
 
+        /// <summary>Creates the graph <see cref="WithEdgeOrder"/> returns: the same graph reordered, remembering where its edges came from.</summary>
+        private Graph(int vertexCount, Edge[] edges, EdgeOrderMapping sourceOrder)
+            : this(vertexCount, edges)
+        {
+            SourceOrder = sourceOrder;
+        }
+
         /// <summary>The number of vertices, indexed <c>0 .. VertexCount - 1</c>.</summary>
         public int VertexCount { get; }
 
@@ -117,6 +124,13 @@ namespace ZDD.Net.Graphs
         /// <summary>The edges, in variable order (edge index <c>i</c> is variable index <c>i</c>).</summary>
         /// <remarks>A read-only view over the backing storage: it cannot be downcast to mutate the graph.</remarks>
         public IReadOnlyList<Edge> Edges => _edgesView;
+
+        /// <summary>
+        /// How this graph's edge indices map back to the graph it was reordered from, or
+        /// <see langword="null"/> if it was constructed directly rather than by
+        /// <see cref="Optimize"/> / <see cref="WithEdgeOrder"/>.
+        /// </summary>
+        public EdgeOrderMapping? SourceOrder { get; }
 
         /// <summary>Returns the edge at <paramref name="edgeIndex"/>.</summary>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="edgeIndex"/> is outside <c>0 .. EdgeCount - 1</c>.</exception>
@@ -207,9 +221,8 @@ namespace ZDD.Net.Graphs
         }
 
         /// <summary>
-        /// Returns a graph with the same vertices and edges, reordered by <paramref name="edgeOrder"/>.
-        /// A placeholder for variable-order optimization: this constructor performs no reordering itself
-        /// (that arrives in M3-1), it only lets a caller-supplied order be applied.
+        /// Returns a graph with the same vertices and edges, reordered by <paramref name="edgeOrder"/>,
+        /// carrying a <see cref="SourceOrder"/> back to this graph. This graph is left untouched.
         /// </summary>
         /// <param name="edgeOrder">
         /// A permutation of <c>0 .. EdgeCount - 1</c>: the new graph's edge <c>i</c> is this graph's edge
@@ -227,6 +240,7 @@ namespace ZDD.Net.Graphs
             }
 
             var seen = new bool[EdgeCount];
+            var toSource = new int[EdgeCount];
             var reordered = new Edge[EdgeCount];
             for (int i = 0; i < EdgeCount; i++)
             {
@@ -237,11 +251,63 @@ namespace ZDD.Net.Graphs
                 }
 
                 seen[source] = true;
+                toSource[i] = source;
                 reordered[i] = _edges[source];
             }
 
-            return new Graph(VertexCount, reordered);
+            return new Graph(VertexCount, reordered, new EdgeOrderMapping(this, toSource));
         }
+
+        /// <summary>
+        /// Returns a copy of this graph whose edges are reordered by <paramref name="strategy"/> to keep the
+        /// frontier narrow. This graph is left untouched.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The returned graph renumbers the edges.</b> Edge index <c>i</c> of the result is a different
+        /// edge from edge <c>i</c> of this graph, so a ZDD built over the result is expressed in the
+        /// result's variable indices: read it back through <see cref="SourceOrder"/>
+        /// (<see cref="EdgeOrderMapping.ToSourceEdgeIndex"/>) before interpreting it against this graph.
+        /// Forgetting this is the classic way to get a silently wrong answer out of edge-order optimization.
+        /// </para>
+        /// <para>
+        /// Runs in <c>O(VertexCount + EdgeCount)</c>, except under
+        /// <see cref="StartVertexSelection.BestOfCandidates"/>, which costs that per candidate start vertex.
+        /// <see cref="EdgeOrderStrategy.Grid"/> falls back to <see cref="EdgeOrderStrategy.Bfs"/> unless the
+        /// graph is a grid numbered row-major, the way <see cref="Grid"/> numbers one.
+        /// </para>
+        /// </remarks>
+        /// <param name="strategy">The ordering heuristic; <see cref="EdgeOrderStrategy.Bfs"/> by default.</param>
+        /// <param name="options">Which vertex the traversal starts from; minimum degree by default.</param>
+        /// <exception cref="NotSupportedException"><paramref name="strategy"/> is <see cref="EdgeOrderStrategy.BeamSearchPathWidth"/>, which arrives in M3-3.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="strategy"/> is not a known strategy, or a specified start vertex is outside <c>0 .. VertexCount - 1</c>.</exception>
+        public Graph Optimize(EdgeOrderStrategy strategy = EdgeOrderStrategy.Bfs, EdgeOrderOptions options = default) =>
+            WithEdgeOrder(EdgeOrdering.Compute(this, strategy, options));
+
+        /// <summary>
+        /// The peak frontier size this graph's edge order implies: the number of vertices a frontier-method
+        /// spec would have to carry state for at the widest point, which sits on the exponent of a build's
+        /// time and memory. Runs in <c>O(VertexCount + EdgeCount)</c> — cheap enough to check before
+        /// committing to a build that may not finish (PLAN.md §8).
+        /// </summary>
+        /// <remarks>
+        /// This counts frontier <i>vertices</i>, the same quantity as
+        /// <see cref="FrontierManager.MaxFrontierSize"/>. It is not
+        /// <see cref="Frontier.BuildOptions.MaxFrontierSize"/>, which bounds the states one level holds:
+        /// that number is what actually explodes, and this one bounds its exponent.
+        /// </remarks>
+        public int EstimateMaxFrontierSize() => EdgeOrdering.MaxFrontierSize(this, null);
+
+        /// <summary>
+        /// The peak frontier size <paramref name="strategy"/> would achieve, without building the reordered
+        /// graph — for comparing strategies before picking one.
+        /// </summary>
+        /// <param name="strategy">The ordering heuristic to evaluate.</param>
+        /// <param name="options">Which vertex the traversal starts from; minimum degree by default.</param>
+        /// <exception cref="NotSupportedException"><paramref name="strategy"/> is <see cref="EdgeOrderStrategy.BeamSearchPathWidth"/>, which arrives in M3-3.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="strategy"/> is not a known strategy, or a specified start vertex is outside <c>0 .. VertexCount - 1</c>.</exception>
+        public int EstimateMaxFrontierSize(EdgeOrderStrategy strategy, EdgeOrderOptions options = default) =>
+            EdgeOrdering.MaxFrontierSize(this, EdgeOrdering.Compute(this, strategy, options));
 
         /// <summary>Creates an <c>rows</c> × <c>cols</c> grid graph.</summary>
         /// <remarks>
