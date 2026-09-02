@@ -24,9 +24,9 @@ namespace ZDD.Net.Specs
     /// <see cref="PathSpec"/> rejects a <see cref="MateChainState.SpliceResult.Closed"/> result outright,
     /// this spec accepts it: the chain has closed into a completed cycle. In <see cref="Single"/> mode the
     /// trailing flag records that closure and every subsequent edge is then rejected outright — a second
-    /// cycle would violate "exactly one"; in the (default) multi-cycle mode the flag instead just records
-    /// that some edge has been taken at all, so the empty edge set can be told apart from a real (possibly
-    /// multi-component) cycle family at the end. Finally, for each vertex this edge forgets,
+    /// cycle would violate "exactly one"; in multi-cycle mode the flag instead just records that some edge
+    /// has been taken at all, so the empty edge set can be told apart from a real (possibly multi-component)
+    /// cycle family at the end. Finally, for each vertex this edge forgets,
     /// <see cref="MateChainState.ForgetAllowIsolated"/> requires it to have ended at degree 0 (never
     /// touched) or degree 2 (a closed cycle's interior) — a degree-1 dead end can never become a valid
     /// cycle.
@@ -47,12 +47,12 @@ namespace ZDD.Net.Specs
         /// <summary>Creates a spec for simple cycles on <paramref name="graph"/>.</summary>
         /// <param name="graph">The graph to search.</param>
         /// <param name="single">
-        /// When <see langword="true"/>, enumerates only edge sets that form exactly one simple cycle. When
-        /// <see langword="false"/> (the default), enumerates every nonempty union of vertex-disjoint simple
+        /// When <see langword="true"/> (the default), enumerates only edge sets that form exactly one simple
+        /// cycle. When <see langword="false"/>, enumerates every nonempty union of vertex-disjoint simple
         /// cycles.
         /// </param>
         /// <exception cref="ArgumentNullException"><paramref name="graph"/> is <see langword="null"/>.</exception>
-        public CycleSpec(Graph graph, bool single = false)
+        public CycleSpec(Graph graph, bool single = true)
         {
             ArgumentNullException.ThrowIfNull(graph);
 

@@ -91,7 +91,7 @@ Graph optimized = grid.Optimize(EdgeOrderStrategy.Bfs);
 | `SpanningTreeSpec` | グラフの全域木 | フロンティア頂点ごとの連結成分番号 | `IArrayDdSpec` |
 | `ForestSpec` | 成分数を指定した森（`components: 1` は全域木と同じ族） | 同上 | `IArrayDdSpec` |
 | `MatchingSpec` | グラフのマッチング（`perfect: true` で完全マッチングのみ） | フロンティア頂点ごとの被覆フラグ | `IArrayDdSpec` |
-| `CycleSpec` | 単純サイクルの族（`single: true` で単一サイクルのみ） | フロンティア頂点ごとの mate | `IArrayDdSpec` |
+| `CycleSpec` | 単純サイクルの族（`single: true`（既定）は単一サイクルのみ、`false` は互いに素なサイクルの和） | フロンティア頂点ごとの mate | `IArrayDdSpec` |
 | `HamiltonianPathSpec` | 全頂点を通る `s`–`t` 単純パス | 同上 | `IArrayDdSpec` |
 | `HamiltonianCycleSpec` | 全頂点を通る単一の単純サイクル | 同上 | `IArrayDdSpec` |
 
