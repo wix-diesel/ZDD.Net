@@ -297,6 +297,7 @@ namespace ZDD.Net.Tests.Graphs
         }
 
         [Fact]
+        [Trait("Category", "Slow")]
         public void BeamSearchNarrowsThePeakFrontierBeyondBfsOnAnIrregularGraph()
         {
             // M3-3's completion criteria: beam search should beat Bfs by at least 20% on a representative
@@ -375,6 +376,7 @@ namespace ZDD.Net.Tests.Graphs
         }
 
         [Fact]
+        [Trait("Category", "Slow")]
         public void BeamSearchPreprocessingTimeStaysWithinBudgetOnThousandsOfEdges()
         {
             // The M3-3 completion criterion this stands in for: default parameters keep preprocessing to a

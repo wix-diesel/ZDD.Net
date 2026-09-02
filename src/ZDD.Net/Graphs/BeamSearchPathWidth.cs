@@ -17,7 +17,11 @@ namespace ZDD.Net.Graphs
     /// which starts a new region on a disconnected graph) — adding a vertex unrelated to anything visited
     /// so far could never narrow the current frontier, only add an unrelated one, so this restriction both
     /// keeps branching cheap (bounded by the region's boundary degree, not <c>VertexCount</c>) and does not
-    /// throw away any move that could help.
+    /// throw away any move that could help. Picking that lowest-degree restart is itself
+    /// <c>O(VertexCount)</c> amortized over a whole trial, not per restart: <see cref="Node.RestartCursor"/>
+    /// walks a degree-sorted vertex list computed once (<see cref="VerticesByDegreeAscending"/>) and only
+    /// ever advances, so a graph with many disconnected components does not turn into
+    /// <c>O(VertexCount²)</c> just to find where each one starts.
     /// </para>
     /// <para>
     /// <b>Evaluation.</b> A vertex enters the frontier the moment one of its edges resolves (both endpoints
@@ -26,8 +30,10 @@ namespace ZDD.Net.Graphs
     /// incrementally as the vertex order is built (<see cref="Predict"/> / <see cref="Apply"/>). Candidates
     /// are ranked primarily by <b>the worst width reached so far</b> (the peak is what sits on the exponent
     /// of a build's cost, PLAN.md §8, so a path that is usually narrow but spikes once is worse than one
-    /// that stays uniformly moderate) and, among ties, by <b>graph distance from the start vertex</b> before
-    /// <b>the running total</b> (vertex index breaks any remaining tie, for a reproducible order). The
+    /// that stays uniformly moderate) and, among ties, by <b>graph distance from the start vertex</b>, then
+    /// <b>the running total</b>, then the candidate vertex's own index — and an insertion-order number as
+    /// the final tie-break, since two different parent states can otherwise reach the same vertex with an
+    /// identical score, which <c>List&lt;T&gt;.Sort</c> alone would not resolve deterministically. The
     /// distance tie-break matters more than it looks: minimizing width one vertex at a time with no other
     /// guidance is a known trap on graphs with real local structure (unlike a grid) — it tends to wander
     /// into a locally cheap-looking peninsula and leave the graph's bulk to be swept up later at a much
@@ -181,6 +187,15 @@ namespace ZDD.Net.Graphs
             internal int OpenCount;
             internal int MaxWidth;
             internal long WidthSum;
+
+            /// <summary>
+            /// How far into the trial's degree-sorted vertex list <see cref="RestartVertex"/> has already
+            /// confirmed every entry is visited. Visited status never reverts, so this only ever moves
+            /// forward — carried from parent to child in <see cref="Apply"/> — which is what keeps repeated
+            /// restarts (a graph with many components, or many isolated vertices) from rescanning the
+            /// whole list every time.
+            /// </summary>
+            internal int RestartCursor;
         }
 
         /// <summary>Runs one trial from <paramref name="start"/> and returns its final beam (up to <paramref name="beamWidth"/> complete vertex orders).</summary>
@@ -201,8 +216,9 @@ namespace ZDD.Net.Graphs
             };
 
             int[] distance = BfsDistance(graph, start);
+            int[] verticesByDegree = VerticesByDegreeAscending(graph);
 
-            var beam = new List<Node> { Apply(graph, root, start) };
+            var beam = new List<Node> { Apply(graph, root, start, verticesByDegree) };
             var candidateStamp = new int[vertexCount];
             int stamp = 0;
 
@@ -211,10 +227,34 @@ namespace ZDD.Net.Graphs
                 // Cancellation does not stop the search outright: from here on the beam collapses to its
                 // single best survivor, which finishes the remaining vertices with no more branching.
                 int width = cancellationToken.IsCancellationRequested ? 1 : beamWidth;
-                beam = Advance(graph, beam, width, distance, candidateStamp, ref stamp);
+                beam = Advance(graph, beam, width, distance, verticesByDegree, candidateStamp, ref stamp);
             }
 
             return beam;
+        }
+
+        /// <summary>Every vertex (including isolated ones), lowest degree first, ties broken by index.</summary>
+        /// <remarks>
+        /// Computed once per trial and shared read-only across every state: it only depends on the graph,
+        /// not on what has been visited. <see cref="RestartVertex"/> walks this list via each state's own
+        /// <see cref="Node.RestartCursor"/> rather than rescanning <see cref="Graph.VertexCount"/> vertices
+        /// from scratch every time a disconnected graph's next component needs a start.
+        /// </remarks>
+        private static int[] VerticesByDegreeAscending(Graph graph)
+        {
+            var vertices = new int[graph.VertexCount];
+            for (int v = 0; v < vertices.Length; v++)
+            {
+                vertices[v] = v;
+            }
+
+            Array.Sort(vertices, (a, b) =>
+            {
+                int byDegree = graph.Degree(a).CompareTo(graph.Degree(b));
+                return byDegree != 0 ? byDegree : a.CompareTo(b);
+            });
+
+            return vertices;
         }
 
         /// <summary>Breadth-first distance from <paramref name="start"/> (unreached vertices get <see cref="int.MaxValue"/>).</summary>
@@ -243,16 +283,22 @@ namespace ZDD.Net.Graphs
             return distance;
         }
 
-        private static List<Node> Advance(Graph graph, List<Node> beam, int beamWidth, int[] distance, int[] candidateStamp, ref int stamp)
+        private static List<Node> Advance(
+            Graph graph, List<Node> beam, int beamWidth, int[] distance, int[] verticesByDegree, int[] candidateStamp, ref int stamp)
         {
-            var scored = new List<(Node Parent, int Vertex, int Peak, int NewOpenCount)>();
+            // Order is the index a candidate was added at: two candidates can tie on every scored field
+            // (same Vertex reached from two different Parent states with an identical Peak/distance/sum, or
+            // even the same Parent — Predict is pure, so a repeated (node, vertex) pair scores identically)
+            // and List<T>.Sort is not stable, so without a final tie-break the result could vary between
+            // runs and .NET versions despite every other key being reproducible.
+            var scored = new List<(Node Parent, int Vertex, int Peak, int NewOpenCount, int Order)>();
             foreach (Node node in beam)
             {
                 stamp++;
-                foreach (int candidate in Candidates(graph, node, candidateStamp, stamp))
+                foreach (int candidate in Candidates(graph, node, verticesByDegree, candidateStamp, stamp))
                 {
                     Predict(graph, node, candidate, out int newOpenCount, out int peak);
-                    scored.Add((node, candidate, peak, newOpenCount));
+                    scored.Add((node, candidate, peak, newOpenCount, scored.Count));
                 }
             }
 
@@ -279,13 +325,19 @@ namespace ZDD.Net.Graphs
                 long aSum = a.Parent.WidthSum + a.NewOpenCount;
                 long bSum = b.Parent.WidthSum + b.NewOpenCount;
                 int bySum = aSum.CompareTo(bSum);
-                return bySum != 0 ? bySum : a.Vertex.CompareTo(b.Vertex);
+                if (bySum != 0)
+                {
+                    return bySum;
+                }
+
+                int byVertex = a.Vertex.CompareTo(b.Vertex);
+                return byVertex != 0 ? byVertex : a.Order.CompareTo(b.Order);
             });
 
             var next = new List<Node>(Math.Min(beamWidth, scored.Count));
             for (int i = 0; i < scored.Count && next.Count < beamWidth; i++)
             {
-                next.Add(Apply(graph, scored[i].Parent, scored[i].Vertex));
+                next.Add(Apply(graph, scored[i].Parent, scored[i].Vertex, verticesByDegree));
             }
 
             return next;
@@ -296,11 +348,11 @@ namespace ZDD.Net.Graphs
         /// its growable vertices, deduplicated with a shared stamped buffer rather than a fresh set per
         /// call. Once nothing is growable, the lowest-degree unvisited vertex restarts a new region.
         /// </summary>
-        private static IEnumerable<int> Candidates(Graph graph, Node node, int[] candidateStamp, int mark)
+        private static IEnumerable<int> Candidates(Graph graph, Node node, int[] verticesByDegree, int[] candidateStamp, int mark)
         {
             if (node.GrowableCount == 0)
             {
-                yield return RestartVertex(graph, node);
+                yield return RestartVertex(node, verticesByDegree);
                 yield break;
             }
 
@@ -318,20 +370,20 @@ namespace ZDD.Net.Graphs
             }
         }
 
-        private static int RestartVertex(Graph graph, Node node)
+        /// <summary>
+        /// The lowest-degree unvisited vertex, found by walking <paramref name="verticesByDegree"/> forward
+        /// from <paramref name="node"/>'s <see cref="Node.RestartCursor"/> — not by rescanning every vertex.
+        /// Read-only: the cursor itself only advances when a state is actually materialized, in <see cref="Apply"/>.
+        /// </summary>
+        private static int RestartVertex(Node node, int[] verticesByDegree)
         {
-            int best = -1;
-            int bestDegree = int.MaxValue;
-            for (int v = 0; v < graph.VertexCount; v++)
+            int i = node.RestartCursor;
+            while (node.Visited[verticesByDegree[i]])
             {
-                if (!node.Visited[v] && graph.Degree(v) < bestDegree)
-                {
-                    bestDegree = graph.Degree(v);
-                    best = v;
-                }
+                i++;
             }
 
-            return best;
+            return verticesByDegree[i];
         }
 
         /// <summary>
@@ -380,7 +432,7 @@ namespace ZDD.Net.Graphs
         }
 
         /// <summary>Returns a new state with <paramref name="v"/> visited, leaving <paramref name="parent"/> untouched.</summary>
-        private static Node Apply(Graph graph, Node parent, int v)
+        private static Node Apply(Graph graph, Node parent, int v, int[] verticesByDegree)
         {
             var visited = (bool[])parent.Visited.Clone();
             var remaining = (int[])parent.Remaining.Clone();
@@ -436,6 +488,14 @@ namespace ZDD.Net.Graphs
             int peak = parent.OpenCount + opened;
             int openCount = peak - closed;
 
+            // Advances past whatever prefix of verticesByDegree is now confirmed visited, so the next
+            // restart on this lineage (if any) does not re-walk ground parent already covered.
+            int restartCursor = parent.RestartCursor;
+            while (restartCursor < verticesByDegree.Length && visited[verticesByDegree[restartCursor]])
+            {
+                restartCursor++;
+            }
+
             return new Node
             {
                 Path = new PathLink(parent.Path, v),
@@ -446,6 +506,7 @@ namespace ZDD.Net.Graphs
                 OpenCount = openCount,
                 MaxWidth = Math.Max(parent.MaxWidth, peak),
                 WidthSum = parent.WidthSum + openCount,
+                RestartCursor = restartCursor,
             };
         }
 
