@@ -35,8 +35,7 @@ namespace ZDD.Net.Graphs
                         : TraversalOrder(graph, depthFirst: false, options);
 
                 case EdgeOrderStrategy.BeamSearchPathWidth:
-                    throw new NotSupportedException(
-                        "EdgeOrderStrategy.BeamSearchPathWidth is not implemented yet (M3-3); use Bfs, Dfs or Grid.");
+                    return BeamSearchPathWidth.Compute(graph, options);
 
                 default:
                     throw new ArgumentOutOfRangeException(nameof(strategy), strategy, "Not a known edge-order strategy.");
@@ -229,29 +228,41 @@ namespace ZDD.Net.Graphs
             }
         }
 
-        /// <summary>Tries the lowest-degree start vertices and keeps the order with the smallest peak frontier.</summary>
-        private static int[] BestTraversalOrder(Graph graph, bool depthFirst, int maxCandidates)
+        /// <summary>
+        /// Every vertex touching at least one edge, lowest degree first (ties broken by index): the order
+        /// candidate start vertices are tried in, since starting at a low-degree vertex tends to keep the
+        /// first frontier small.
+        /// </summary>
+        internal static List<int> DegreeSortedVertices(Graph graph)
         {
-            var candidates = new List<int>();
+            var vertices = new List<int>();
             for (int v = 0; v < graph.VertexCount; v++)
             {
                 if (graph.Degree(v) > 0)
                 {
-                    candidates.Add(v);
+                    vertices.Add(v);
                 }
             }
+
+            vertices.Sort((left, right) =>
+            {
+                int byDegree = graph.Degree(left).CompareTo(graph.Degree(right));
+                return byDegree != 0 ? byDegree : left.CompareTo(right);
+            });
+
+            return vertices;
+        }
+
+        /// <summary>Tries the lowest-degree start vertices and keeps the order with the smallest peak frontier.</summary>
+        private static int[] BestTraversalOrder(Graph graph, bool depthFirst, int maxCandidates)
+        {
+            List<int> candidates = DegreeSortedVertices(graph);
 
             if (candidates.Count == 0)
             {
                 // No edges at all: every order is the empty one.
                 return Identity(graph.EdgeCount);
             }
-
-            candidates.Sort((left, right) =>
-            {
-                int byDegree = graph.Degree(left).CompareTo(graph.Degree(right));
-                return byDegree != 0 ? byDegree : left.CompareTo(right);
-            });
 
             int tried = maxCandidates > 0 ? Math.Min(maxCandidates, candidates.Count) : candidates.Count;
             int[]? best = null;
@@ -368,7 +379,7 @@ namespace ZDD.Net.Graphs
         /// Emits each edge at the point its second endpoint is visited, which is the earliest position at
         /// which the edge can be decided — and therefore the earliest its endpoints can leave the frontier.
         /// </summary>
-        private static int[] EdgeOrderFromVertexOrder(Graph graph, int[] vertexOrder)
+        internal static int[] EdgeOrderFromVertexOrder(Graph graph, int[] vertexOrder)
         {
             var order = new int[graph.EdgeCount];
             var visited = new bool[graph.VertexCount];
@@ -389,7 +400,7 @@ namespace ZDD.Net.Graphs
             return order;
         }
 
-        private static int[] Identity(int count)
+        internal static int[] Identity(int count)
         {
             var order = new int[count];
             for (int i = 0; i < count; i++)
