@@ -119,3 +119,16 @@ jobs:
           --api-key "$NUGET_API_KEY"
           --source https://api.nuget.org/v3/index.json
           --skip-duplicate
+
+      - name: リリースノートに NuGet.org へのリンクを追記
+        # NuGet.org への公開が実行された場合のみ、GitHub Release の本文にパッケージページへの
+        # リンクを追記する（未公開のリリースにリンク切れの記載を残さないため）。
+        if: ${{ env.NUGET_API_KEY != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUGET_URL: https://www.nuget.org/packages/ZDD.Net/${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          notes="$(gh release view "${{ steps.version.outputs.tag }}" --json body --jq .body)"
+          printf '%s\n\n[NuGet.org で見る](%s)\n' "$notes" "$NUGET_URL" \
+            | gh release edit "${{ steps.version.outputs.tag }}" --notes-file -
