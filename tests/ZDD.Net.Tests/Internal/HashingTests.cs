@@ -8,6 +8,37 @@ namespace ZDD.Net.Tests.Internal
 {
     public class HashingTests
     {
+        /// <summary>Packed frontier states are hashed eight bytes at a time; every byte must count.</summary>
+        [Theory]
+        [InlineData(1)]
+        [InlineData(7)]
+        [InlineData(8)]
+        [InlineData(9)]
+        [InlineData(16)]
+        [InlineData(23)]
+        public void CombineOverBytesDependsOnEveryByte(int length)
+        {
+            byte[] bytes = new byte[length];
+            for (int i = 0; i < length; i++)
+            {
+                bytes[i] = (byte)(i * 7);
+            }
+
+            ulong baseline = Hashing.Combine(bytes);
+            Assert.Equal(baseline, Hashing.Combine(bytes));
+
+            HashSet<ulong> hashes = new HashSet<ulong> { baseline };
+
+            for (int i = 0; i < length; i++)
+            {
+                byte original = bytes[i];
+                bytes[i] ^= 0x01;
+
+                Assert.True(hashes.Add(Hashing.Combine(bytes)), $"Flipping byte {i} must change the hash.");
+                bytes[i] = original;
+            }
+        }
+
         [Fact]
         public void CombineIsDeterministic()
         {

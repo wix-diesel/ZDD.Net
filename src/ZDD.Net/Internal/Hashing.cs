@@ -1,4 +1,5 @@
 using System;
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -46,14 +47,31 @@ namespace ZDD.Net.Internal
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong Combine(int value) => Mix64(GoldenRatio64 ^ (uint)value);
 
-        /// <summary>Combines a variable-length state array into a single 64-bit hash, element-wise.</summary>
-        public static ulong Combine(ReadOnlySpan<int> values)
+        /// <summary>
+        /// Combines a packed frontier state into a single 64-bit hash, eight bytes at a time; equal
+        /// byte sequences of equal length hash equally, which is all the state tables need.
+        /// </summary>
+        /// <param name="bytes">One packed state; every state of a level has the same length.</param>
+        public static ulong Combine(ReadOnlySpan<byte> bytes)
         {
             ulong hash = GoldenRatio64;
+            int i = 0;
 
-            for (int i = 0; i < values.Length; i++)
+            for (; i + sizeof(ulong) <= bytes.Length; i += sizeof(ulong))
             {
-                hash = Mix64(hash ^ (uint)values[i]);
+                hash = Mix64(hash ^ BinaryPrimitives.ReadUInt64LittleEndian(bytes.Slice(i, sizeof(ulong))));
+            }
+
+            if (i < bytes.Length)
+            {
+                ulong tail = 0;
+
+                for (int shift = 0; i < bytes.Length; i++, shift += 8)
+                {
+                    tail |= (ulong)bytes[i] << shift;
+                }
+
+                hash = Mix64(hash ^ tail);
             }
 
             return hash;

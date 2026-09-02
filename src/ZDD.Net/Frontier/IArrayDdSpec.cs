@@ -9,7 +9,8 @@ namespace ZDD.Net.Frontier
     /// </summary>
     /// <remarks>
     /// Equality and hashing are element-wise over the array, so a slot that no longer matters must be
-    /// cleared to a fixed value; leftovers keep equivalent states from merging.
+    /// cleared to a fixed value; leftovers keep equivalent states from merging. Slots are stored packed
+    /// into one to four bytes each, by the range of the values they hold, so small values cost less.
     /// </remarks>
     public interface IArrayDdSpec
     {

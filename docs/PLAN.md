@@ -83,7 +83,7 @@ C# ネイティブ実装による ZDD（Zero-suppressed Decision Diagram）＋�
 | 重み型 `IWeightOps<T>` | **`static abstract` インタフェースメンバ**で定義（ダミーインスタンスが不要になる） |
 | 配列プール | `ArrayPool<int>.Shared` を直接利用 |
 | ハッシュ | 一意化表は独自ハッシュのまま（`HashCode` は汎用すぎて hot path には重い）。`BitOperations` は素で使う |
-| フロンティア状態 | **`[InlineArray]`** による固定長インライン状態を検討（M3-2） |
+| フロンティア状態 | **1 本の `byte[]` に固定ストライドで詰める**（M3-2 で実装。スロット幅は 1/2/4 バイトを値域から選ぶ）。`[InlineArray]` は長さがコンパイル時定数を要求するので不採用（OPEN-QUESTIONS B13） |
 | SIMD | 状態比較・ハッシュに `System.Runtime.Intrinsics` を検討（M4-2） |
 
 ### 外部依存: **ゼロを維持**

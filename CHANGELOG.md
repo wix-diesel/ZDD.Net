@@ -27,6 +27,28 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
     3×9 格子の s–t パス構築が 2,065 ms → 0.3 ms（[docs/benchmarks.md](docs/benchmarks.md) の M3-1 節）。
     `dotnet run -c Release --project bench/ZDD.Net.Benchmarks -- edge-order` で再現できる
 
+### Changed
+
+- `ZDD.Net.Frontier`: フロンティア状態の **bit-packing**（M3-2、issue #34）。
+  `IArrayDdSpec` の状態を `int[]`（1 スロット 4 バイト）ではなく、
+  **1 本の `byte[]` へ固定ストライドで詰めて保持する**ようになった（internal な変更で、
+  スペックの API は `Span<int>` のまま。利用者側の変更は不要）
+  - スロット幅は値域に応じて 1 / 2 / 4 バイトを自動で選ぶ（`PackedStateLayout`）。
+    初期の窓は `-8..247`——mate / comp のスロットは「フロンティア内のスロット番号か
+    小さな番兵（`-1` / `-2`）」しか取らないので、実際のグラフではこれで足りる。
+    窓から外れる値が来たら窓を広げて既存の状態を詰め直すが、広げた窓は必ず前の窓を含むため、
+    詰め直しは 1 回の構築で高々 2 回（1 → 2 → 4 バイト）で打ち止めになる
+  - 比較とハッシュは、要素ごとではなく**詰めたバイト列に対してワード単位（`ulong`）で**行う
+  - 構築される ZDD は**ノード ID まで含めて変更前と完全に一致する**
+    （`StateBitPackingTests` が DOT 出力のダイジェストで固定している）
+  - 効果（[docs/benchmarks.md](docs/benchmarks.md) の M3-2 節。
+    `-- memory` / `-- time` で再現できる）: 状態がメモリを支配するケースで
+    **ピークメモリ 64〜65% 削減・実行時間 28〜36% 短縮**。
+    一方、フロンティアが常に小さいケース（`PerfectMatching_Grid6x6` で 0.44 ms → 0.57 ms）は
+    詰める手間だけが残るため最大 1.4 倍遅くなる
+- `bench/ZDD.Net.Benchmarks`: `-- memory`（ピークメモリ）と `-- time`（構築時間の最小値・中央値）
+  の 2 モードを追加
+
 ## [0.2.0] - 2026-09-01
 
 M2「フロンティア法フレームワーク」マイルストーン（[docs/PLAN.md](docs/PLAN.md) §12）の内容。

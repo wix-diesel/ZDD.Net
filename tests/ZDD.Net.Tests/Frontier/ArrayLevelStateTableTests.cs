@@ -73,7 +73,7 @@ namespace ZDD.Net.Tests.Frontier
             {
                 WriteState(state, i);
                 Assert.Equal(indexes[i], table.GetOrAdd(state));
-                Assert.True(table[indexes[i]].SequenceEqual(state), $"State {i} must be readable back unchanged.");
+                Assert.True(ReadState(table, indexes[i]).AsSpan().SequenceEqual(state), $"State {i} must be readable back unchanged.");
             }
         }
 
@@ -113,9 +113,11 @@ namespace ZDD.Net.Tests.Frontier
         {
             const int ArrayLength = 4;
 
-            (int[] Left, int[] Right) collision = FindHashCollision(ArrayLength);
+            // 4 バイト幅に固定した詰め方を、探索と表で共有する（幅が変わるとハッシュも変わるため）。
+            PackedStateLayout layout = WidestLayout();
+            (int[] Left, int[] Right) collision = FindHashCollision(ArrayLength, layout);
 
-            using ArrayLevelStateTable table = new ArrayLevelStateTable(ArrayLength, initialCapacity: 64);
+            using ArrayLevelStateTable table = new ArrayLevelStateTable(ArrayLength, 64, layout);
 
             int left = table.GetOrAdd(collision.Left);
             int right = table.GetOrAdd(collision.Right);
@@ -125,8 +127,8 @@ namespace ZDD.Net.Tests.Frontier
             Assert.True(table.Collisions > 0, "The second state must have probed past the first.");
             Assert.Equal(left, table.GetOrAdd(collision.Left));
             Assert.Equal(right, table.GetOrAdd(collision.Right));
-            Assert.True(table[left].SequenceEqual(collision.Left));
-            Assert.True(table[right].SequenceEqual(collision.Right));
+            Assert.Equal(collision.Left, ReadState(table, left));
+            Assert.Equal(collision.Right, ReadState(table, right));
         }
 
         /// <summary>倍化が何度も走る規模でも、先に配った index が同じ状態を指し続ける。</summary>
@@ -155,11 +157,126 @@ namespace ZDD.Net.Tests.Frontier
             for (int i = 0; i < StateCount; i++)
             {
                 WriteState(state, i);
-                Assert.True(table[indexes[i]].SequenceEqual(state), $"State {i} must survive the grows unchanged.");
+                Assert.True(ReadState(table, indexes[i]).AsSpan().SequenceEqual(state), $"State {i} must survive the grows unchanged.");
                 Assert.Equal(indexes[i], table.GetOrAdd(state));
             }
 
             Assert.Equal(StateCount, table.Count);
+        }
+
+        /// <summary>スロット幅が広がっても、先に配った index は同じ状態を指し続ける。</summary>
+        /// <remarks>
+        /// 幅が変わると詰め直しでハッシュも変わるので、スロット表を作り直す必要がある。
+        /// ここを取りこぼすと、広げた後の探索が既存の状態を見つけられず、族が壊れる。
+        /// </remarks>
+        [Fact]
+        public void WideningTheLayoutKeepsEveryStateAndItsIndex()
+        {
+            const int ArrayLength = 3;
+
+            using ArrayLevelStateTable table = new ArrayLevelStateTable(ArrayLength, initialCapacity: 64);
+
+            int[][] states =
+            {
+                new[] { 0, 0, 0 },
+                new[] { 1, 2, 3 },
+                new[] { 247, 0, 0 },      // 既定の窓 -8..247 の上端
+                new[] { 0, -2, 7 },       // 負の番兵はそのまま入る
+                new[] { 300, 1, 0 },      // 1 バイトに収まらない: 2 バイトへ。247 も入り続ける
+                new[] { 100_000, 0, 0 },  // 2 バイトにも収まらない: 4 バイトへ
+            };
+
+            int[] indexes = new int[states.Length];
+            for (int i = 0; i < states.Length; i++)
+            {
+                indexes[i] = table.GetOrAdd(states[i]);
+                Assert.Equal(i, indexes[i]);
+            }
+
+            Assert.Equal(4, table.BytesPerSlot);
+            Assert.Equal(states.Length, table.Count);
+
+            for (int i = 0; i < states.Length; i++)
+            {
+                Assert.Equal(states[i], ReadState(table, indexes[i]));
+                Assert.Equal(indexes[i], table.GetOrAdd(states[i]));
+            }
+
+            Assert.Equal(states.Length, table.Count);
+        }
+
+        /// <summary>
+        /// スロット幅の切り替え境界。初期の窓は <c>-8..247</c> なので、スロット数が 249 と 65529 で
+        /// 幅が 1 段ずつ上がる（issue #34 が挙げる 256 スロット・65536 スロットは、その先の側）。
+        /// </summary>
+        [Theory]
+        [InlineData(248, 1)]
+        [InlineData(249, 2)]
+        [InlineData(256, 2)]
+        [InlineData(65528, 2)]
+        [InlineData(65529, 4)]
+        [InlineData(65536, 4)]
+        public void TheSlotWidthFollowsTheLargestValueRegistered(int arrayLength, int expectedBytesPerSlot)
+        {
+            using ArrayLevelStateTable table = new ArrayLevelStateTable(arrayLength, LevelStateTable.MinimumCapacity);
+
+            // スロット i に値 i を入れるので、最大値はちょうど arrayLength - 1。
+            int[] state = new int[arrayLength];
+            for (int i = 0; i < arrayLength; i++)
+            {
+                state[i] = i;
+            }
+
+            Assert.Equal(0, table.GetOrAdd(state));
+            Assert.Equal(expectedBytesPerSlot, table.BytesPerSlot);
+            Assert.Equal(state, ReadState(table, 0));
+            Assert.Equal(0, table.GetOrAdd(state));
+
+            state[arrayLength - 1] = 0;
+            Assert.Equal(1, table.GetOrAdd(state));
+            Assert.Equal(state, ReadState(table, 1));
+        }
+
+        /// <summary>詰め方を共有する表どうしは、片方が広げた幅にもう片方も追随する。</summary>
+        /// <remarks>
+        /// 構築中は水準ごとに表が分かれるが、詰め方は 1 つを共有する（広げ方を学び直さないため）。
+        /// 追随の際に自分の中身を詰め直せていないと、幅の違う状態を突き合わせることになる。
+        /// </remarks>
+        [Fact]
+        public void TablesSharingALayoutFollowEachOthersWidening()
+        {
+            PackedStateLayout layout = new PackedStateLayout();
+
+            using ArrayLevelStateTable first = new ArrayLevelStateTable(2, 64, layout);
+            using ArrayLevelStateTable second = new ArrayLevelStateTable(2, 64, layout);
+
+            Assert.Equal(0, first.GetOrAdd(new[] { 1, 2 }));
+            Assert.Equal(0, second.GetOrAdd(new[] { 3, 4 }));
+
+            // 2 番目の表が広げた幅に、1 番目も追随する。
+            Assert.Equal(1, second.GetOrAdd(new[] { 70_000, 0 }));
+            Assert.Equal(4, second.BytesPerSlot);
+
+            Assert.Equal(0, first.GetOrAdd(new[] { 1, 2 }));
+            Assert.Equal(4, first.BytesPerSlot);
+            Assert.Equal(new[] { 1, 2 }, ReadState(first, 0));
+            Assert.Equal(new[] { 3, 4 }, ReadState(second, 0));
+            Assert.Equal(new[] { 70_000, 0 }, ReadState(second, 1));
+        }
+
+        /// <summary>前の水準が残したバイト列が、次の水準の状態に混ざらない。</summary>
+        [Fact]
+        public void AClearedTableNeverReadsBackTheOldLevelsBytes()
+        {
+            using ArrayLevelStateTable table = new ArrayLevelStateTable(arrayLength: 3, initialCapacity: 64);
+
+            table.GetOrAdd(new[] { 111, 222, 333 });
+            table.GetOrAdd(new[] { 44, 55, 66 });
+            table.Clear();
+
+            Assert.Equal(0, table.GetOrAdd(new[] { 1, 0, 2 }));
+            Assert.Equal(new[] { 1, 0, 2 }, ReadState(table, 0));
+            Assert.Throws<ArgumentOutOfRangeException>(() => table.CopyStateTo(1, new int[3]));
         }
 
         [Fact]
@@ -210,8 +327,8 @@ namespace ZDD.Net.Tests.Frontier
 
             table.GetOrAdd(new[] { 1, 1 });
 
-            Assert.Throws<ArgumentOutOfRangeException>(() => table[1].Length);
-            Assert.Throws<ArgumentOutOfRangeException>(() => table[-1].Length);
+            Assert.Throws<ArgumentOutOfRangeException>(() => table.CopyStateTo(1, new int[2]));
+            Assert.Throws<ArgumentOutOfRangeException>(() => table.CopyStateTo(-1, new int[2]));
         }
 
         [Fact]
@@ -232,6 +349,32 @@ namespace ZDD.Net.Tests.Frontier
         public void AnUnusableArrayLengthIsRejected(int arrayLength)
         {
             Assert.Throws<ArgumentOutOfRangeException>(() => new ArrayLevelStateTable(arrayLength, initialCapacity: 64));
+        }
+
+        /// <summary>表に登録済みの状態を読み戻す。</summary>
+        internal static int[] ReadState(ArrayLevelStateTable table, int index)
+        {
+            int[] state = new int[table.ArrayLength];
+            table.CopyStateTo(index, state);
+            return state;
+        }
+
+        /// <summary>どんな値でも入る 4 バイト幅まで広げた詰め方。</summary>
+        private static PackedStateLayout WidestLayout()
+        {
+            PackedStateLayout layout = new PackedStateLayout();
+            layout.Extend(new[] { int.MinValue, int.MaxValue });
+
+            Assert.Equal(4, layout.BytesPerSlot);
+            return layout;
+        }
+
+        /// <summary><paramref name="layout"/> で状態を詰める。</summary>
+        private static byte[] Pack(PackedStateLayout layout, int[] state)
+        {
+            byte[] packed = new byte[state.Length * layout.BytesPerSlot];
+            Assert.True(layout.TryPack(state, packed));
+            return packed;
         }
 
         /// <summary>状態 <paramref name="seed"/> 番目を、全スロットが効くように書き込む。</summary>
@@ -255,7 +398,7 @@ namespace ZDD.Net.Tests.Frontier
         }
 
         /// <summary>ハッシュ（表が使うのと同じ計算）が一致する、内容の違う 2 状態を探す。</summary>
-        private static (int[] Left, int[] Right) FindHashCollision(int arrayLength)
+        private static (int[] Left, int[] Right) FindHashCollision(int arrayLength, PackedStateLayout layout)
         {
             const int Candidates = 400_000;
 
@@ -265,7 +408,7 @@ namespace ZDD.Net.Tests.Frontier
             for (int seed = 0; seed < Candidates; seed++)
             {
                 WriteState(state, seed);
-                int hash = (int)Hashing.Combine((ReadOnlySpan<int>)state);
+                int hash = (int)Hashing.Combine(Pack(layout, state));
 
                 if (seenBySeed.TryGetValue(hash, out int other))
                 {

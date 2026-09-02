@@ -75,7 +75,7 @@ CI（GitHub Actions）では `actions/setup-dotnet` で 10.0.x を入れる。`g
 | B10 | **P1** | 重み型の扱い | `long` 固定 / `double` 固定 / ジェネリック `IWeightOps<T>` | ジェネリック（`long`/`double`/`BigInteger` の実装を同梱）。net10 では **`static abstract` インタフェースメンバ**で定義でき、ダミーインスタンスが不要 | |
 | B11 | **P1** | 上限超過時の挙動 | 例外 / `TryBuild` で false / コールバックで中断 | `ZddResourceLimitException` を既定、`TryBuild` も提供、`CancellationToken` を構築 API に通す | |
 | B12 | **P1** | `IDdSpec` の戻り値の型 | 生の `int`（TdZdd 互換、`0`=⊥ `-1`=⊤）/ 型安全な `DdLevel` struct | **生の `int`**（C++ スペックの移植性を優先）。定数 `DdResult.False/True` とアナライザで誤用を防ぐ | |
-| B13 | **P1** | フロンティア状態の表現 | `int[]` のみ / `byte`/`short` パック / **`[InlineArray]`** | v0.2 は `int[]`、**v0.3（M3-2）で圧縮**（数千辺想定のため前倒し、P2→P1 に昇格）。net10 の `[InlineArray]` で固定長状態をインライン格納できる | |
+| B13 | ~~P1~~ | フロンティア状態の表現 | `int[]` のみ / `byte`/`short` パック / **`[InlineArray]`** | v0.2 は `int[]`、**v0.3（M3-2）で圧縮**（数千辺想定のため前倒し、P2→P1 に昇格）。net10 の `[InlineArray]` で固定長状態をインライン格納できる | **決定: 1 本の `byte[]` に固定ストライドで詰める**（M3-2）。スロット幅は値域から 1/2/4 バイトを実行時に選ぶ。`[InlineArray]` は長さがコンパイル時定数でなければならず、フロンティア状態の長さは実行時にしか決まらない（`MaxFrontierSize` 依存）ため採らなかった |
 | B14 | **P2** | ノード GC を v1.0 に含めるか | 含める / v1.1 送り | 含める（M5-3）。ただし「1 問題ごとにマネージャを捨てる」使い方なら不要 | |
 | B15 | **P2** | 動的変数順序変更（sifting） | 実装する / しない | **しない**。ZDD ではフロンティア法の辺順序最適化のほうが遥かに効く | |
 | B16 | **P2** | 進捗通知の API | `IProgress<T>` / デリゲート / イベント | デリゲート（`IProgress<T>` は `SynchronizationContext` へのポストが挟まり、構築ループから高頻度で呼ぶには重い） | |
