@@ -40,6 +40,12 @@ namespace ZDD.Net.Frontier
         /// <summary>Scratch buffer a branch's child state is built into before being registered.</summary>
         private readonly int[] _scratch;
 
+        /// <summary>Scratch buffer the state being expanded is unpacked into, once for both branches.</summary>
+        private readonly int[] _current;
+
+        /// <summary>How states are packed; shared by every level, so a widening is learned once.</summary>
+        private readonly PackedStateLayout _layout;
+
         private long _nodeCount;
 
         private ArrayTopDownExpander(TSpec spec, int arrayLength, int rootLevel, BuildOptions options)
@@ -54,6 +60,8 @@ namespace ZDD.Net.Frontier
             _tables = new ArrayLevelStateTable?[rootLevel + 1];
             _levels = new TemporaryNode[rootLevel + 1][];
             _scratch = new int[arrayLength];
+            _current = new int[arrayLength];
+            _layout = new PackedStateLayout();
 
             Array.Fill(_levels, Array.Empty<TemporaryNode>());
         }
@@ -149,10 +157,10 @@ namespace ZDD.Net.Frontier
                     nextCancellationCheck += CancellationCheckInterval;
                 }
 
-                ReadOnlySpan<int> state = table[index];
+                table.CopyStateTo(index, _current);
                 nodes[index] = new TemporaryNode(
-                    Branch(state, level, 0),
-                    Branch(state, level, 1));
+                    Branch(_current, level, 0),
+                    Branch(_current, level, 1));
             }
 
             _levels[level] = nodes;
@@ -186,7 +194,7 @@ namespace ZDD.Net.Frontier
         private int AddState(ReadOnlySpan<int> state, int level)
         {
             ArrayLevelStateTable table =
-                _tables[level] ??= new ArrayLevelStateTable(_arrayLength, InitialLevelCapacity);
+                _tables[level] ??= new ArrayLevelStateTable(_arrayLength, InitialLevelCapacity, _layout);
 
             int before = table.Count;
             int index = table.GetOrAdd(state);

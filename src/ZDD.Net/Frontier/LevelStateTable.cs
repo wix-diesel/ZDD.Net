@@ -198,24 +198,36 @@ namespace ZDD.Net.Frontier
             GrowStates(newCapacity);
             GrowHashes(newCapacity);
 
-            int[] grown = RentCleared(newCapacity);
-            int mask = newCapacity - 1;
+            int[] grown = ArrayPool<int>.Shared.Rent(newCapacity);
+            ArrayPool<int>.Shared.Return(_slots);
+            _slots = grown;
             _capacity = newCapacity;
+            _growThreshold = ComputeGrowThreshold(newCapacity);
+            RehashSlots();
+        }
+
+        /// <summary>
+        /// Rebuilds the slot array from the cached hashes, keeping every entry index. Needed after a
+        /// grow, and after a re-encoding that changes what the entries hash to.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private protected void RehashSlots()
+        {
+            int[] slots = _slots;
+            int mask = _capacity - 1;
+
+            Array.Clear(slots, 0, _capacity);
 
             for (int index = 0; index < _count; index++)
             {
                 int slot = SlotFor(_hashes[index]);
-                while (grown[slot] != EmptySlot)
+                while (slots[slot] != EmptySlot)
                 {
                     slot = (slot + 1) & mask;
                 }
 
-                grown[slot] = index + 1;
+                slots[slot] = index + 1;
             }
-
-            ArrayPool<int>.Shared.Return(_slots);
-            _slots = grown;
-            _growThreshold = ComputeGrowThreshold(newCapacity);
         }
 
         /// <summary>Grows the state storage to hold <paramref name="newCapacity"/> entries, keeping the existing ones.</summary>

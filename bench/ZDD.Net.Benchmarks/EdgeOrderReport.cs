@@ -114,7 +114,7 @@ namespace ZDD.Net.Benchmarks
         /// report is reproducible on any runtime (unlike <see cref="Random"/>, whose algorithm is not
         /// contractual).
         /// </summary>
-        private static Graph Shuffle(Graph graph, int seed)
+        public static Graph Shuffle(Graph graph, int seed)
         {
             int[] order = Enumerable.Range(0, graph.EdgeCount).ToArray();
             uint state = (uint)seed + 0x9E3779B9u;
