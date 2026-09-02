@@ -72,15 +72,17 @@ namespace ZDD.Net.Tests.Frontier
             AssertMatchesBruteForce(weights, target, offset: 0);
         }
 
-        /// <summary>負の値が混じる（バイアスが 0 でない）状態でも同じ。</summary>
+        /// <summary>値域が負に食い込む状態でも同じ。</summary>
         /// <remarks>
-        /// mate 配列の番兵（<c>-1</c> / <c>-2</c>）と同じ形。値域は下にずれるだけなので
-        /// 1 バイトのまま収まるはずで、そこで結果が変わらないことを確かめる。
+        /// <paramref name="offset"/> だけ値域が下にずれるので、既定の窓（<c>-8..247</c>）に
+        /// 収まる場合と、はみ出して構築の途中で窓を広げる場合の両方を通る。どちらでも族が
+        /// 総当たりと一致することを見る。なお表に載るのは最後の 1 項目を決める前までの状態なので、
+        /// 登録される最大値は <c>offset + total</c> ではなく、そこから最後の重みを引いた値。
         /// </remarks>
         [Theory]
-        [InlineData(-2, 253)]
-        [InlineData(-2, 254)]
-        [InlineData(-1000, 60000)]
+        [InlineData(-8, 200)]      // 既定の窓の内側: 広げない
+        [InlineData(-2, 253)]      // 同上（登録される最大値は 215）
+        [InlineData(-1000, 60000)] // 下端をはみ出す: 構築の途中で 2 バイトへ広がる
         public void ABiasedWindowBuildsTheSameFamilyAsBruteForce(int offset, int total)
         {
             const int ItemCount = 8;
