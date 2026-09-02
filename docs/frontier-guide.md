@@ -91,6 +91,9 @@ Graph optimized = grid.Optimize(EdgeOrderStrategy.Bfs);
 | `SpanningTreeSpec` | グラフの全域木 | フロンティア頂点ごとの連結成分番号 | `IArrayDdSpec` |
 | `ForestSpec` | 成分数を指定した森（`components: 1` は全域木と同じ族） | 同上 | `IArrayDdSpec` |
 | `MatchingSpec` | グラフのマッチング（`perfect: true` で完全マッチングのみ） | フロンティア頂点ごとの被覆フラグ | `IArrayDdSpec` |
+| `CycleSpec` | 単純サイクルの族（`single: true`（既定）は単一サイクルのみ、`false` は互いに素なサイクルの和） | フロンティア頂点ごとの mate | `IArrayDdSpec` |
+| `HamiltonianPathSpec` | 全頂点を通る `s`–`t` 単純パス | 同上 | `IArrayDdSpec` |
+| `HamiltonianCycleSpec` | 全頂点を通る単一の単純サイクル | 同上 | `IArrayDdSpec` |
 
 ```csharp
 using ZddManager manager = new ZddManager(variableCount: 5);
@@ -120,11 +123,17 @@ Zdd forest = FrontierBuilder.Build<ForestSpec>(manager, new ForestSpec(grid, com
 // forest == spanningTrees（components: 1 は全域木と同じ族）
 
 Zdd matchings = FrontierBuilder.Build<MatchingSpec>(manager, new MatchingSpec(grid));
+
+Zdd cycles = FrontierBuilder.Build<CycleSpec>(manager, new CycleSpec(grid, single: true));
+Zdd hamiltonianPaths = FrontierBuilder.Build<HamiltonianPathSpec>(
+    manager, new HamiltonianPathSpec(grid, s: 0, t: grid.VertexCount - 1));
+Zdd hamiltonianCycles = FrontierBuilder.Build<HamiltonianCycleSpec>(manager, new HamiltonianCycleSpec(grid));
 ```
 
 いずれも正しさを検証済み: `PathSpec` は OEIS A007764、`SpanningTreeSpec`/`ForestSpec` は
-Kirchhoff の行列木定理、`MatchingSpec` はパーマネント照合と一致することを CI のテストで確認している
-（`tests/ZDD.Net.Tests/Specs/`）。
+Kirchhoff の行列木定理、`MatchingSpec` はパーマネント照合、`CycleSpec`/`HamiltonianPathSpec`/
+`HamiltonianCycleSpec` は完全グラフの既知の式（ハミルトン閉路数 `(n-1)!/2` など）と Petersen
+グラフ（ハミルトン閉路 0）との一致を CI のテストで確認している（`tests/ZDD.Net.Tests/Specs/`）。
 
 ## 4. 構築前の見積り（`EstimateMaxFrontierSize` / `FrontierManager`）
 
