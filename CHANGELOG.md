@@ -8,36 +8,66 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
 
 ## [Unreleased]
 
-M2「フロンティア法フレームワーク」（v0.2）に向けた変更。
+## [0.2.0] - 2026-09-01
+
+M2「フロンティア法フレームワーク」マイルストーン（[docs/PLAN.md](docs/PLAN.md) §12）の内容。
+「スペックを書けば ZDD が自動構築される」という中核価値が、s–t パス・全域木・マッチング・
+基数制約という 4 つの実問題で検証済みの状態になった。
 
 ### Added
 
 - `ZDD.Net.Frontier`: フロンティア法のスペックのインタフェース
   `IDdSpec<TState>` / `IArrayDdSpec` / `IHybridDdSpec<TScalar>` と、終端の定数 `DdResult`
   （戻り値の規約は TdZdd 互換: `0` = ⊥、`-1` = ⊤、正数 = 次の水準）
-- `docs/frontier-spec-guide.md`: スペックの書き方（規約と実装例）
 - レベル単位の状態表（internal）: 固定長 struct 状態用
   `StructLevelStateTable<TSpec, TState>`（スペックの `StateEquals` / `StateHashCode` で照合）と、
   可変長配列状態用 `ArrayLevelStateTable`（1 本の `int[]` に詰めて要素ごとに照合）。
   どちらもオープンアドレス法で、状態の重複除去（同じ状態になった枝を 1 本にまとめる）を担う。
   レベルの切り替えは `LevelStateTablePair<TTable>` が表 2 枚を回して行い、
   バッファは `ArrayPool` から借りるので、ピークメモリは深さによらず 2 レベル分に収まる
-- トップダウン幅優先展開（internal）: `TopDownExpander<TSpec, TState>` が根の水準から 1 まで
-  水準を 1 つずつ降りながら `GetChild` をたどり、**一時ノード表** `TemporaryNodeTable`
-  （レベルごとの `(lo, hi)` 配列。ZDD の削減規則はまだ適用していない）を作る。
+- トップダウン幅優先展開（internal）: `TopDownExpander<TSpec, TState>` / `ArrayTopDownExpander<TSpec>`
+  が根の水準から 1 まで水準を 1 つずつ降りながら `GetChild` をたどり、**一時ノード表**
+  `TemporaryNodeTable`（レベルごとの `(lo, hi)` 配列。ZDD の削減規則はまだ適用していない）を作る。
   同じ状態に至った枝は 1 つの一時ノードに合流する。展開は反復で、変数 10 万でも
   スタックオーバーフローしない
 - `BuildOptions`: 構築の上限とフック。`MaxNodeCount`（一時ノードの総数）/
   `MaxFrontierSize`（1 水準の状態の種類数）を超えると `BuildLimitExceededException` で止まる
   （メモリを使い切って落ちる代わりに、原因の分かる例外で止める。docs/PLAN.md §13）。
   `CancellationToken` で中断でき、`IProgress<BuildProgress>` に水準ごとの進捗が届く
+- `FrontierBuilder.Build`: トップダウン展開とボトムアップ削減（`BottomUpReducer`）をつなぎ、
+  `ZddManager` の正準なノード表に取り込む公開の構築器。`IDdSpec<TState>` と `IArrayDdSpec` の
+  両方に対応するオーバーロードがあり、スペックを書けばそのまま `Zdd` が手に入る
+- `ZDD.Net.Specs`: 組み込みスペック `PowerSetSpec`（冪集合） / `CardinalitySpec`（要素数の範囲制約） /
+  `LinearConstraintSpec`（線形不等式・等式制約） / `KnapsackSpec`（容量制約、`LinearConstraintSpec`
+  の特化版）
+- `ZDD.Net.Graphs`: グラフデータ構造 `Graph`（辺リスト。辺順序が変数順序そのもの）と
+  `Edge`、組み込みショートカット `Graph.Grid` / `Complete` / `Cycle` / `Path`、辺順序を差し替える
+  `Graph.WithEdgeOrder`
+- `FrontierManager`: グラフの辺順序だけから、スペックも ZDD の構築も行わずにフロンティア幅
+  （`MaxFrontierSize`）を事前見積りできる。`IntroducedVertices` / `ForgottenVertices` /
+  `MateIndex` はグラフ問題のスペックを自分で書くときの部品にもなる
+- グラフ問題の組み込みスペック（すべて `ZDD.Net.Graphs.FrontierManager` の上に実装）:
+  `PathSpec`（`s`–`t` 単純パス、`AllowAnyEndpoints` で任意の 2 頂点間。Knuth の `SIMPATH`、
+  OEIS A007764 と照合済み） / `SpanningTreeSpec` と `ForestSpec`（成分数指定の森。Kirchhoff の
+  行列木定理と照合済み） / `MatchingSpec`（マッチング、`perfect: true` で完全マッチング。
+  パーマネント照合済み）
+- `bench/ZDD.Net.Benchmarks`: BenchmarkDotNet によるベンチ基準値（代表 10 ケース）と、
+  `docs/benchmarks.md` への記録。以降の性能改善 PR（辺順序最適化・bit-packing 等）は、
+  ここに記録された数値との相対比較で受け入れを判定する（issue #31）
+- `docs/frontier-guide.md`: フロンティア法ガイド（フロンティア法とは何か、組み込みスペック一覧、
+  `Graph`/`FrontierManager`/`BuildOptions` の使い方、性能の勘所、独自スペックを 1 つ書く実例）。
+  コード片は `samples/Zdd.FrontierGuide` として実際に動き、CI が毎回実行する
+- `docs/frontier-spec-guide.md`: スペックの書き方（`IDdSpec`/`IArrayDdSpec`/`IHybridDdSpec` の契約、
+  状態の寿命、実装例）
+- `docs/benchmarks.md`: ベンチ基準値と測定環境・再現方法
+- プレリリース版タグ `v0.2.0-preview.1`
 
 ### Notes
 
-- **契約（インタフェース）・状態表・トップダウン展開までで、構築器 `FrontierBuilder` はまだ無い**。
-  スペックを書いても ZDD を構築できるようになるのは M2-4（ボトムアップ削減と Core への取り込み）以降
-- トップダウン展開が扱えるのは今のところ `IDdSpec<TState>`（固定長 struct 状態）だけで、
-  `IArrayDdSpec` / `IHybridDdSpec<TScalar>` の展開は未対応（mate 配列を使う M2-8 までに入れる）
+- `IHybridDdSpec<TScalar>`（スカラ + `int` 配列の複合状態）は契約のみで、
+  `FrontierBuilder.Build` のオーバーロードは未対応（v0.3 以降）
+- 変数順序（辺順序）の自動最適化は未実装。今のところ利用者が `Graph.WithEdgeOrder` で選ぶ
+  （docs/frontier-guide.md §6.1、M3 以降の課題）
 
 ## [0.1.0] - 2026-08-31
 
