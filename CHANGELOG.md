@@ -10,6 +10,19 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
 
 ### Added
 
+- `ZDD.Net.Specs`: サイクル・ハミルトン系のグラフスペック（M3-4、issue #36）
+  - `CycleSpec(graph, single:)`: 単純サイクルの族。`single: true`（既定）は単一の単純サイクル、
+    `single: false` は互いに素な単純サイクルの和（空集合は含まない）。`single` のほうが常に
+    `!single` の部分集合になる
+  - `HamiltonianPathSpec(graph, s, t)`: 全頂点を通る `s`–`t` 単純パス
+  - `HamiltonianCycleSpec(graph)`: 全頂点を通る単一の単純サイクル
+  - 状態は `PathSpec`（M2-8）と同じ mate 配列で、共通部分は `MateChainState`（internal）に
+    抽出した。4 つのスペックはそこから生えるチェーンの接合ロジックを共有し、終端条件
+    （forgotten になる頂点にどの次数を許すか、チェーンが閉じたときに受理とするか拒否とするか）
+    だけがそれぞれ異なる
+  - 完全グラフの既知値と一致: ハミルトン閉路数 `(n-1)!/2`、ハミルトンパス数（全始点対の総和）
+    `n!/2`、単純サイクル総数（`Σ C(n,k)(k-1)!/2`）。Petersen グラフはハミルトン閉路 0
+    （かつハミルトンパスは存在する）、`Cycle(n)` は（両モードとも）サイクル数 1 と一致
 - `ZDD.Net.Graphs`: 辺順序（＝フロンティア法の変数順序）の最適化（M3-1、issue #33）
   - `Graph.Optimize(EdgeOrderStrategy, EdgeOrderOptions)`: 辺を並べ替えた**新しい `Graph`** を返す
     （元のグラフは変更しない）。戦略は `AsGiven` / `Bfs`（既定。Graphillion と同じ）/ `Dfs` /
