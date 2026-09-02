@@ -12,32 +12,24 @@ namespace ZDD.Net.Specs
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>State</b>: one <c>mate</c> code per frontier vertex, held in the state slot
-    /// <see cref="FrontierManager.MateIndex"/> assigns it, plus (only meaningful when
-    /// <see cref="AllowAnyEndpoints"/> is set) one extra trailing slot counting how many vertices have
-    /// already been forgotten as a path endpoint. A code is one of:
+    /// <b>State</b>: one <c>mate</c> code per frontier vertex (see <see cref="MateChainState"/> for the
+    /// encoding), held in the state slot <see cref="FrontierManager.MateIndex"/> assigns it, plus (only
+    /// meaningful when <see cref="AllowAnyEndpoints"/> is set) one extra trailing slot counting how many
+    /// vertices have already been forgotten as a path endpoint.
     /// </para>
-    /// <list type="bullet">
-    /// <item><description><see cref="SlotIsolated"/> (<c>0</c>): the vertex has degree 0 so far.</description></item>
-    /// <item><description><see cref="SlotFixed"/> (<c>-1</c>): the vertex already has degree 2 — done, interior to the path.</description></item>
-    /// <item><description><see cref="SlotEndpointDone"/> (<c>-2</c>): the vertex has degree 1, and the *other* end of its
-    /// partial-path piece has already been forgotten as a finished endpoint (fixed <c>s</c>/<c>t</c> mode: that
-    /// end is necessarily the other terminal, forced by the checks below — no need to remember which).</description></item>
-    /// <item><description>Any other value <c>k &gt;= 1</c>: the vertex has degree 1, and the other end of its
-    /// partial-path piece is the vertex currently occupying frontier slot <c>k - 1</c>.</description></item>
-    /// </list>
     /// <para>
-    /// <b>Per edge</b>: introduce this edge's new vertices as <see cref="SlotIsolated"/>, then — if the edge
-    /// is taken — reject a vertex already at <see cref="SlotFixed"/> (would make degree 3) or a connection
-    /// that would close a cycle (the two endpoints are already the two ends of the same partial-path piece),
-    /// otherwise splice the two mate chains together. Finally, for each vertex this edge forgets: a non-terminal
-    /// vertex must be <see cref="SlotIsolated"/> or <see cref="SlotFixed"/> (a degree-1 dead end is not a valid
-    /// path interior), while <c>s</c>/<c>t</c> (fixed mode) must be exactly degree 1; in
-    /// <see cref="AllowAnyEndpoints"/> mode any vertex may end at degree 1, capped at two such vertices overall
-    /// via the trailing counter slot. A forgotten slot is always reset to <see cref="SlotIsolated"/> — leaving
-    /// a stale code behind would keep otherwise-identical states from merging (see
-    /// <see cref="IArrayDdSpec"/>'s remark on clearing slots that no longer matter), splitting the frontier
-    /// for no semantic reason.
+    /// <b>Per edge</b>: introduce this edge's new vertices as <see cref="MateChainState.SlotIsolated"/>,
+    /// then — if the edge is taken — <see cref="MateChainState.Splice"/> the two endpoints, rejecting
+    /// outright a degree-3 attempt or a connection that would close a cycle (the two endpoints are already
+    /// the two ends of the same partial-path piece — invalid for a path, unlike <see cref="CycleSpec"/>).
+    /// Finally, for each vertex this edge forgets: a non-terminal vertex must be
+    /// <see cref="MateChainState.SlotIsolated"/> or <see cref="MateChainState.SlotFixed"/> (a degree-1 dead
+    /// end is not a valid path interior), while <c>s</c>/<c>t</c> (fixed mode) must be exactly degree 1; in
+    /// <see cref="AllowAnyEndpoints"/> mode any vertex may end at degree 1, capped at two such vertices
+    /// overall via the trailing counter slot. A forgotten slot is always reset to
+    /// <see cref="MateChainState.SlotIsolated"/> — leaving a stale code behind would keep otherwise-identical
+    /// states from merging (see <see cref="IArrayDdSpec"/>'s remark on clearing slots that no longer
+    /// matter), splitting the frontier for no semantic reason.
     /// </para>
     /// <para>
     /// Because every non-terminal vertex is forced to close at degree 2 before it can be forgotten, a
@@ -48,15 +40,6 @@ namespace ZDD.Net.Specs
     /// </remarks>
     public readonly struct PathSpec : IArrayDdSpec
     {
-        /// <summary>The vertex has degree 0 so far.</summary>
-        private const int SlotIsolated = 0;
-
-        /// <summary>The vertex already has degree 2: interior to a path, no further edge may touch it.</summary>
-        private const int SlotFixed = -1;
-
-        /// <summary>The vertex has degree 1, and the other end of its chain is already a finished endpoint.</summary>
-        private const int SlotEndpointDone = -2;
-
         private readonly Graph _graph;
         private readonly FrontierManager _frontierManager;
         private readonly int _s;
@@ -150,7 +133,7 @@ namespace ZDD.Net.Specs
             IReadOnlyList<int> introducedVertices = _frontierManager.IntroducedVertices(edgeIndex);
             for (int i = 0; i < introducedVertices.Count; i++)
             {
-                state[_frontierManager.MateIndex(edgeIndex, introducedVertices[i])] = SlotIsolated;
+                state[_frontierManager.MateIndex(edgeIndex, introducedVertices[i])] = MateChainState.SlotIsolated;
             }
 
             if (value == 1 && !TakeEdge(state, edgeIndex, edge))
@@ -187,63 +170,10 @@ namespace ZDD.Net.Specs
         {
             int su = _frontierManager.MateIndex(edgeIndex, edge.U);
             int sv = _frontierManager.MateIndex(edgeIndex, edge.V);
-            int mu = state[su];
-            int mv = state[sv];
 
-            if (mu == SlotFixed || mv == SlotFixed)
-            {
-                return false; // would give one endpoint degree 3
-            }
-
-            if ((mu >= 1 && mu - 1 == sv) || (mv >= 1 && mv - 1 == su))
-            {
-                return false; // the two endpoints already share a chain: this edge would close a cycle
-            }
-
-            if (mu == SlotIsolated && mv == SlotIsolated)
-            {
-                // A brand-new two-vertex chain: u and v become each other's mate.
-                state[su] = sv + 1;
-                state[sv] = su + 1;
-            }
-            else if (mu == SlotIsolated)
-            {
-                // u extends v's chain; v becomes interior, u inherits v's old far end.
-                state[su] = mv;
-                state[sv] = SlotFixed;
-                if (mv >= 1)
-                {
-                    state[mv - 1] = su + 1;
-                }
-            }
-            else if (mv == SlotIsolated)
-            {
-                state[sv] = mu;
-                state[su] = SlotFixed;
-                if (mu >= 1)
-                {
-                    state[mu - 1] = sv + 1;
-                }
-            }
-            else
-            {
-                // Two existing chains merge through u and v, which both become interior; their far
-                // ends now point at each other (or, if either was already a finished endpoint, the
-                // whole path is complete and there is nothing left to redirect).
-                state[su] = SlotFixed;
-                state[sv] = SlotFixed;
-                if (mu >= 1)
-                {
-                    state[mu - 1] = mv;
-                }
-
-                if (mv >= 1)
-                {
-                    state[mv - 1] = mu;
-                }
-            }
-
-            return true;
+            // A path can never accept the Closed outcome: closing a chain into a cycle is invalid here
+            // (unlike CycleSpec, which is built on the very same Splice).
+            return MateChainState.Splice(state, su, sv) == MateChainState.SpliceResult.Spliced;
         }
 
         /// <summary>Validates and retires <paramref name="vertex"/>, which this edge forgets.</summary>
@@ -251,24 +181,17 @@ namespace ZDD.Net.Specs
         private bool Forget(Span<int> state, int edgeIndex, int vertex)
         {
             int slot = _frontierManager.MateIndex(edgeIndex, vertex);
-            int mate = state[slot];
 
             if (!_allowAnyEndpoints)
             {
                 bool isTerminal = vertex == _s || vertex == _t;
-                if (isTerminal)
-                {
-                    if (mate == SlotIsolated || mate == SlotFixed)
-                    {
-                        return false; // s/t must end the build at degree exactly 1
-                    }
-                }
-                else if (mate != SlotIsolated && mate != SlotFixed)
-                {
-                    return false; // a non-terminal dead end at degree 1 can never become a valid path
-                }
+                return isTerminal
+                    ? MateChainState.ForgetTerminal(state, slot)
+                    : MateChainState.ForgetAllowIsolated(state, slot);
             }
-            else if (mate != SlotIsolated && mate != SlotFixed)
+
+            int mate = state[slot];
+            if (mate != MateChainState.SlotIsolated && mate != MateChainState.SlotFixed)
             {
                 int counter = state[CounterSlot] + 1;
                 if (counter > 2)
@@ -281,10 +204,10 @@ namespace ZDD.Net.Specs
 
             if (mate >= 1)
             {
-                state[mate - 1] = SlotEndpointDone;
+                state[mate - 1] = MateChainState.SlotEndpointDone;
             }
 
-            state[slot] = SlotIsolated; // clear so a reused slot never carries a stale, merge-blocking code
+            state[slot] = MateChainState.SlotIsolated; // clear so a reused slot never carries a stale, merge-blocking code
             return true;
         }
     }

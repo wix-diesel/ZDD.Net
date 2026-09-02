@@ -103,6 +103,24 @@ namespace ZDD.Net.Samples.FrontierGuide
             // MatchingSpec: マッチング（perfect: true で完全マッチングだけに絞れる）。
             Zdd matchings = FrontierBuilder.Build<MatchingSpec>(manager, new MatchingSpec(grid));
             Assert(matchings.Count > 0, "MatchingSpec: a 3x3 grid has matchings (at least the empty one)");
+
+            // CycleSpec: 単純サイクルの族（single: true で単一サイクルのみ。既定）。
+            Zdd cycles = FrontierBuilder.Build<CycleSpec>(manager, new CycleSpec(grid, single: true));
+            Assert(cycles.Count > 0, "CycleSpec: a 3x3 grid has simple cycles");
+
+            // HamiltonianPathSpec / HamiltonianCycleSpec: 全頂点を通るパス・サイクル。完全グラフの
+            // 既知値（(n-1)!/2 個のハミルトン閉路など）と Petersen グラフ（閉路 0）で照合済み
+            // （tests/.../HamiltonianCycleSpecTests.cs）。
+            Graph complete5 = Graph.Complete(5);
+            using ZddManager completeManager = new ZddManager(complete5.EdgeCount);
+
+            Zdd hamiltonianPaths = FrontierBuilder.Build<HamiltonianPathSpec>(
+                completeManager, new HamiltonianPathSpec(complete5, s: 0, t: 4));
+            Assert(hamiltonianPaths.Count == 6, "HamiltonianPathSpec: K5 has (5-2)! = 6 Hamiltonian 0-4 paths");
+
+            Zdd hamiltonianCycles = FrontierBuilder.Build<HamiltonianCycleSpec>(
+                completeManager, new HamiltonianCycleSpec(complete5));
+            Assert(hamiltonianCycles.Count == 12, "HamiltonianCycleSpec: K5 has (5-1)!/2 = 12 Hamiltonian cycles");
         }
 
         /// <summary>
