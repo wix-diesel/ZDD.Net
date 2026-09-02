@@ -50,7 +50,8 @@ Console.WriteLine(paths.Count); // 8512（OEIS A007764）
 
 ## インストール
 
-NuGet パッケージは v0.2.0 のプレリリースタグから生成される（プレリリース版のため `--prerelease` が要る）。
+NuGet パッケージは `v0.2.0-preview.1` のようなプレリリースタグから生成される
+（v1.0 に達するまではプレリリース版として `--prerelease` が要る）。
 
 ```sh
 dotnet add package ZDD.Net --prerelease
