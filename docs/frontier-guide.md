@@ -135,6 +135,15 @@ Kirchhoff の行列木定理、`MatchingSpec` はパーマネント照合、`Cyc
 `HamiltonianCycleSpec` は完全グラフの既知の式（ハミルトン閉路数 `(n-1)!/2` など）と Petersen
 グラフ（ハミルトン閉路 0）との一致を CI のテストで確認している（`tests/ZDD.Net.Tests/Specs/`）。
 
+### 3.1 スペックを組み合わせる（`And` / `Or` / `Subset`）
+
+「`PathSpec` かつ辺数が少ない」のように 2 つのスペックを直接掛け合わせたいときは、
+片方ずつ `Build` してから `Zdd.Intersect`/`Zdd.Union` するより
+`spec1.And(spec2)` / `spec1.Or(spec2)` の方がよい場合がある——中間結果を経由しないので、
+片方だけの族が最終結果より桁違いに大きいケースでピーク時のノード数を大きく減らせる
+（[docs/benchmarks.md](benchmarks.md) M3-5 節）。詳しい書き方・型引数の指定方法は
+[docs/frontier-spec-guide.md](frontier-spec-guide.md) §8 を参照。
+
 ## 4. 構築前の見積り（`EstimateMaxFrontierSize` / `FrontierManager`）
 
 `ZDD.Net.Graphs.FrontierManager` は、スペックも ZDD の構築もまだ行わずに、**辺順序だけ**から

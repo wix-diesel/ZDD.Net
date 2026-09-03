@@ -194,10 +194,41 @@ public static Zdd Build<TSpec>(ZddManager manager, TSpec spec, BuildOptions? opt
 `GetChild` はインライン展開される。同じ方針の背景は
 [docs/api-guide.md](api-guide.md) §5.1（`IDdEval` / `IWeightOps`）にも書いてある。
 
-## 8. 参考
+## 8. スペックの合成（`And` / `Or` / `Subset`）
+
+「s–t パス かつ 辺数 10 以下」のような合成は、それぞれを単独で構築してから
+`Zdd.Intersect` するより、直接構築した方がよい場合がある——中間結果（片方だけを構築した
+ZDD）が最終結果より桁違いに大きいと、事後フィルタはその大きさを一度は払う羽目になる
+（[docs/benchmarks.md](benchmarks.md) M3-5 節に実測値がある）。
+
+```csharp
+CardinalitySpec atMostTenEdges = new CardinalitySpec(graph.EdgeCount, 0, 10);
+PathSpec path = new PathSpec(graph, s, t);
+
+Zdd direct = FrontierBuilder.Build<
+        AndSpec<ArrayDdSpecAdapter<PathSpec>, int[], CardinalitySpec, int>, PairState<int[], int>>(
+    manager, path.AsSpec().And<ArrayDdSpecAdapter<PathSpec>, int[], CardinalitySpec, int>(atMostTenEdges));
+```
+
+- `spec1.And(spec2)` / `spec1.Or(spec2)`: 両方 `IDdSpec<TState>` なオペランド同士の交差・和。
+  返る `AndSpec<...>` / `OrSpec<...>` 自体が `IDdSpec<TState>` なので、`a.And(b).And(c)` の
+  ように何段でも合成できる
+- `IArrayDdSpec`（`PathSpec` など状態が配列のスペック）は `spec.AsSpec()` で
+  `IDdSpec<int[]>` に橋渡ししてから合成する
+- `zdd.Subset(spec)`（TdZdd の `zddSubset` 相当）: 既存の `Zdd` を `spec` でさらに絞り込む。
+  `spec` 側の族を単独で構築しなくてよい点は `And` と同じ
+- **型引数は省略できない**: `TState1`/`TState2` は `where TSpecN : IDdSpec<TStateN>` という
+  制約の中にしか出てこないため、C# の型推論では拾えない（`FrontierBuilder.Build<TSpec, TState>`
+  と同じ理由・同じ制約）。`spec1.And<Spec1, int, Spec2, int[]>(spec2)` のように全部書く
+
+詳しい設計（水準の同期のしかた・`ZddSpec` アダプタの中身）は `ZDD.Net.Frontier` の
+`AndSpec` / `OrSpec` / `CompositionStep` / `ArrayDdSpecAdapter` / `ZddSpec` の XML ドキュメント、
+背景は [docs/PLAN.md](PLAN.md) §6.3 を参照。
+
+## 9. 参考
 
 - [docs/frontier-guide.md](frontier-guide.md) — フロンティア法フレームワーク全体の使い方
   （組み込みスペック一覧・`Graph`/`FrontierManager`/`BuildOptions`・性能の勘所）
-- [TdZdd ユーザガイド](https://github.com/kunisura/TdZdd/blob/master/userguide.md) — 戻り値の規約の出典
+- [TdZdd ユーザガイド](https://github.com/kunisura/TdZdd/blob/master/userguide.md) — 戻り値の規約の出典、`zddIntersection`/`zddUnion`/`zddSubset` の設計方針
 - [docs/PLAN.md](PLAN.md) §6（フロンティア法フレームワーク）・§7（組み込みスペック）
 - [docs/ROADMAP.md](ROADMAP.md) M2（このフレームワークの PR 分割）

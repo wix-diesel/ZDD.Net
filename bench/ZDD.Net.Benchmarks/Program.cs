@@ -11,7 +11,9 @@ namespace ZDD.Net.Benchmarks
     /// final-node-count columns were produced, and <c>edge-order</c> runs
     /// <see cref="EdgeOrderReport"/>, the before/after comparison of edge-order optimization (issue #33),
     /// and <c>memory</c> / <c>time</c> run <see cref="MemoryReport"/> / <see cref="BuildTimeReport"/>,
-    /// the peak-memory and build-time reports state bit-packing is measured against (issue #34).
+    /// the peak-memory and build-time reports state bit-packing is measured against (issue #34);
+    /// <c>spec-composition</c> runs <see cref="SpecCompositionReport"/>, the direct-vs-post-filter
+    /// comparison for spec composition (issue #37).
     /// </summary>
     internal static class Program
     {
@@ -26,6 +28,12 @@ namespace ZDD.Net.Benchmarks
             if (args.Any(a => string.Equals(a, "edge-order", StringComparison.OrdinalIgnoreCase)))
             {
                 EdgeOrderReport.Run();
+                return;
+            }
+
+            if (args.Any(a => string.Equals(a, "spec-composition", StringComparison.OrdinalIgnoreCase)))
+            {
+                SpecCompositionReport.Run();
                 return;
             }
 

@@ -10,6 +10,29 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
 
 ### Added
 
+- `ZDD.Net.Frontier`: スペック合成 `spec1.And(spec2)` / `spec1.Or(spec2)` / `zdd.Subset(spec)`（M3-5、issue #37）
+  - 巨大な中間 ZDD を作らずに「s–t パス かつ 辺数 ≤ k」のような合成を直接構築できる。
+    `AndSpec<TSpec1, TState1, TSpec2, TState2>` / `OrSpec<TSpec1, TState1, TSpec2, TState2>` は
+    それ自体が `IDdSpec<TState>` なので、`a.And(b).And(c)` のように何段でも合成できる
+  - 合成スペックの状態は「各オペランドの状態 + 次に処理すべき水準」のタプル
+    (`PairState<TState1, TState2>`) を struct のまま組む（ボクシングしない）。**水準の同期**は
+    `CompositionStep` に切り出した: 片方が水準を飛ばしている間・&#8868;（残り全部除外を要求）に
+    落ちている間・&#8869;（以後絶対に受理しない）に落ちている間はどれも「まだその番ではない」
+    という同じ扱いで表せる（`⊤` は `-1`、`⊥` は `0` という `DdResult` の符号化そのものが
+    水準の値としてもそのまま「絶対に一致しない番兵」になる、という偶然の一致を利用している）
+  - `IArrayDdSpec`（`PathSpec` など、状態が配列のスペック）は `ArrayDdSpecAdapter<TSpec>` で
+    `IDdSpec<int[]>` に橋渡しした上で合成する（`spec.AsSpec().And(other)`）。橋渡し 1 箇所だけ
+    ブランチごとに配列を確保する（`IDdSpec<TState>` の「参照型状態は書き換えず差し替える」契約
+    を守るため）が、合成そのものは水準が実際に噛み合う箇所でしか橋渡しスペックの `GetChild` を
+    呼ばないので、飛ばされた水準では確保も起きない
+  - `zdd.Subset(spec)`（TdZdd の `zddSubset` 相当）: 既存の `Zdd` を `ZddSpec`（internal な
+    ノード表を直接読む `IDdSpec<int>` アダプタ）でスペック化し、`And` の特殊形として実装
+  - 事後フィルタ（`Union`/`Intersect`）との結果一致を
+    `tests/ZDD.Net.Tests/Frontier/SpecCompositionBuildTests.cs` で検証。
+    `bench/ZDD.Net.Benchmarks/SpecCompositionReport.cs`（`dotnet run -- spec-composition`）は
+    「任意の 2 頂点間の単純パス かつ 辺数 ≤ k」で直接構築が事後フィルタよりピーク一時ノード数
+    2.6〜1.7 倍・最終ノード数 22〜21 倍小さいことを実測（[docs/benchmarks.md](docs/benchmarks.md)
+    の M3-5 節）
 - `ZDD.Net.Specs`: サイクル・ハミルトン系のグラフスペック（M3-4、issue #36）
   - `CycleSpec(graph, single:)`: 単純サイクルの族。`single: true`（既定）は単一の単純サイクル、
     `single: false` は互いに素な単純サイクルの和（空集合は含まない）。`single` のほうが常に

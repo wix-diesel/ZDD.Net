@@ -257,3 +257,44 @@ M3-1 節の `Random500v2000e` に加え、`GeometricGraph`（点をランダム�
   `tests/ZDD.Net.Tests/Graphs/EdgeOrderTests.cs` で検証している（`BeamSearchPathWidth` は
   `SupportedStrategies` に含まれ、非連結グラフ・辺 0 個のグラフを扱う既存の理論テストをすべて
   そのまま通る）。
+
+## M3-5: スペック合成（直接構築 vs. 事後フィルタ）
+
+`spec1.And(spec2)` が事後フィルタ（`spec1` を単独構築 → `spec2` を単独構築 → `Intersect`）と
+比べて中間 ZDD をどれだけ小さく抑えるかの記録（issue #37）。測定環境は上表と同じ
+（測定日 2026-09-02）。実行方法:
+
+```bash
+dotnet run -c Release --project bench/ZDD.Net.Benchmarks -- spec-composition
+```
+
+ケースは「任意の 2 頂点を結ぶ単純パス（`PathSpec(allowAnyEndpoints: true)`）かつ辺数が
+少ない（`CardinalitySpec`）」——issue 本文が挙げる「巨大な中間結果が最終結果より桁違いに
+大きい」の典型例。事後フィルタは辺数条件を無視して**グラフ中のあらゆる単純パス**を
+`PathSpec` だけで構築し切ってから絞り込むのに対し、直接構築は辺数の上限を毎レベル同時に
+適用するので、辺数を使い切った状態を早期に刈り取れる。両approach の結果が完全一致する
+ことは `bench/ZDD.Net.Benchmarks/SpecCompositionReport.cs` 内でアサートしている
+（不一致なら例外を投げる）。
+
+| ケース | 方式 | ピークフロンティア幅 | ピーク一時ノード数 | 最終ノード数 | 実行時間 | 集合数 (Count) |
+|---|---|---:|---:|---:|---:|---:|
+| `Path_Grid6x6_AnyEndpoints_And_AtMost4Edges` | 事後フィルタ | 1,745 | 38,634 | 16,448 | 64.3 ms | 1,440 |
+| `Path_Grid6x6_AnyEndpoints_And_AtMost4Edges` | 直接構築 | **678** | **14,916** | **735** | **20.6 ms** | 1,440 |
+| `Path_Grid7x7_AnyEndpoints_And_AtMost6Edges` | 事後フィルタ | 6,605 | 192,326 | 76,044 | 181.8 ms | 12,886 |
+| `Path_Grid7x7_AnyEndpoints_And_AtMost6Edges` | 直接構築 | **3,950** | **114,605** | **3,672** | **125.9 ms** | 12,886 |
+
+- **集合数 (Count) は両方式で完全一致**（1,440 / 12,886）——直接構築が事後フィルタと同じ族を
+  作っていることの数値的な裏付け。
+- **中間 ZDD が小さい**（M3-5 の受け入れ条件、これが本 issue の存在意義）: 最終ノード数で
+  6×6 が 16,448 → 735（**約 22 分の 1**）、7×7 が 76,044 → 3,672（**約 21 分の 1**）。
+  「事後フィルタの最終ノード数」は「辺数条件を無視した `PathSpec` 単独の最終ノード数」と同義
+  （`Intersect` はここでは計測対象にしていない——事後フィルタが `Intersect` を呼べる時点で
+  既にこのノード数を払い終えている、というのが issue の論点そのもの）。ピーク一時ノード数
+  （構築中に作られた一時ノードの総数、削減前）でも 2.6〜1.7 倍、ピークフロンティア幅でも
+  2.6〜1.7 倍、直接構築が小さい。
+- **実行時間も直接構築の方が短い**（6×6 で 64.3 ms → 20.6 ms、7×7 で 181.8 ms → 125.9 ms）
+  ——辺数の上限を毎レベル同時に適用することで、事後フィルタなら最後まで生き残ってしまう
+  「パスとしては有効だが辺数が多すぎる」状態を早期に刈り取れるため。
+- `spec1.Or(spec2)` / `zdd.Subset(spec)` は同じ合成エンジン（`CompositionStep`）の上に
+  乗っており、`tests/ZDD.Net.Tests/Frontier/SpecCompositionBuildTests.cs` で事後フィルタ
+  （`Union` / 単独構築後の `Intersect`）との完全一致を検証している（ベンチ対象は `And` のみ）。
