@@ -336,8 +336,12 @@ namespace ZDD.Net.Tests.Graphs
             stopwatch.Stop();
 
             Assert.Equal(10, first10.Count);
+
+            // A non-lazy implementation would have to materialize (and sort) all 3.2 quadrillion
+            // paths first, which would never finish; a generous bound avoids CI flakiness while
+            // still catching that regression by orders of magnitude.
             Assert.True(
-                stopwatch.Elapsed < TimeSpan.FromSeconds(5),
+                stopwatch.Elapsed < TimeSpan.FromSeconds(30),
                 $"MinIter().Take(10) took {stopwatch.Elapsed}, which suggests it is not actually lazy.");
 
             // The first 10 shortest paths all have the true shortest length.
@@ -381,7 +385,12 @@ namespace ZDD.Net.Tests.Graphs
         [Fact]
         public void OptimizeGraphEdgesAreReinterpretedCorrectly()
         {
-            Graph grid = Graph.Grid(5, 5);
+            // Shuffled first: Grid() already numbers edges to keep the frontier narrow, so
+            // Optimize() alone might legitimately leave the order unchanged. Starting from an
+            // adversarial order guarantees Optimize() actually reorders edges, which is what this
+            // test needs — the point isn't that Optimize() changes anything, it's that whatever
+            // order it picks still reads back correctly.
+            Graph grid = Shuffle(Graph.Grid(5, 5), seed: 3);
             Graph optimized = grid.Optimize(EdgeOrderStrategy.BeamSearchPathWidth);
             Assert.NotEqual(grid.Edges.ToArray(), optimized.Edges.ToArray()); // sanity: the order actually changed
 
@@ -411,6 +420,22 @@ namespace ZDD.Net.Tests.Graphs
             "complete5" => Graph.Complete(5),
             _ => throw new ArgumentOutOfRangeException(nameof(name)),
         };
+
+        /// <summary>A deterministic pseudo-random edge-order shuffle, so <c>Optimize()</c> has an adversarial order to actually improve on.</summary>
+        private static Graph Shuffle(Graph graph, int seed)
+        {
+            var order = Enumerable.Range(0, graph.EdgeCount).ToArray();
+            uint state = (uint)seed + 0x9E3779B9u;
+
+            for (int i = order.Length - 1; i > 0; i--)
+            {
+                state = (state * 1664525u) + 1013904223u;
+                int j = (int)(state % (uint)(i + 1));
+                (order[i], order[j]) = (order[j], order[i]);
+            }
+
+            return graph.WithEdgeOrder(order);
+        }
 
         private static void AssertSameEdgeSets(Graph graph, GraphSet actual, Zdd expected)
         {

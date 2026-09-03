@@ -151,11 +151,11 @@ namespace ZDD.Net.Core
                 ZddNode node = nodes[id];
                 int item = manager.ItemOf(node.Level);
 
-                bool hasLo = TryValueOf(order, best, node.Lo, out TWeight loValue);
+                bool hasLo = TryValueOf<TWeight, TOps>(order, best, node.Lo, out TWeight loValue);
 
                 // The zero-suppress rule guarantees a node's 1-edge never lands on bottom, so the
                 // hi side always has a value (top counts as the empty completion, weight zero).
-                TryValueOf(order, best, node.Hi, out TWeight hiValue);
+                TryValueOf<TWeight, TOps>(order, best, node.Hi, out TWeight hiValue);
                 hiValue = TOps.Add(hiValue, weights[item]);
 
                 bool takeHi = !hasLo || (maximize ? TOps.Compare(hiValue, loValue) >= 0 : TOps.Compare(hiValue, loValue) <= 0);
@@ -165,11 +165,16 @@ namespace ZDD.Net.Core
             return best;
         }
 
-        private static bool TryValueOf<TWeight>(NodeOrder order, TWeight[] best, int childId, out TWeight value)
+        private static bool TryValueOf<TWeight, TOps>(NodeOrder order, TWeight[] best, int childId, out TWeight value)
+            where TOps : struct, IWeightOps<TWeight>
         {
             if (NodeTable.IsTerminal(childId))
             {
-                value = default!;
+                // Top is the empty completion, whose weight is the additive identity — not
+                // necessarily default(TWeight) for a non-primitive TWeight (e.g. a rational type
+                // whose Zero is (0, 1)). Bottom is never a real candidate, so its value is unused
+                // by every caller (guarded by the returned false).
+                value = childId == NodeTable.Top ? TOps.Zero : default!;
                 return childId == NodeTable.Top;
             }
 
