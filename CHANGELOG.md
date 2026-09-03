@@ -8,6 +8,20 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
 
 ## [Unreleased]
 
+### Changed
+
+- `ZDD.Net.Core.OperationCache`: サイズを自動拡大する際、旧実装は全エントリを捨てて空の配列に
+  差し替えていたが、生きているエントリを新しいテーブルへ移行（rehash）するように変更（M4-1、
+  issue #44）。`bench/ZDD.Net.Benchmarks -- cache-tuning`（複数のトップレベル演算が呼び出しを
+  またいで部分問題を共有するワークロード）で実測: ノード数が増え続けるインクリメンタルな構築では
+  `Tune` がほぼ毎回拡大を発動し、旧実装は拡大のたびにヒット率をほぼ 0 に戻していた。移行に
+  変えた結果、代表ケースで実行時間 15〜20% 改善、全ケースでヒット率が改善（詳細は
+  [docs/benchmarks.md](docs/benchmarks.md) の M4-1 節）
+- `ZDD.Net.Core.OperationCache`: スロット計算を、下位ビットの直接マスクから
+  `UniqueTable` / `OperationWorkspace` と同じ Fibonacci hashing
+  （`Hashing.IndexForPowerOfTwo`）に統一。実測ではヒット率・実行時間とも有意差はなかった
+  （`Hashing.Mix64` が既に十分な雪崩効果を持つため）が、3 つの表で流儀を揃えた
+
 ## [0.3.0] - 2026-09-03
 
 M3「数千辺への対応と高レベル API」マイルストーン（[docs/PLAN.md](docs/PLAN.md) §12）の完了リリース。

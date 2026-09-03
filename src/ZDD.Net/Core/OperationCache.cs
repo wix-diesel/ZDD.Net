@@ -176,8 +176,10 @@ namespace ZDD.Net.Core
         /// <returns><see langword="true"/> if the table actually grew.</returns>
         /// <remarks>
         /// Targets <c>nodeCount / <see cref="NodesPerEntry"/></c> entries, capped by
-        /// <see cref="MaxCapacity"/>; never shrinks. Growing rebuilds the table from scratch
-        /// since direct-mapped slots are invalidated by any capacity change anyway.
+        /// <see cref="MaxCapacity"/>; never shrinks. Growing migrates live entries (<see cref="Migrate"/>)
+        /// rather than discarding them: an incrementally-built manager calls <see cref="Tune"/> — and so
+        /// grows — on a large fraction of its top-level calls, and discarding on each one measured near
+        /// zero hit rate for the whole run (see docs/benchmarks.md's M4-1 section, issue #44).
         /// </remarks>
         public bool Tune(long nodeCount)
         {
@@ -198,8 +200,29 @@ namespace ZDD.Net.Core
                 ? _maxCapacity
                 : (int)Math.Min((uint)_maxCapacity, BitOperations.RoundUpToPowerOf2((uint)desired));
 
-            _entries = new Entry[grown];
+            Migrate(grown);
             return true;
+        }
+
+        /// <summary>Reinserts every live entry of the current table into a freshly sized one.</summary>
+        /// <param name="newCapacity">New entry count; always a power of two, greater than the current one.</param>
+        private void Migrate(int newCapacity)
+        {
+            Entry[] oldEntries = _entries;
+            Entry[] newEntries = new Entry[newCapacity];
+
+            for (int i = 0; i < oldEntries.Length; i++)
+            {
+                ref Entry entry = ref oldEntries[i];
+                if (entry.Op == EmptyOp)
+                {
+                    continue;
+                }
+
+                newEntries[SlotOf((ZddOperation)entry.Op, AOf(entry.Key), BOf(entry.Key), newCapacity)] = entry;
+            }
+
+            _entries = newEntries;
         }
 
         /// <summary>For commutative operations, swaps operands so that <c>a &lt;= b</c>.</summary>
@@ -216,10 +239,26 @@ namespace ZDD.Net.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static long KeyOf(int a, int b) => (long)(((ulong)(uint)a << 32) | (uint)b);
 
-        /// <summary>Computes the slot index for <c>(op, a, b)</c> via <see cref="Hashing.Combine(int, int, int)"/>.</summary>
+        /// <summary>Recovers the first operand packed by <see cref="KeyOf"/> (used only by <see cref="Migrate"/>).</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static int SlotOf(ZddOperation op, int a, int b, int capacity) =>
-            (int)(Hashing.Combine((int)op, a, b) & (ulong)(capacity - 1));
+        private static int AOf(long key) => (int)((ulong)key >> 32);
+
+        /// <summary>Recovers the second operand packed by <see cref="KeyOf"/> (used only by <see cref="Migrate"/>).</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static int BOf(long key) => (int)key;
+
+        /// <summary>
+        /// Computes the slot index for <c>(op, a, b)</c> via <see cref="Hashing.Combine(int, int, int)"/>,
+        /// extracted the same way <see cref="UniqueTable"/> and <see cref="OperationWorkspace"/> do
+        /// (<see cref="Hashing.IndexForPowerOfTwo"/>: multiply by the golden-ratio constant and take
+        /// the high bits) rather than masking the low bits directly.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static int SlotOf(ZddOperation op, int a, int b, int capacity)
+        {
+            ulong hash = Hashing.Combine((int)op, a, b);
+            return capacity == 1 ? 0 : Hashing.IndexForPowerOfTwo(hash, capacity);
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private bool TryGet(ZddOperation op, int a, int b, out int result)

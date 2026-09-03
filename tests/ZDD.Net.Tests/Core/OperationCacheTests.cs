@@ -331,20 +331,52 @@ namespace ZDD.Net.Tests.Core
         }
 
         [Fact]
-        public void TuneDropsTheOldEntriesButKeepsAnsweringCorrectly()
+        public void TuneMigratesLiveEntriesInsteadOfDroppingThem()
         {
+            // bench/ZDD.Net.Benchmarks/CacheTuningReport.cs の union-chain ワークロード（多数の
+            // 頂点操作が呼び出しをまたいで部分問題を共有する）で実測: node count が増え続ける
+            // インクリメンタルな構築では Tune が呼び出しのほぼ毎回グロースを起こす。グロースの
+            // たびに全エントリを捨てていた旧実装ではヒット率がほぼ 0 に落ち込んでいたため、
+            // 移行（rehash）に変えた（M4-1, issue #44）。
             OperationCache cache = new OperationCache(initialCapacity: 4, maxCapacity: 1024);
 
             cache.PutBinary(ZddOperation.Union, 2, 3, 10);
             Assert.True(cache.Tune(4000));
 
-            // 失うのは「計算済み」という事実だけ。誤った答えは決して返らない。
-            Assert.False(cache.TryGetBinary(ZddOperation.Union, 2, 3, out int result));
-            Assert.Equal(0, result);
-
-            cache.PutBinary(ZddOperation.Union, 2, 3, 10);
-            Assert.True(cache.TryGetBinary(ZddOperation.Union, 2, 3, out result));
+            // 新しいテーブルでも同じスロットに落ちる限り、計算済みの結果は生き残る。
+            Assert.True(cache.TryGetBinary(ZddOperation.Union, 2, 3, out int result));
             Assert.Equal(10, result);
+        }
+
+        [Fact]
+        public void TuneNeverReturnsAWrongResultEvenWhenMigrationCollides()
+        {
+            // 移行先でスロットが衝突しても（一部のエントリが上書きされて消えても）、
+            // 生き残ったエントリは常に元の値を返す——Op と Key を照合しているため、
+            // 別の部分問題を誤って返すことはない。
+            OperationCache cache = new OperationCache(initialCapacity: 1, maxCapacity: 256);
+            Random random = new Random(20260903);
+            Dictionary<(ZddOperation, int, int), int> expected = new Dictionary<(ZddOperation, int, int), int>();
+
+            for (int i = 0; i < 500; i++)
+            {
+                int a = random.Next(0, 200);
+                int b = random.Next(0, 200);
+                int result = a * 131 + b;
+
+                cache.PutBinary(ZddOperation.Difference, a, b, result);
+                expected[(ZddOperation.Difference, a, b)] = result;
+
+                cache.Tune(cache.Capacity * OperationCache.NodesPerEntry + 1);
+
+                foreach (KeyValuePair<(ZddOperation Op, int A, int B), int> pair in expected)
+                {
+                    if (cache.TryGetBinary(pair.Key.Op, pair.Key.A, pair.Key.B, out int hit))
+                    {
+                        Assert.Equal(pair.Value, hit);
+                    }
+                }
+            }
         }
 
         // ---- 無効なキャッシュ ----
