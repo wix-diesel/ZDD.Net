@@ -461,6 +461,27 @@ Zdd family = FrontierBuilder.Build<NoThreeConsecutiveSpec, int>(manager, new NoT
 `CustomSpecNoThreeConsecutive`）で確かめている——「チュートリアルどおりに書けば独自スペックが
 作れる」ことの実例である。
 
+### 7.1 デバッグ: 各ノードがどの状態に対応するかを DOT で見る
+
+独自スペックが思った通りの族を作らないとき、一番効くのは「このノードはフロンティアの
+どの状態に対応するのか」を目で見ることである（M5-4、issue #56）。`BuildOptions.RecordStates`
+を有効にして状態記録版の `FrontierBuilder.Build` を呼ぶと、状態を文字列化したラベル
+（既定は状態の `ToString()`）が node id 付きで返る。それを `DotOptions.StateLabels` に渡すだけで、
+`ToDot()` の出力にラベルとして重ねて表示できる:
+
+```csharp
+BuildOptions options = new BuildOptions { RecordStates = true };
+Zdd family = FrontierBuilder.Build<NoThreeConsecutiveSpec, int>(
+    manager, new NoThreeConsecutiveSpec(8), options, out IReadOnlyDictionary<int, string> stateLabels);
+
+string dot = family.ToDot(new DotOptions { StateLabels = stateLabels });
+```
+
+状態記録は既定で無効（`RecordStates = false`）なので、有効にしない限りメモリ・速度への影響は無い。
+記録の有無で `family` そのもの（できあがる ZDD）は完全に一致する。巨大な族には
+`DotOptions.MaxLevels` / `MaxNodes` / `FocusNodeId` で部分表示できる——打ち切られた枝は
+`truncated` という 1 個のマーカーへまとめて張り替わる。詳しくは [`ZDD.Net.Io.DotOptions`](../src/ZDD.Net/Io/DotOptions.cs) の XML doc を参照。
+
 ## 8. スペックの合成: `And` / `Or` / `Subset`
 
 「s–t パス かつ 辺数 10 以下」のような制約は、素直にやれば「パスを全部作ってから

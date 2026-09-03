@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using Xunit;
 using ZDD.Net.Core;
 using ZDD.Net.Frontier;
+using ZDD.Net.Specs;
 using ZDD.Net.Tests.Harness;
 
 namespace ZDD.Net.Tests.Frontier
@@ -415,6 +417,90 @@ namespace ZDD.Net.Tests.Frontier
                 () => FrontierBuilder.Build(manager, new ZeroArrayLengthNonTerminalSpec()));
 
             Assert.Contains("ArrayLength", error.Message, StringComparison.Ordinal);
+        }
+
+        // ---- State recording (M5-4, issue #56) ----
+
+        [Fact]
+        public void RecordStatesDefaultsToFalseAndStateLabelsComesBackEmpty()
+        {
+            using ZddManager manager = new ZddManager(5);
+            BuildOptions options = new BuildOptions();
+
+            FrontierBuilder.Build<CardinalitySpec, int>(
+                manager, new CardinalitySpec(5, 1, 3), options, out IReadOnlyDictionary<int, string> stateLabels);
+
+            Assert.False(options.RecordStates);
+            Assert.Empty(stateLabels);
+        }
+
+        [Fact]
+        public void RecordStatesLabelsEveryNodeWithTheStatesDefaultToString()
+        {
+            using ZddManager manager = new ZddManager(5);
+            BuildOptions options = new BuildOptions { RecordStates = true };
+
+            Zdd built = FrontierBuilder.Build<CardinalitySpec, int>(
+                manager, new CardinalitySpec(5, 1, 3), options, out IReadOnlyDictionary<int, string> stateLabels);
+
+            Assert.Equal((int)built.NodeCount, stateLabels.Count);
+
+            // CardinalitySpec の状態はそのまま int (int.ToString()) なので、ラベルは "0".."3" のいずれか。
+            foreach (string label in stateLabels.Values)
+            {
+                int count = int.Parse(label, System.Globalization.CultureInfo.InvariantCulture);
+                Assert.InRange(count, 0, 3);
+            }
+        }
+
+        [Fact]
+        public void RecordStatesUsesTheSuppliedDescribeStateDelegateOverTheDefaultToString()
+        {
+            using ZddManager manager = new ZddManager(5);
+            BuildOptions options = new BuildOptions { RecordStates = true };
+
+            FrontierBuilder.Build<CardinalitySpec, int>(
+                manager,
+                new CardinalitySpec(5, 1, 3),
+                options,
+                out IReadOnlyDictionary<int, string> stateLabels,
+                describeState: count => $"taken={count}");
+
+            Assert.NotEmpty(stateLabels);
+            Assert.All(stateLabels.Values, label => Assert.StartsWith("taken=", label, StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public void RecordingStatesDoesNotChangeTheBuiltFamily()
+        {
+            using ZddManager manager = new ZddManager(6);
+            CardinalitySpec spec = new CardinalitySpec(6, 2, 4);
+
+            Zdd withoutRecording = FrontierBuilder.Build<CardinalitySpec, int>(manager, spec);
+
+            Zdd withRecording = FrontierBuilder.Build<CardinalitySpec, int>(
+                manager, spec, new BuildOptions { RecordStates = true }, out IReadOnlyDictionary<int, string> _);
+
+            // 別々の呼び出しでも、正準化により同じマネージャ内では同じノード ID に落ちる。
+            Assert.Equal(withoutRecording, withRecording);
+        }
+
+        [Fact]
+        public void TheStateLabelOverloadRejectsANullManager()
+        {
+            Assert.Throws<ArgumentNullException>(
+                () => FrontierBuilder.Build<CardinalitySpec, int>(
+                    null!, new CardinalitySpec(3, 0, 3), new BuildOptions(), out IReadOnlyDictionary<int, string> _));
+        }
+
+        [Fact]
+        public void TheStateLabelOverloadRejectsNullOptions()
+        {
+            using ZddManager manager = new ZddManager(3);
+
+            Assert.Throws<ArgumentNullException>(
+                () => FrontierBuilder.Build<CardinalitySpec, int>(
+                    manager, new CardinalitySpec(3, 0, 3), null!, out IReadOnlyDictionary<int, string> _));
         }
 
         private static BigInteger Binomial(int n, int k)

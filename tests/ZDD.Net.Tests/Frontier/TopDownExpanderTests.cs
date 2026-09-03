@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using Xunit;
 using ZDD.Net.Frontier;
+using ZDD.Net.Specs;
 using ZDD.Net.Tests.Harness;
 
 namespace ZDD.Net.Tests.Frontier
@@ -316,6 +317,77 @@ namespace ZDD.Net.Tests.Frontier
                 context,
                 BruteForceFamily.FromSets(itemCount, produced.ToArray()),
                 BruteForceFamily.FromSets(itemCount, expected.ToArray()));
+        }
+
+        // ---- 状態記録（BuildOptions.RecordStates、M5-4、issue #56）----
+
+        /// <summary>
+        /// 記録用の <c>describeState</c> を渡さなければ、記録するかどうかの分岐（<c>null</c> 判定 1 回）
+        /// 以外は普段の展開と何も変わらない。記録を有効にしたときだけ、ラベルのための確保が実際に増える
+        /// ことを示すことで、既定（無効）ではオーバーヘッドが無いという主張を裏付ける。
+        /// </summary>
+        [Fact]
+        public void DescribingStatesOnlyAllocatesWhenRequested()
+        {
+            const int ItemCount = 2000;
+            CardinalitySpec Spec() => new CardinalitySpec(ItemCount, 500, 1500);
+
+            // JIT の初回確保を測定から外す。
+            TopDownExpander<CardinalitySpec, int>.Expand(Spec());
+            TopDownExpander<CardinalitySpec, int>.Expand(Spec(), new BuildOptions(), state => state.ToString(), out _);
+
+            long beforeWithoutRecording = GC.GetAllocatedBytesForCurrentThread();
+            TopDownExpander<CardinalitySpec, int>.Expand(Spec());
+            long withoutRecording = GC.GetAllocatedBytesForCurrentThread() - beforeWithoutRecording;
+
+            long beforeWithRecording = GC.GetAllocatedBytesForCurrentThread();
+            TopDownExpander<CardinalitySpec, int>.Expand(
+                Spec(), new BuildOptions(), state => state.ToString(), out string?[][] labelsByLevel);
+            long withRecording = GC.GetAllocatedBytesForCurrentThread() - beforeWithRecording;
+
+            Assert.True(withRecording > withoutRecording, $"recording {withRecording} bytes, not recording {withoutRecording} bytes");
+
+            int labelCount = 0;
+            foreach (string?[] level in labelsByLevel)
+            {
+                labelCount += level.Length;
+            }
+
+            Assert.True(labelCount > 0);
+        }
+
+        /// <summary>状態記録を有効にしても、できあがる一時ノード表そのものは無効時と完全に一致する。</summary>
+        [Fact]
+        public void RecordingStatesDoesNotChangeTheExpandedTable()
+        {
+            CardinalitySpec spec = new CardinalitySpec(30, 10, 20);
+
+            TemporaryNodeTable withoutRecording = TopDownExpander<CardinalitySpec, int>.Expand(spec);
+            TemporaryNodeTable withRecording = TopDownExpander<CardinalitySpec, int>.Expand(
+                spec, new BuildOptions(), state => state.ToString(), out _);
+
+            AssertStructurallyIdentical(withoutRecording, withRecording);
+        }
+
+        /// <summary>2 つの一時ノード表が、水準・幅・全ノードの Lo/Hi まで完全に一致することを確かめる。</summary>
+        private static void AssertStructurallyIdentical(TemporaryNodeTable expected, TemporaryNodeTable actual)
+        {
+            Assert.Equal(expected.RootLevel, actual.RootLevel);
+            Assert.Equal(expected.Root, actual.Root);
+            Assert.Equal(expected.NodeCount, actual.NodeCount);
+
+            for (int level = 0; level <= expected.RootLevel; level++)
+            {
+                Assert.Equal(expected.Width(level), actual.Width(level));
+
+                ReadOnlySpan<TemporaryNode> expectedNodes = expected[level];
+                ReadOnlySpan<TemporaryNode> actualNodes = actual[level];
+
+                for (int index = 0; index < expectedNodes.Length; index++)
+                {
+                    Assert.Equal(expectedNodes[index], actualNodes[index]);
+                }
+            }
         }
 
         private sealed class RecordingProgress : IProgress<BuildProgress>

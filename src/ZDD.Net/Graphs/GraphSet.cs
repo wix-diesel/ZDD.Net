@@ -1,10 +1,12 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Numerics;
 using ZDD.Net.Core;
 using ZDD.Net.Frontier;
+using ZDD.Net.Io;
 using ZDD.Net.Sets;
 using ZDD.Net.Specs;
 
@@ -428,6 +430,36 @@ namespace ZDD.Net.Graphs
 
         /// <inheritdoc/>
         public override string ToString() => $"GraphSet({_family.Zdd})";
+
+        // ==================== I/O ====================
+
+        /// <summary>
+        /// Writes this family as Graphviz DOT source, labeling each level by its edge (docs/PLAN.md
+        /// §9) instead of a bare item index, unless <paramref name="options"/> already sets
+        /// <see cref="DotOptions.LevelLabel"/> itself.
+        /// </summary>
+        /// <param name="options">
+        /// Extra rendering knobs (M5-4, issue #56); every default besides <see cref="DotOptions.LevelLabel"/>
+        /// is <see cref="Zdd.ToDot(DotOptions)"/>'s own.
+        /// </param>
+        public string ToDot(DotOptions? options = null) => Zdd.ToDot(WithEdgeLevelLabel(options));
+
+        /// <summary>Streams this family's DOT representation as <see cref="ToDot"/> does, without buffering it all in memory.</summary>
+        /// <param name="writer">The destination writer.</param>
+        /// <param name="options">Extra rendering knobs; see <see cref="ToDot"/>.</param>
+        public void WriteDot(TextWriter writer, DotOptions? options = null) => Zdd.WriteDot(writer, WithEdgeLevelLabel(options));
+
+        private DotOptions WithEdgeLevelLabel(DotOptions? options)
+        {
+            if (options?.LevelLabel is not null)
+            {
+                return options;
+            }
+
+            DotOptions effective = options?.Clone() ?? new DotOptions();
+            effective.LevelLabel = item => Universe.ElementAt(item).ToString() ?? string.Empty;
+            return effective;
+        }
 
         // ==================== Internals ====================
 

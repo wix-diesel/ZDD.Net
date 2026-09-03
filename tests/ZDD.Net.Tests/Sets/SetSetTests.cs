@@ -1,10 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Numerics;
 using Xunit;
 using ZDD.Net.Core;
+using ZDD.Net.Io;
 using ZDD.Net.Sets;
+using ZDD.Net.Tests.Harness;
 
 namespace ZDD.Net.Tests.Sets
 {
@@ -301,6 +304,36 @@ namespace ZDD.Net.Tests.Sets
 
             SetSet<string> powerSet = SetSet<string>.PowerSet(universe);
             Assert.Equal(universe.Manager.Empty.Complement(), powerSet.Zdd);
+        }
+
+        // ---- ToDot（M5-4、issue #56）----
+
+        [Fact]
+        public void ToDotLabelsEachLevelByItsElementByDefault()
+        {
+            var universe = new SetUniverse<string>(new[] { "a", "b", "c" });
+            SetSet<string> powerSet = SetSet<string>.PowerSet(universe);
+
+            string dot = powerSet.ToDot();
+
+            Assert.DoesNotContain("label=\"x", dot, StringComparison.Ordinal);
+            Assert.Contains("label=\"a\"", dot, StringComparison.Ordinal);
+            Assert.Contains("label=\"b\"", dot, StringComparison.Ordinal);
+            Assert.Contains("label=\"c\"", dot, StringComparison.Ordinal);
+
+            DotSyntax.Validate(dot);
+        }
+
+        [Fact]
+        public void SetSetWriteDotProducesTheSameTextAsToDot()
+        {
+            var universe = new SetUniverse<string>(new[] { "a", "b" });
+            SetSet<string> powerSet = SetSet<string>.PowerSet(universe);
+
+            using StringWriter writer = new StringWriter();
+            powerSet.WriteDot(writer);
+
+            Assert.Equal(powerSet.ToDot(), writer.ToString());
         }
 
         private static void AssertSameFamily(SetSet<string> family, params string[][] expectedSets)
