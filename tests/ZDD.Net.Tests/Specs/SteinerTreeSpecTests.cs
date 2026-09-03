@@ -360,6 +360,14 @@ namespace ZDD.Net.Tests.Specs
         private static int BruteForceMinimumSteinerWeight(Graph graph, IReadOnlyList<int> terminals, int[] weights)
         {
             int edgeCount = graph.EdgeCount;
+
+            if (edgeCount >= 31)
+            {
+                throw new ArgumentException(
+                    $"BruteForceMinimumSteinerWeight enumerates all 2^edgeCount subsets and cannot handle {edgeCount} edges.",
+                    nameof(graph));
+            }
+
             int bound = 1 << edgeCount;
             int best = int.MaxValue;
 

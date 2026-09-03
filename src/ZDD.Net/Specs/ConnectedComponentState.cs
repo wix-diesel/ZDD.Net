@@ -34,9 +34,9 @@ namespace ZDD.Net.Specs
 
         /// <summary>
         /// Whether the vertices occupying <paramref name="su"/> and <paramref name="sv"/> already belong to
-        /// the same component — i.e. taking the edge between them would close a cycle. Callers that must
-        /// reject cycles outright (unlike this spec, which allows them) check this before calling
-        /// <see cref="Merge"/>; see <see cref="SteinerTreeSpec"/>.
+        /// the same component — i.e. taking the edge between them would close a cycle. <see cref="ConnectedSubgraphSpec"/>
+        /// allows cycles, so it never needs this; callers that must reject cycles outright check this before
+        /// calling <see cref="Merge"/> instead — see <see cref="SteinerTreeSpec"/>.
         /// </summary>
         /// <param name="state">The comp-array state.</param>
         /// <param name="su">The comp slot of one edge endpoint.</param>
