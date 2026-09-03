@@ -22,12 +22,16 @@ namespace ZDD.Net.Sets
     /// <see cref="ZddManager"/>s does on <see cref="Zdd"/>.
     /// </para>
     /// <para>
-    /// Implements <see cref="IEnumerable{T}"/> but intentionally not <see cref="ICollection{T}"/>,
-    /// since a family's cardinality does not fit in <c>int</c> (see <see cref="Count"/>). The
-    /// <see cref="Count"/> property (a <see cref="BigInteger"/>) hides
-    /// <see cref="System.Linq.Enumerable.Count{TSource}(IEnumerable{TSource})"/> for this type, by
-    /// design &#8212; use <see cref="LongCount"/> or <see cref="CountApprox"/> instead of casting to
-    /// <see cref="IEnumerable{T}"/> to call the LINQ extension.
+    /// Implements <see cref="IEnumerable{T}">IEnumerable&lt;IReadOnlySet&lt;T&gt;&gt;</see> but
+    /// intentionally not <see cref="ICollection{T}"/>, since a family's cardinality does not fit
+    /// in <c>int</c> (see <see cref="Count"/>). LINQ's
+    /// <see cref="System.Linq.Enumerable.Count{TSource}(IEnumerable{TSource})"/> extension still
+    /// resolves fine alongside the <see cref="Count"/> property (they have different
+    /// signatures &#8212; no cast or rename needed), but it enumerates every member set and returns
+    /// <c>int</c>, so it is slow and overflows for anything but small families. Prefer
+    /// <see cref="Count"/> (exact <see cref="BigInteger"/>), <see cref="LongCount"/> (exact
+    /// <see cref="long"/>), or <see cref="CountApprox"/> (approximate <see cref="double"/>), all
+    /// computed in time proportional to node count rather than family size.
     /// </para>
     /// </remarks>
     public sealed class SetSet<T> : IEnumerable<IReadOnlySet<T>>, IEquatable<SetSet<T>>
@@ -130,7 +134,7 @@ namespace ZDD.Net.Sets
         public static SetSet<T> PowerSet(IEnumerable<T> items, IEqualityComparer<T>? comparer = null) =>
             PowerSet(new SetUniverse<T>(items, comparer));
 
-        /// <summary>The exact number of member sets. See <see cref="IEnumerable{T}"/> remarks on why this hides LINQ's <c>Count()</c>.</summary>
+        /// <summary>The exact number of member sets, in time proportional to node count. See the class remarks on LINQ's <c>Count()</c>.</summary>
         public BigInteger Count => Zdd.Count;
 
         /// <summary>The number of member sets, approximated as a <see cref="double"/>. Faster than <see cref="Count"/>.</summary>

@@ -73,7 +73,7 @@ namespace ZDD.Net.Tests.Sets
                 new[] { "b", "c" },
             });
 
-            // Universe order is first-seen: a=0, b=1, c=1. Default order is depth-first, 0-branch
+            // Universe order is first-seen: a=0, b=1, c=2. Default order is depth-first, 0-branch
             // (item excluded) first, so sets without "a" come before sets with "a".
             var expected = new[]
             {
@@ -97,9 +97,14 @@ namespace ZDD.Net.Tests.Sets
             SetSet<string> family = SetSet<string>.PowerSet(new[] { "a", "b", "c" });
 
             BigInteger exact = family.Count;
+
+            // Both resolve without a cast or ambiguity error: the property (no parens) and the
+            // LINQ extension method (parens, dot-call syntax) have different call shapes.
+            int viaDotCall = family.Count();
             int viaLinqExtension = Enumerable.Count(family);
 
             Assert.Equal(new BigInteger(8), exact);
+            Assert.Equal(8, viaDotCall);
             Assert.Equal(8, viaLinqExtension);
             Assert.Equal(8L, family.LongCount());
             Assert.Equal(8.0, family.CountApprox);
@@ -136,6 +141,19 @@ namespace ZDD.Net.Tests.Sets
             SetSet<string> family = SetSet<string>.PowerSet(new[] { "a", "b" });
 
             Assert.Throws<ArgumentException>(() => family.Contains(new[] { "z" }));
+        }
+
+        [Fact]
+        public void ElementOrderWithinAMemberSetIsDeterministicAscendingByUniverseIndex()
+        {
+            // Index order is first-seen: z=0, m=1, a=2 — deliberately not insertion order into the
+            // member set below, and not alphabetical, so a HashSet's unspecified bucket order would
+            // very likely disagree with it.
+            var universe = new SetUniverse<string>(new[] { "z", "m", "a" });
+            SetSet<string> family = SetSet<string>.FromSets(universe, new[] { new[] { "a", "z", "m" } });
+
+            IReadOnlySet<string> only = Assert.Single(family);
+            Assert.Equal(new[] { "z", "m", "a" }, only);
         }
 
         [Fact]

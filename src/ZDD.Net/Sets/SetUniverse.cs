@@ -114,17 +114,20 @@ namespace ZDD.Net.Sets
             return indices;
         }
 
-        /// <summary>Converts item indices back to a set of elements.</summary>
-        internal HashSet<T> ToElementSet(int[] indices)
+        /// <summary>
+        /// Converts item indices back to a set of elements, preserving <paramref name="indices"/>'s
+        /// order (ascending, per <see cref="Zdd"/>'s convention) so enumeration is deterministic.
+        /// </summary>
+        internal IReadOnlySet<T> ToElementSet(int[] indices)
         {
-            var set = new HashSet<T>(indices.Length, Comparer);
+            var ordered = new T[indices.Length];
 
-            foreach (int index in indices)
+            for (int i = 0; i < indices.Length; i++)
             {
-                set.Add(_elements[index]);
+                ordered[i] = _elements[indices[i]];
             }
 
-            return set;
+            return new ElementSet<T>(ordered, Comparer);
         }
 
         /// <summary>
