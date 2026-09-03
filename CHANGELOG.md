@@ -10,6 +10,23 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
 
 ### Added
 
+- `ZDD.Net.Specs`: 頂点系スペック `IndependentSetSpec` / `CliqueSpec` / `VertexCoverSpec` /
+  `DominatingSetSpec`（M3-6、issue #38）
+  - ここまでの辺の族（変数 = 辺）とは違い、**変数は頂点**。`ZddManager` の `variableCount` は
+    `graph.EdgeCount` ではなく `graph.VertexCount` に合わせる
+  - `ZDD.Net.Graphs.VertexFrontierManager`: `FrontierManager` の頂点版。頂点は決定された瞬間に
+    フロンティアへ入り（下位隣接頂点との照合・更新に使うため）、自分の最大添字の隣接頂点が
+    決定された直後（隣接頂点がすべて自分より小さい添字なら自分の決定の直後）に抜ける。
+    スロットの再利用と `MaxFrontierSize` の求め方は `FrontierManager` と同じ考え方
+  - `IndependentSetSpec` / `VertexCoverSpec`: フロンティア頂点ごとに選択フラグ 1 bit。
+    `VertexCoverSpec` は `IndependentSetSpec` の状態・判定を反転させた形（補集合が独立集合になる）
+  - `CliqueSpec`: 独自のフロンティア判定は持たず、補グラフ上の `IndependentSetSpec` に委譲する
+    薄いラッパー（頂点番号・変数順序は元のグラフのまま、辺だけが補グラフのものになる）
+  - `DominatingSetSpec`: フロンティア頂点ごとに「選択／未選択だが被支配済み／未選択で未支配」の
+    3 値。頂点が forgotten になる瞬間、未支配のままなら ⊥ に落とす
+  - 素朴な総当たり列挙・bitmask DP との一致に加え、`Path(n)` の独立集合数がフィボナッチ数、
+    `Cycle(n)` がリュカ数、`Complete(n)` が `n + 1`、`Complete(n)` のクリーク数が `2^n` になる
+    ことを確認。`VertexCoverSpec` の補集合が `IndependentSetSpec` と一致することもテスト済み
 - `ZDD.Net.Frontier`: スペック合成 `AndSpec` / `OrSpec` と `Zdd.Subset(spec)`（M3-5、issue #37）
   - `spec1.And<SpecA, StateA, SpecB, StateB>(spec2)` / `.Or<...>(...)`: 2 つのスペックの状態を
     タプルにして同時展開し、中間 ZDD を経由せずに交差／和の族を直接構築する

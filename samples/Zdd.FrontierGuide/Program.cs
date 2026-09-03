@@ -121,6 +121,23 @@ namespace ZDD.Net.Samples.FrontierGuide
             Zdd hamiltonianCycles = FrontierBuilder.Build<HamiltonianCycleSpec>(
                 completeManager, new HamiltonianCycleSpec(complete5));
             Assert(hamiltonianCycles.Count == 12, "HamiltonianCycleSpec: K5 has (5-1)!/2 = 12 Hamiltonian cycles");
+
+            // IndependentSetSpec / CliqueSpec / VertexCoverSpec / DominatingSetSpec: 変数が頂点になる
+            // 唯一のグラフ系スペック群。ZddManager の variableCount は graph.EdgeCount ではなく
+            // graph.VertexCount に合わせる（tests/.../IndependentSetSpecTests.cs ほかで詳しく照合済み）。
+            using ZddManager vertexManager = new ZddManager(grid.VertexCount);
+
+            Zdd independentSets = FrontierBuilder.Build<IndependentSetSpec>(vertexManager, new IndependentSetSpec(grid));
+            Assert(independentSets.Count > 0, "IndependentSetSpec: a 3x3 grid has independent sets (at least the empty one)");
+
+            Zdd cliques = FrontierBuilder.Build<CliqueSpec>(vertexManager, new CliqueSpec(grid));
+            Assert(cliques.Count > 0, "CliqueSpec: a 3x3 grid has cliques (at least the empty one and every single vertex)");
+
+            Zdd vertexCovers = FrontierBuilder.Build<VertexCoverSpec>(vertexManager, new VertexCoverSpec(grid));
+            Assert(vertexCovers.Count > 0, "VertexCoverSpec: a 3x3 grid has vertex covers (at least the full vertex set)");
+
+            Zdd dominatingSets = FrontierBuilder.Build<DominatingSetSpec>(vertexManager, new DominatingSetSpec(grid));
+            Assert(dominatingSets.Count > 0, "DominatingSetSpec: a 3x3 grid has dominating sets (at least the full vertex set)");
         }
 
         /// <summary>

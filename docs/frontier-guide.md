@@ -94,6 +94,10 @@ Graph optimized = grid.Optimize(EdgeOrderStrategy.Bfs);
 | `CycleSpec` | 単純サイクルの族（`single: true`（既定）は単一サイクルのみ、`false` は互いに素なサイクルの和） | フロンティア頂点ごとの mate | `IArrayDdSpec` |
 | `HamiltonianPathSpec` | 全頂点を通る `s`–`t` 単純パス | 同上 | `IArrayDdSpec` |
 | `HamiltonianCycleSpec` | 全頂点を通る単一の単純サイクル | 同上 | `IArrayDdSpec` |
+| `IndependentSetSpec` | グラフの独立集合（**変数は頂点**。以下 4 つも同様） | フロンティア頂点ごとの選択フラグ | `IArrayDdSpec` |
+| `CliqueSpec` | グラフのクリーク（内部で補グラフの `IndependentSetSpec` に委譲） | 同上（補グラフ上） | `IArrayDdSpec` |
+| `VertexCoverSpec` | グラフの頂点被覆 | フロンティア頂点ごとの選択フラグ | `IArrayDdSpec` |
+| `DominatingSetSpec` | グラフの支配集合 | フロンティア頂点ごとの「選択／被支配／未支配」の3値 | `IArrayDdSpec` |
 
 ```csharp
 using ZddManager manager = new ZddManager(variableCount: 5);
@@ -134,6 +138,26 @@ Zdd hamiltonianCycles = FrontierBuilder.Build<HamiltonianCycleSpec>(manager, new
 Kirchhoff の行列木定理、`MatchingSpec` はパーマネント照合、`CycleSpec`/`HamiltonianPathSpec`/
 `HamiltonianCycleSpec` は完全グラフの既知の式（ハミルトン閉路数 `(n-1)!/2` など）と Petersen
 グラフ（ハミルトン閉路 0）との一致を CI のテストで確認している（`tests/ZDD.Net.Tests/Specs/`）。
+
+`IndependentSetSpec` / `CliqueSpec` / `VertexCoverSpec` / `DominatingSetSpec` は**変数が頂点**の
+族（docs/PLAN.md §7.2「頂点の族」）で、ここまでの辺の族とは変数の単位が違う。`ZddManager` の
+`variableCount` はここでは `graph.EdgeCount` ではなく **`graph.VertexCount`** に合わせる
+（フロンティアの前計算は `FrontierManager` ではなく `ZDD.Net.Graphs.VertexFrontierManager` が担う）。
+
+```csharp
+using ZddManager vertexManager = new ZddManager(grid.VertexCount);
+
+Zdd independentSets = FrontierBuilder.Build<IndependentSetSpec>(vertexManager, new IndependentSetSpec(grid));
+Zdd cliques = FrontierBuilder.Build<CliqueSpec>(vertexManager, new CliqueSpec(grid));
+Zdd vertexCovers = FrontierBuilder.Build<VertexCoverSpec>(vertexManager, new VertexCoverSpec(grid));
+Zdd dominatingSets = FrontierBuilder.Build<DominatingSetSpec>(vertexManager, new DominatingSetSpec(grid));
+```
+
+`IndependentSetSpec` は `Path(n)` でフィボナッチ数、`Cycle(n)` でリュカ数、`Complete(n)` で
+`n + 1`（空集合と各単元集合）に一致することを、`CliqueSpec` は `Complete(n)` で `2^n`
+（全部分集合がクリーク）に一致し、独立に計算した補グラフ上の `IndependentSetSpec` とも一致する
+ことを、`VertexCoverSpec` は補集合が `IndependentSetSpec` と一致することを、それぞれ CI の
+テストで確認している。
 
 ## 4. 構築前の見積り（`EstimateMaxFrontierSize` / `FrontierManager`）
 
