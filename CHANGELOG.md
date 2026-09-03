@@ -6,6 +6,8 @@
 
 v1.0 までは API 未確定のプレリリース版として公開する（[docs/PLAN.md](docs/PLAN.md) §13）。
 
+## [Unreleased]
+
 ## [0.4.0] - 2026-09-03
 
 M4「性能と残りのスペック」マイルストーン（[docs/PLAN.md](docs/PLAN.md) §12）の完了リリース。
