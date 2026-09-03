@@ -169,8 +169,9 @@ namespace ZDD.Net.Graphs
 
         /// <summary>
         /// The frontier slots of <paramref name="vertex"/>'s neighbors that were decided before it (lower
-        /// vertex index), in ascending neighbor-index order. Every one of them is still in the frontier —
-        /// no lower-indexed neighbor of <paramref name="vertex"/> can have been forgotten yet, since
+        /// vertex index). Order follows <see cref="Graph.IncidentEdges"/> (edge-index order), which is not
+        /// necessarily ascending neighbor-index order. Every one of them is still in the frontier — no
+        /// lower-indexed neighbor of <paramref name="vertex"/> can have been forgotten yet, since
         /// <paramref name="vertex"/> itself is one of its own not-yet-decided neighbors.
         /// </summary>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="vertex"/> is outside <c>0 .. VertexCount - 1</c>.</exception>
