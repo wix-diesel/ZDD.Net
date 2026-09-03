@@ -47,7 +47,12 @@ namespace ZDD.Net.Tests.Internal
         /// <paramref name="length"/> bytes and disagree on everything after, and check that
         /// <see cref="Hashing.Combine(ReadOnlySpan{byte})"/> gives the same answer for both — if it
         /// ever read one byte past <paramref name="length"/>, the two hashes would diverge. The
-        /// lengths span every chunk-size boundary (8/16/32-byte) on both sides.
+        /// lengths span every chunk-size boundary (8/16/32-byte) on both sides, and also
+        /// <c>Hashing.MinVectorizedLength</c> (256) itself: below it <c>Combine</c> never enters the
+        /// <c>Vector256</c>/<c>Vector128</c> branches at all (docs/benchmarks.md's M4-2 section — the
+        /// vectorized path measured as a net loss under that length), so without cases at and above
+        /// 256 this test would only ever exercise the scalar tail loop, never the
+        /// <c>Vector256.LoadUnsafe</c>/<c>Vector128.LoadUnsafe</c> loops it is meant to guard.
         /// </summary>
         [Theory]
         [InlineData(0)]
@@ -65,6 +70,16 @@ namespace ZDD.Net.Tests.Internal
         [InlineData(64)]
         [InlineData(65)]
         [InlineData(100)]
+        [InlineData(255)]
+        [InlineData(256)]
+        [InlineData(257)]
+        [InlineData(287)]
+        [InlineData(288)]
+        [InlineData(289)]
+        [InlineData(511)]
+        [InlineData(512)]
+        [InlineData(513)]
+        [InlineData(2600)]
         public void CombineOverBytesNeverReadsPastTheGivenLength(int length)
         {
             const int guardBytes = 64;
