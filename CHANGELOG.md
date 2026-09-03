@@ -10,6 +10,20 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
 
 ### Added
 
+- `ZDD.Net.Io`: グラフ入出力 `DimacsGraph` / `EdgeListGraph` / `SimpleTextGraph`（M3-10、issue #42）
+  - いずれも `TextReader` / `TextWriter` を受ける形（`string` を受け取る簡易オーバーロードも用意）。
+    `System.Text.Json` 等への依存は追加せず、本体プロジェクトの `PackageReference` は 0 のまま
+  - `DimacsGraph`: DIMACS 形式（`p edge <頂点数> <辺数>` ヘッダ、`e` 辺行、`c` コメント行）の読み書き。
+    **DIMACS は頂点 1 始まり**、本ライブラリは 0 始まりなので、この変換を `Read`/`Write` の 1 箇所に
+    閉じ込めている
+  - `EdgeListGraph`: 頂点数のヘッダ行＋ 1 行 1 辺（空白/カンマ区切り、0 始まり）のエッジリスト形式。
+    ヘッダ行があるのは、辺を持たない末尾の頂点までラウンドトリップさせるため
+  - `SimpleTextGraph`: 本ライブラリ独自の簡易テキスト形式（`graph`/`vertex`/`edge` 行）。頂点ラベルを
+    保持できる唯一の形式で、`Read` は `Graph` とラベル列を束ねた `LabeledGraph` を返す
+  - パースエラーは行番号付きの `GraphFormatException`（ヘッダと実際の辺数の不一致、範囲外頂点、
+    壊れた行を検出）。コメント行・余分な空白・CRLF/LF 混在・末尾改行なしは全形式で許容
+  - ラウンドトリップ（頂点数・辺数・辺の順序が一致）と数千辺規模の読み込みをテストで確認。
+    読み込んだグラフで `GraphSet.Paths` / `Trees` / `Matchings` が動くことも統合テストで確認済み
 - `ZDD.Net.Sets`: `SetSet<T>` / `SetUniverse<T>` — 任意要素型の族ラッパ（M3-8、issue #40）
   - `Zdd` は変数が `int` index だが、`SetSet<T>` は要素 `T` ↔ index の対応を `SetUniverse<T>`
     （`IEqualityComparer<T>` 付き）に肩代わりさせ、「ZDD を知らない .NET 開発者が使える入口」にする
