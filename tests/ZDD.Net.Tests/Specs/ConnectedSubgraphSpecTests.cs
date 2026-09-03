@@ -186,7 +186,7 @@ namespace ZDD.Net.Tests.Specs
         }
 
         [Fact]
-        public void CanonicalStateProducesFewerNodesThanLeavingStaleComponentCodesBehind()
+        public void CanonicalStateProducesFewerNodesThanLeavingRepresentativesUnnormalized()
         {
             Graph grid = Graph.Grid(4, 4);
             int[] terminals = { 0, grid.VertexCount - 1 };
@@ -198,8 +198,8 @@ namespace ZDD.Net.Tests.Specs
 
             Assert.True(
                 canonicalNodeCount < uncanonicalNodeCount,
-                $"expected clearing forgotten slots to shrink the build, got {canonicalNodeCount} " +
-                $"(canonical) vs {uncanonicalNodeCount} (stale slots left behind)");
+                $"expected canonicalizing the representative to shrink the build, got {canonicalNodeCount} " +
+                $"(canonical) vs {uncanonicalNodeCount} (non-canonical representative choice)");
 
             using ZddManager manager = new ZddManager(grid.EdgeCount);
             Zdd fromCanonical = FrontierBuilder.Build<ConnectedSubgraphSpec>(manager, canonical);

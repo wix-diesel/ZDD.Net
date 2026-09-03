@@ -11,7 +11,7 @@ namespace ZDD.Net.Specs
     /// resulting subgraph. The rest of the graph is free — extra components, cycles, dangling branches all
     /// count, as long as the terminals end up together. A generalization of <see cref="SpanningTreeSpec"/>'s
     /// "every vertex must be one component" down to "only these vertices must be one component"; the basis
-    /// M4-5's <c>SteinerTreeSpec</c> and M4-6's <c>GraphPartitionSpec</c> build on.
+    /// that M4-5's <c>SteinerTreeSpec</c> and M4-6's <c>GraphPartitionSpec</c> build on.
     /// </summary>
     /// <remarks>
     /// <para>
