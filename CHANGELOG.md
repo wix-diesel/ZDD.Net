@@ -8,8 +8,26 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-03
+
+M3「数千辺への対応と高レベル API」マイルストーン（[docs/PLAN.md](docs/PLAN.md) §12）の完了リリース。
+ROADMAP の受け入れ条件「数千辺の実グラフで経路数え上げが完走する」を実データ規模で確認し
+（[docs/benchmarks.md](docs/benchmarks.md) の M3-11 節）、機能面の中核が揃った。M4 以降は
+性能改善・スペック拡充・パッケージング整備が中心になる。
+
 ### Added
 
+- `docs/tutorial.md`: 「格子グラフの s–t パスを数える」から始まり、フィルタ・サンプリング・
+  辺順序の最適化を経て、**実グラフ（DIMACS 形式）を読み込んで解くところまで**を一直線に辿れる
+  チュートリアル（M3-11、issue #43）。コード片は `samples/Zdd.Tutorial` として実際に動き、
+  CI が毎回実行する
+- `bench/ZDD.Net.Benchmarks`: `-- real-graph` モード（`RealGraphReport`）——数千〜数万辺の
+  道路網・電力網に近い実データ規模のグラフで s–t パス数え上げが完走するかどうかの記録
+  （M3-11、issue #43）。`ZDD.Net.Io.DimacsGraph` で実際にテキストへ書き出してから読み直す
+  ラウンドトリップを経由する。結果は [docs/benchmarks.md](docs/benchmarks.md) の M3-11 節:
+  疎な道路網（k=2 最近傍）は 4 万辺を超えても数秒で完走する一方、密な道路網（k=4）は
+  `Bfs` で幅を狭くしても迂回路の多さから 2,430 辺の時点で完走しない——フロンティア幅の見積りは
+  状態数が指数的に増えうる「肩」の広さであって状態数そのものではない、という境界を正直に記録した
 - `ZDD.Net.Io`: グラフ入出力 `DimacsGraph` / `EdgeListGraph` / `SimpleTextGraph`（M3-10、issue #42）
   - いずれも `TextReader` / `TextWriter` を受ける形（`string` を受け取る簡易オーバーロードも用意）。
     `System.Text.Json` 等への依存は追加せず、本体プロジェクトの `PackageReference` は 0 のまま
