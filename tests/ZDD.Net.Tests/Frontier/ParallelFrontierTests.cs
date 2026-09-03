@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using Xunit;
 using ZDD.Net.Core;
@@ -92,6 +93,35 @@ namespace ZDD.Net.Tests.Frontier
             Assert.Equal(sequentialManager.NodeCount, parallelManager.NodeCount);
             Assert.Equal(sequential.Count, parallel.Count);
             Assert.Equal(sequential.ToDot(), parallel.ToDot());
+        }
+
+        /// <summary>
+        /// 状態記録（<see cref="BuildOptions.RecordStates"/>、M5-4、issue #56）はマージスレッド上の
+        /// <c>AddState</c> だけを通るので、並列度をいくつにしても記録されるラベルの集合は変わらない。
+        /// </summary>
+        [Fact]
+        public void RecordedStateLabelsAreTheSameRegardlessOfDegreeOfParallelism()
+        {
+            using ZddManager sequentialManager = new ZddManager(WideItemCount);
+            Zdd sequential = FrontierBuilder.Build<WideFrontierSpec, int>(
+                sequentialManager,
+                new WideFrontierSpec(WideItemCount, WideWidth),
+                new BuildOptions { MaxDegreeOfParallelism = 1, RecordStates = true },
+                out IReadOnlyDictionary<int, string> sequentialLabels);
+
+            using ZddManager parallelManager = new ZddManager(WideItemCount);
+            Zdd parallel = FrontierBuilder.Build<WideFrontierSpec, int>(
+                parallelManager,
+                new WideFrontierSpec(WideItemCount, WideWidth),
+                new BuildOptions { MaxDegreeOfParallelism = 4, RecordStates = true },
+                out IReadOnlyDictionary<int, string> parallelLabels);
+
+            // 両方とも同じマネージャ内なので、ノード ID とラベルの対応がそのまま一致するはず。
+            Assert.Equal(sequentialLabels.Count, parallelLabels.Count);
+            foreach (KeyValuePair<int, string> entry in sequentialLabels)
+            {
+                Assert.Equal(entry.Value, parallelLabels[entry.Key]);
+            }
         }
 
         /// <summary>

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.ExceptionServices;
 using System.Threading;
@@ -82,15 +83,25 @@ namespace ZDD.Net.Frontier
         private readonly CancellationToken _cancellationToken;
         private readonly IProgress<BuildProgress>? _progress;
 
+        /// <summary>
+        /// Describes a newly registered state for <see cref="BuildOptions.RecordStates"/> (M5-4, issue
+        /// #56), or null when recording is off — the only per-state cost paid in that case is this one
+        /// field's null check in <see cref="AddState"/>.
+        /// </summary>
+        private readonly Func<TState, string>? _describeState;
+
         /// <summary>The state table of each level that still has states to expand; null once dropped.</summary>
         private readonly StructLevelStateTable<TSpec, TState>?[] _tables;
 
         /// <summary>The nodes of each expanded level, in state-table index order.</summary>
         private readonly TemporaryNode[][] _levels;
 
+        /// <summary>One label list per level, in state-table index order; only allocated when <see cref="_describeState"/> is set.</summary>
+        private readonly List<string>?[] _labels;
+
         private long _nodeCount;
 
-        private TopDownExpander(TSpec spec, int rootLevel, BuildOptions options)
+        private TopDownExpander(TSpec spec, int rootLevel, BuildOptions options, Func<TState, string>? describeState)
         {
             _spec = spec;
             _rootLevel = rootLevel;
@@ -99,8 +110,10 @@ namespace ZDD.Net.Frontier
             _maxDegreeOfParallelism = options.MaxDegreeOfParallelism;
             _cancellationToken = options.CancellationToken;
             _progress = options.Progress;
+            _describeState = describeState;
             _tables = new StructLevelStateTable<TSpec, TState>?[rootLevel + 1];
             _levels = new TemporaryNode[rootLevel + 1][];
+            _labels = describeState is null ? Array.Empty<List<string>?>() : new List<string>?[rootLevel + 1];
 
             Array.Fill(_levels, Array.Empty<TemporaryNode>());
         }
@@ -111,7 +124,30 @@ namespace ZDD.Net.Frontier
         /// <returns>The unreduced diagram, or a terminal table when the root is a terminal.</returns>
         /// <exception cref="BuildLimitExceededException">A limit of <paramref name="options"/> was passed.</exception>
         /// <exception cref="OperationCanceledException">The options' token was cancelled.</exception>
-        public static TemporaryNodeTable Expand(TSpec spec, BuildOptions? options = null)
+        public static TemporaryNodeTable Expand(TSpec spec, BuildOptions? options = null) =>
+            Expand(spec, options, null, out _);
+
+        /// <summary>
+        /// Expands <paramref name="spec"/> into a temporary node table, additionally describing every
+        /// state <paramref name="describeState"/> is given for (M5-4, issue #56).
+        /// </summary>
+        /// <param name="spec">The spec to unroll; its <c>GetRoot</c> decides how many levels there are.</param>
+        /// <param name="options">Limits, cancellation and progress; defaults when null.</param>
+        /// <param name="describeState">
+        /// Called once per newly registered state when non-null; its result becomes that state's label.
+        /// </param>
+        /// <param name="labelsByLevel">
+        /// <paramref name="describeState"/>'s results, indexed like the returned table's levels and, within
+        /// a level, like its node array — empty when <paramref name="describeState"/> is null.
+        /// </param>
+        /// <returns>The unreduced diagram, or a terminal table when the root is a terminal.</returns>
+        /// <exception cref="BuildLimitExceededException">A limit of <paramref name="options"/> was passed.</exception>
+        /// <exception cref="OperationCanceledException">The options' token was cancelled.</exception>
+        public static TemporaryNodeTable Expand(
+            TSpec spec,
+            BuildOptions? options,
+            Func<TState, string>? describeState,
+            out string?[][] labelsByLevel)
         {
             BuildOptions effective = options ?? new BuildOptions();
 
@@ -120,6 +156,7 @@ namespace ZDD.Net.Frontier
 
             if (DdResult.IsTerminal(rootLevel))
             {
+                labelsByLevel = Array.Empty<string?[]>();
                 return TemporaryNodeTable.Terminal(rootLevel == DdResult.True);
             }
 
@@ -130,11 +167,14 @@ namespace ZDD.Net.Frontier
                     $"terminal ({DdResult.False} = bottom, {DdResult.True} = top).");
             }
 
-            TopDownExpander<TSpec, TState> expander = new TopDownExpander<TSpec, TState>(spec, rootLevel, effective);
+            TopDownExpander<TSpec, TState> expander =
+                new TopDownExpander<TSpec, TState>(spec, rootLevel, effective, describeState);
 
             try
             {
-                return expander.Run(rootState);
+                TemporaryNodeTable table = expander.Run(rootState);
+                labelsByLevel = expander.CollectLabels();
+                return table;
             }
             finally
             {
@@ -463,7 +503,30 @@ namespace ZDD.Net.Frontier
                 throw FrontierSizeExceeded(level, table.Count);
             }
 
+            if (_describeState is not null)
+            {
+                (_labels[level] ??= new List<string>()).Add(_describeState(state));
+            }
+
             return index;
+        }
+
+        /// <summary>Snapshots the labels recorded so far, in the same (level, index) shape as <see cref="_levels"/>.</summary>
+        private string?[][] CollectLabels()
+        {
+            if (_describeState is null)
+            {
+                return Array.Empty<string?[]>();
+            }
+
+            string?[][] result = new string?[_labels.Length][];
+
+            for (int level = 0; level < _labels.Length; level++)
+            {
+                result[level] = _labels[level]?.ToArray() ?? Array.Empty<string?>();
+            }
+
+            return result;
         }
 
         private void DropTable(int level)

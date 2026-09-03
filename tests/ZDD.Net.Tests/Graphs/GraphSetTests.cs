@@ -1,13 +1,16 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Numerics;
 using Xunit;
 using ZDD.Net.Core;
 using ZDD.Net.Frontier;
 using ZDD.Net.Graphs;
+using ZDD.Net.Io;
 using ZDD.Net.Sets;
+using ZDD.Net.Tests.Harness;
 using ZDD.Net.Specs;
 
 namespace ZDD.Net.Tests.Graphs
@@ -409,6 +412,51 @@ namespace ZDD.Net.Tests.Graphs
             {
                 AssertIsSimplePath(grid, 0, grid.VertexCount - 1, set);
             }
+        }
+
+        // ---- ToDot（M5-4、issue #56）----
+
+        [Fact]
+        public void ToDotLabelsEachLevelByItsEdgeByDefault()
+        {
+            Graph graph = Graph.Grid(2, 2);
+            GraphSet paths = GraphSet.Paths(graph, from: 0, to: graph.VertexCount - 1);
+
+            string dot = paths.ToDot();
+
+            Assert.True(paths.Zdd.NodeCount > 0);
+
+            // 既定のアイテム番号ラベル（x0, x1, ...）は使われない。
+            Assert.DoesNotContain("label=\"x", dot, StringComparison.Ordinal);
+
+            // 実際に使われている辺のどれかは "(u, v)" の形でラベルに出ている。
+            Assert.Contains(graph.Edges, edge => dot.Contains($"label=\"{edge}\"", StringComparison.Ordinal));
+
+            DotSyntax.Validate(dot);
+        }
+
+        [Fact]
+        public void ToDotHonorsAnExplicitLevelLabelInsteadOfTheDefaultEdgeOne()
+        {
+            Graph graph = Graph.Grid(2, 2);
+            GraphSet paths = GraphSet.Paths(graph, from: 0, to: graph.VertexCount - 1);
+
+            string dot = paths.ToDot(new DotOptions { LevelLabel = item => $"e{item}" });
+
+            Assert.Contains("label=\"e", dot, StringComparison.Ordinal);
+            Assert.DoesNotContain(paths.Graph.Edges.Select(e => e.ToString()), edgeText => dot.Contains($"label=\"{edgeText}\"", StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public void GraphSetWriteDotProducesTheSameTextAsToDot()
+        {
+            Graph graph = Graph.Grid(2, 2);
+            GraphSet paths = GraphSet.Paths(graph, from: 0, to: graph.VertexCount - 1);
+
+            using StringWriter writer = new StringWriter();
+            paths.WriteDot(writer);
+
+            Assert.Equal(paths.ToDot(), writer.ToString());
         }
 
         // ---- Helpers ----

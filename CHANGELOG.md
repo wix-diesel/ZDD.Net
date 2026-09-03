@@ -30,6 +30,33 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
   一意化表を再構築し、演算キャッシュは無効化、`2^U`（`PowerSetRoot`）のキャッシュは生存していれば
   リマップ、生存していなければ次回遅延再計算する。GC の統計（回収ノード数・削減率・所要時間）は
   `ZddStatistics` に追加した
+- `ZDD.Net.Io.DotOptions`: DOT 出力の拡張——状態ラベル・レベルラベル・部分表示・スタイル
+  （M5-4、issue #56）。`Zdd.ToDot(DotOptions?)` / `Zdd.WriteDot(TextWriter, DotOptions?)` の
+  引数として渡す。既定（`null` または新規インスタンス）は今までの `ToDot()` と完全に同じ出力
+  （`DotWriterTests.ADefaultDotOptionsInstanceReproducesThePlainOutput` で確認）
+  - `StateLabels`（node id → ラベルの辞書）: 各ノードが「フロンティアのどの状態に対応するのか」を
+    レベルラベルの下にもう 1 行として表示する。`FrontierBuilder.Build<TSpec, TState>` の状態記録版
+    オーバーロードの `stateLabels` 出力をそのまま渡せる
+  - `LevelLabel`（`Func<int, string>`）: レベル番号の代わりに意味のある名前（辺・頂点名など）を表示。
+    `GraphSet.ToDot()` / `SetSet<T>.ToDot()` は明示しなければ `Universe.ElementAt` から自動的に
+    供給する（辺なら `(u, v)`）
+  - `MaxLevels` / `MaxNodes` / `FocusNodeId`: 上位 N レベルのみ・ノード数上限・指定ノードから
+    到達可能な部分のみの部分表示。打ち切られた枝は単一の `truncated` マーカーへ張り替えられる
+    ——巨大な ZDD でも出力サイズが上限内に収まる（走査自体を打ち切るので、上限を超えた分の
+    ノードは訪問すらしない）
+  - `NonTerminalShape` / `NonTerminalColor` / `ZeroEdgeStyle` / `OneEdgeStyle`: 色・形状・0-枝/1-枝の
+    描き分けのカスタマイズ
+  - ラベル文字列中の `"` `\` 改行は正しくエスケープされる（`DotWriterTests.StateAndLevelLabelsEscapeQuotesBackslashesAndNewlines`）。生成した DOT が実際に Graphviz
+    (`dot -Tsvg`) に通ることをローカルで確認済み
+- `ZDD.Net.Frontier.BuildOptions.RecordStates`: フロンティア構築時に「一時ノード → 状態」の対応を
+  保持するオプション（M5-4、issue #56）。既定は無効で、無効時は `AddState` の `null` 判定 1 回以外
+  オーバーヘッドが無い（`TopDownExpanderTests.DescribingStatesOnlyAllocatesWhenRequested`）。
+  有効にして `FrontierBuilder.Build<TSpec, TState>(manager, spec, options, out stateLabels, describeState)`
+  を呼ぶと、状態を文字列化した `stateLabels`（node id → ラベル）が返る。`describeState` を渡さなければ
+  状態の `ToString()` を使う。記録の有無で構築結果（できあがる `Zdd`）は完全に一致する
+  （`FrontierBuilderTests.RecordingStatesDoesNotChangeTheBuiltFamily` /
+  `TopDownExpanderTests.RecordingStatesDoesNotChangeTheExpandedTable`）。並列展開でも記録は
+  マージスレッド上の `AddState` だけを通るため決定的（`ParallelFrontierTests.RecordedStateLabelsAreTheSameRegardlessOfDegreeOfParallelism`）
 
 ### Changed
 

@@ -98,5 +98,14 @@ namespace ZDD.Net.Frontier
         /// count down one level at a time. Called on the building thread: a slow handler slows the build.
         /// </remarks>
         public IProgress<BuildProgress>? Progress { get; set; }
+
+        /// <summary>
+        /// Whether to keep a "which spec state does this node correspond to" label for every node,
+        /// for <see cref="FrontierBuilder"/>'s state-recording <c>Build</c> overload to hand back as
+        /// DOT state labels (M5-4, issue #56). Recording never changes the built <see cref="Core.Zdd"/>
+        /// itself — only whether that overload also returns labels for it.
+        /// </summary>
+        /// <value>Defaults to <see langword="false"/>: no labels are kept, and nothing is spent keeping them.</value>
+        public bool RecordStates { get; set; }
     }
 }
