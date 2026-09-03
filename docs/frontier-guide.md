@@ -100,6 +100,12 @@ Graph optimized = grid.Optimize(EdgeOrderStrategy.Bfs);
 | `VertexCoverSpec` | グラフの頂点被覆 | フロンティア頂点ごとの選択フラグ | `IArrayDdSpec` |
 | `DominatingSetSpec` | グラフの支配集合 | フロンティア頂点ごとの「選択／被支配／未支配」の3値 | `IArrayDdSpec` |
 | `DegreeConstraintSpec` | 各頂点の次数が `[lo[v], hi[v]]` に収まる辺集合（マッチング・パス・サイクルなどの一般形） | フロンティア頂点ごとの現在の次数 | `IArrayDdSpec` |
+| `ConnectedSubgraphSpec` | 指定した頂点集合（terminals）が全て同じ連結成分に入る辺集合（`SpanningTreeSpec` の「全頂点」を「指定頂点だけ」に一般化） | フロンティア頂点ごとの成分番号 + 端点の入り繰り数 | `IArrayDdSpec` |
+| `SteinerTreeSpec` | terminals を含むシュタイナー木（連結・非巡回で、terminal でない葉を持たない） | 同上 + 頂点ごとの次数（飽和カウンタ） | `IArrayDdSpec` |
+| `GraphPartitionSpec` | 「残す」辺で連結な `K` 個のブロックに分割し、各ブロックの頂点数が `[minBlockSize, maxBlockSize]` に収まる辺集合（区割り問題） | フロンティア頂点ごとの成分番号 + ブロックサイズ | `IArrayDdSpec` |
+| `CutSpec` | `s`–`t` カット（`MinimalOnly` で極小カットだけに絞れる） | フロンティア頂点ごとの成分番号 + `s`/`t` 側フラグ | `IArrayDdSpec` |
+| `ColoringSpec` | グラフの `k` 彩色（隣接頂点が同色にならない）。`RepresentativesOnly` で色の付け替えで同一視できるものを 1 つに絞れる | フロンティア頂点ごとの色 | `IArrayDdSpec`（**変数は頂点 × 色**） |
+| `DfaSpec` | 長さ固定の 2 値文字列のうち、与えた DFA が受理するものの族（グラフに限らない汎用の制約記述。PLAN.md §7.2） | DFA の現在状態 | `IDdSpec<int>` |
 
 ```csharp
 using ZddManager manager = new ZddManager(variableCount: 5);
@@ -160,6 +166,65 @@ Zdd dominatingSets = FrontierBuilder.Build<DominatingSetSpec>(vertexManager, new
 （全部分集合がクリーク）に一致し、独立に計算した補グラフ上の `IndependentSetSpec` とも一致する
 ことを、`VertexCoverSpec` は補集合が `IndependentSetSpec` と一致することを、それぞれ CI の
 テストで確認している。
+
+`ConnectedSubgraphSpec` / `SteinerTreeSpec` / `GraphPartitionSpec` / `CutSpec`（M4-4〜M4-6）は
+辺の族で、変数は `PathSpec` 等と同じく辺（`variableCount == graph.EdgeCount`）:
+
+```csharp
+Graph grid = Graph.Grid(3, 3);
+using ZddManager manager = new ZddManager(grid.EdgeCount);
+
+// 頂点 0・4・8（terminals）が全て同じ連結成分に入る辺集合。
+Zdd connected = FrontierBuilder.Build<ConnectedSubgraphSpec>(
+    manager, new ConnectedSubgraphSpec(grid, new[] { 0, 4, 8 }));
+
+// terminals を含む最小のシュタイナー木の族（重み最小化は Zdd.MinWeight に任せる）。
+Zdd steinerTrees = FrontierBuilder.Build<SteinerTreeSpec>(
+    manager, new SteinerTreeSpec(grid, new[] { 0, 4, 8 }));
+
+// 頂点数 3 のブロック 3 つに分ける区割り。
+Zdd partitions = FrontierBuilder.Build<GraphPartitionSpec>(
+    manager, new GraphPartitionSpec(grid, k: 3, minBlockSize: 3, maxBlockSize: 3));
+
+// 頂点 0 と頂点 8 を切り離す全てのカット。MinimalOnly: true で極小カットだけに絞れる。
+Zdd cuts = FrontierBuilder.Build<CutSpec>(manager, new CutSpec(grid, s: 0, t: 8));
+Zdd minimalCuts = FrontierBuilder.Build<CutSpec>(manager, new CutSpec(grid, s: 0, t: 8, minimalOnly: true));
+```
+
+`ConnectedSubgraphSpec`/`SteinerTreeSpec`/`GraphPartitionSpec`/`CutSpec` はいずれも小規模な
+グラフでの総当たり照合で正しさを確認している（`tests/ZDD.Net.Tests/Specs/`）。terminals が 2 個の
+`ConnectedSubgraphSpec`/`SteinerTreeSpec` は、その `Zdd.Minimal()`（`ConnectedSubgraphSpec`）／
+族そのもの（`SteinerTreeSpec`）が `PathSpec` の `s`–`t` パスと一致することも確認済み——木構造の
+族が積み上がっていく様子（`SpanningTreeSpec` → `ConnectedSubgraphSpec` → `SteinerTreeSpec`）の
+一貫性がテストで裏付けられている。
+
+`ColoringSpec` は**変数が頂点 × 色**という他のグラフ系スペックと違う変数割り当てを使う。頂点 `v`
+の色 `c` が変数 `v * K + c`（`ArrayLength`/`VariableCount` は `ColoringSpec` 自身が計算する）:
+
+```csharp
+Graph triangle = Graph.Complete(3);
+using ZddManager colorManager = new ZddManager(new ColoringSpec(triangle, k: 3).VariableCount);
+
+Zdd colorings = FrontierBuilder.Build<ColoringSpec>(colorManager, new ColoringSpec(triangle, k: 3));
+
+// 色の付け替えで同一視できる彩色を 1 つの代表だけに絞る。
+Zdd representatives = FrontierBuilder.Build<ColoringSpec>(
+    colorManager, new ColoringSpec(triangle, k: 3, representativesOnly: true));
+```
+
+`ColoringSpec` は彩色多項式（`Complete(n)` で `k(k-1)...(k-n+1)` 等の既知式）と一致することを
+CI のテストで確認している。
+
+`DfaSpec` はグラフを使わない汎用スペックで、変数は文字列の位置（`variableCount == length`）:
+
+```csharp
+// 遷移表 [state, symbol]。1 の個数が偶数個の文字列を受理する 2 状態 DFA の例。
+int[,] transitions = { { 0, 1 }, { 1, 0 } };
+using ZddManager dfaManager = new ZddManager(variableCount: 6);
+
+Zdd accepted = FrontierBuilder.Build<DfaSpec, int>(
+    dfaManager, new DfaSpec(transitions, initialState: 0, acceptStates: new[] { 0 }, length: 6));
+```
 
 ## 4. 構築前の見積り（`EstimateMaxFrontierSize` / `FrontierManager`）
 
@@ -483,7 +548,64 @@ var shortest = paths.MinWeight(edge => 1);
 例、および `Graph.Optimize` を組み合わせた実践的な指針は [docs/tutorial.md](tutorial.md) を参照
 ——このガイドより短い一本道の入門としてはそちらの方が向いている。
 
-## 10. さらに詳しく
+## 10. 性能チューニングの指針
+
+M4（v0.4）で入った性能改善（M4-1〜M4-3）と、それ以前からある性能上の判断（辺順序・上限設定）を、
+「まず何を見るか」の 1 箇所にまとめる。詳しい実測はどれも [docs/benchmarks.md](benchmarks.md) の
+該当節にある。
+
+### 10.1 辺順序戦略の選び方
+
+構築が遅い・終わらないときにまず疑うべきはここ（6.1 節）。判断の順番:
+
+1. **格子グラフなら `Grid`**（`Graph.Grid` の既定順で十分なことが多いが、辺を並べ替えたグラフを
+   読み込んだ場合は明示的に `Optimize(EdgeOrderStrategy.Grid)`）。
+2. **既に良い順序だと分かっているなら `AsGiven`**（余計な前処理を払わない）。
+3. **それ以外は既定の `Bfs` から始める**。大半のグラフでこれが妥当な選択（Graphillion と同じ既定）。
+4. **道路網・電力網のように局所構造を持つが格子ではない不規則なグラフなら
+   `BeamSearchPathWidth`**（`Bfs` 比 20〜28% 改善、前処理は数千辺で数秒以内。
+   docs/benchmarks.md の M3-3 節）。
+5. どの戦略が勝つか迷ったら、**構築を始める前に** `graph.EstimateMaxFrontierSize(strategy)`
+   （4 節）で候補を比べる。密なランダムグラフのように、どの戦略でも幅が大きいままの構造も
+   実在する（M3-1 節）——見積りが大きければ、辺順序では救えない問題だと早めに判断できる。
+
+### 10.2 `BuildOptions` の並列度
+
+`MaxDegreeOfParallelism`（6.3 節、M4-3）は**組み込みスペックだけでは効かないことが多い**——
+状態表への登録コストが `GetChild` 自体よりずっと重いため、実測では既定値でもむしろ僅かに
+遅くなることがある（4 コアで 0.9x 前後）。効くのは **`GetChild` 自体が重い独自スペック**
+（複雑な組み合わせ制約の評価など）を書いたとき（合成ベンチマークで 2.4x）。
+
+判断の仕方: 何も考えずに並列度を上げるのではなく、`MaxDegreeOfParallelism = 1` と既定値の両方で
+実測してから決める（`dotnet run -c Release --project bench/ZDD.Net.Benchmarks -- time` と同じ
+方法。docs/benchmarks.md の M4-3 節）。組み込みスペックしか使わないなら、既定値のままで構わない
+——並列化によって結果（ノード ID）が変わることはないので、上げて損はしないが、得もしないことが
+多い。
+
+### 10.3 ServerGC / TieredPGO
+
+ランタイム設定は [docs/api-guide.md](api-guide.md) §5.3 にまとめてある（`ServerGarbageCollection`
+/ `TieredPGO` を `.csproj` に設定する）。フロンティア法は Core よりもさらに多くの一時領域
+（一時ノード表・状態表・`ArrayPool` のバッファ）を水準ごとに確保・解放するため、この設定の効果は
+Core 単体より大きく出ることが多い。`bench/ZDD.Net.Benchmarks` はこの設定で測定している
+（`bench/ZDD.Net.Benchmarks/ZDD.Net.Benchmarks.csproj`、本ドキュメント冒頭の「測定環境」）。
+
+### 10.4 `EstimateMaxFrontierSize()` による事前判断
+
+4 節の見積り API は、**構築を始める前に**「現実的な規模になりそうか」を判定する第一の道具。
+ただし M3-11 節（docs/benchmarks.md）が正直に記録している境界に注意: **フロンティア幅（頂点の
+個数）が小さくても、実際に構築できるとは限らない**。見積りが測るのはあくまで状態が指数的に
+増えうる「肩」の広さであって、その肩の上で実際に何種類の状態が生まれるかはグラフの迂回路の
+多さに強く依存する。実務上は:
+
+1. `graph.EstimateMaxFrontierSize()`（と辺順序戦略ごとの比較、10.1 節）で構築前に規模感を掴む。
+2. それでも安全とは限らないので、`BuildOptions.MaxNodeCount` / `MaxFrontierSize`（5 節）で
+   実際の上限を切り、メモリを使い切って落ちる代わりに `BuildLimitExceededException` として
+   検知する。
+3. 上限に達したら、対象を絞る（`s`–`t` を近づける、`GraphSet.Smaller` で辺数を絞ってから数える）、
+   または数え上げより軽い問い（`MinWeight`/`TopK`）に切り替える（docs/tutorial.md §4）。
+
+## 11. さらに詳しく
 
 - 「格子グラフの s–t パスを数える」から「実グラフを読み込んで解く」までの一本道の入門:
   [docs/tutorial.md](tutorial.md)
