@@ -97,6 +97,16 @@ namespace ZDD.Net.Tests.Io
         }
 
         [Fact]
+        public void CompletelyEmptyInputReportsLineOneNotLineZero()
+        {
+            // No line is ever read, so the naive "last line processed" would be 0 — but LineNumber's
+            // contract is 1-based, so this must still report line 1.
+            var ex = Assert.Throws<GraphFormatException>(() => DimacsGraph.Read(new StringReader(string.Empty)));
+            Assert.Equal(1, ex.LineNumber);
+            Assert.StartsWith("Line 1:", ex.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void EdgeCountMismatchIsRejectedWithTheOffendingLineNumber()
         {
             var ex = Assert.Throws<GraphFormatException>(

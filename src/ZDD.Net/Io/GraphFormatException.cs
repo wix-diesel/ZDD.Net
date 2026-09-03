@@ -13,13 +13,20 @@ namespace ZDD.Net.Io
         /// <summary>The 1-based line number of the input where the error was found.</summary>
         public int LineNumber { get; }
 
-        /// <summary>Creates an exception reporting a parse failure at <paramref name="lineNumber"/>.</summary>
-        /// <param name="lineNumber">The 1-based line number where the error was found.</param>
+        /// <summary>
+        /// Creates an exception reporting a parse failure at <paramref name="lineNumber"/>.
+        /// </summary>
+        /// <param name="lineNumber">
+        /// The 1-based line number where the error was found. A reader reporting a structural error
+        /// found only after running out of input (a missing header, for instance) may pass <c>0</c>
+        /// here, meaning "before line 1"; it is clamped to <c>1</c> so <see cref="LineNumber"/> and the
+        /// message always honor the 1-based promise.
+        /// </param>
         /// <param name="message">A description of what went wrong on that line.</param>
         public GraphFormatException(int lineNumber, string message)
-            : base($"Line {lineNumber}: {message}")
+            : base($"Line {Math.Max(lineNumber, 1)}: {message}")
         {
-            LineNumber = lineNumber;
+            LineNumber = Math.Max(lineNumber, 1);
         }
     }
 }

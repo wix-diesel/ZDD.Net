@@ -90,6 +90,14 @@ namespace ZDD.Net.Tests.Io
         }
 
         [Fact]
+        public void CompletelyEmptyInputReportsLineOneNotLineZero()
+        {
+            var ex = Assert.Throws<GraphFormatException>(() => SimpleTextGraph.Read(string.Empty));
+            Assert.Equal(1, ex.LineNumber);
+            Assert.StartsWith("Line 1:", ex.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void EdgeCountMismatchIsRejectedWithTheOffendingLineNumber()
         {
             var ex = Assert.Throws<GraphFormatException>(() => SimpleTextGraph.Read("graph 3 2\nedge 0 1\n"));

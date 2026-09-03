@@ -82,6 +82,14 @@ namespace ZDD.Net.Tests.Io
         }
 
         [Fact]
+        public void CompletelyEmptyInputReportsLineOneNotLineZero()
+        {
+            var ex = Assert.Throws<GraphFormatException>(() => EdgeListGraph.Read(string.Empty));
+            Assert.Equal(1, ex.LineNumber);
+            Assert.StartsWith("Line 1:", ex.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void OutOfRangeVertexIsRejectedWithTheOffendingLineNumber()
         {
             var ex = Assert.Throws<GraphFormatException>(() => EdgeListGraph.Read("3\n0 1\n1 5\n"));
