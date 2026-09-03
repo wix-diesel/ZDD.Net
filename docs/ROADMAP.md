@@ -137,7 +137,7 @@ Core レイヤは下から積むため、序盤の PR は `internal` のコー�
 | [ ] | **M4-2** | SIMD・低レベル最適化 | 状態比較とハッシュの `System.Runtime.Intrinsics` 化、`ref`/`Unsafe` による境界チェック除去 | 結果が完全一致し、代表ベンチで改善 | 〜300 | M4-1 |
 | [ ] | **M4-3** | 並列フロンティア構築 | レベル内展開の `Parallel.For` 化、パーティション別状態表 | **決定的な結果**（並列でもノード ID が一致）、4 コアで 2.5 倍以上 | 〜400 | M4-2 |
 | [x] | **M4-4** | 連結部分グラフ | `ConnectedSubgraphSpec(terminals)` | 小グラフで総当たり照合 | 〜300 | M3-11 |
-| [ ] | **M4-5** | シュタイナー木 | `SteinerTreeSpec` | 既知の最小シュタイナー木と一致 | 〜250 | M4-4 |
+| [x] | **M4-5** | シュタイナー木 | `SteinerTreeSpec` | 既知の最小シュタイナー木と一致 | 〜250 | M4-4 |
 | [ ] | **M4-6** | 分割・カット | `GraphPartitionSpec(k, balance)` / `CutSpec(s,t)` | 小グラフで総当たり照合 | 〜350 | M4-4 |
 | [ ] | **M4-7** | 彩色・オートマトン | `ColoringSpec(k)` / `DfaSpec` | 彩色多項式と一致 | 〜300 | M3-11 |
 | [ ] | **M4-8** | 比較レポート | Graphillion / TdZdd との比較を `docs/benchmarks.md` に記載 | 目標（3 倍以内）の達否を明記 | ドキュメント | M4-3 |

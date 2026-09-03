@@ -33,6 +33,24 @@ namespace ZDD.Net.Specs
         }
 
         /// <summary>
+        /// Whether the vertices occupying <paramref name="su"/> and <paramref name="sv"/> already belong to
+        /// the same component — i.e. taking the edge between them would close a cycle. <see cref="ConnectedSubgraphSpec"/>
+        /// allows cycles, so it never needs this; callers that must reject cycles outright check this before
+        /// calling <see cref="Merge"/> instead — see <see cref="SteinerTreeSpec"/>.
+        /// </summary>
+        /// <param name="state">The comp-array state.</param>
+        /// <param name="su">The comp slot of one edge endpoint.</param>
+        /// <param name="sv">The comp slot of the other edge endpoint.</param>
+        internal static bool SameComponent(ReadOnlySpan<int> state, int su, int sv)
+        {
+            int codeU = state[su];
+            int codeV = state[sv];
+            int repU = (codeU < 0 ? -codeU : codeU) - 1;
+            int repV = (codeV < 0 ? -codeV : codeV) - 1;
+            return repU == repV;
+        }
+
+        /// <summary>
         /// Joins the components of the two vertices occupying <paramref name="su"/> and <paramref name="sv"/>.
         /// Always succeeds — taking an edge between two vertices already in the same component just closes
         /// a cycle, which this spec allows.
