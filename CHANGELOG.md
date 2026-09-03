@@ -8,6 +8,20 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
 
 ## [Unreleased]
 
+### Added
+
+- `ZDD.Net.Frontier.BuildOptions.MaxDegreeOfParallelism`: フロンティア構築のレベル内展開を
+  `Parallel.For` で並列化（M4-3、issue #46）。既定値は `Environment.ProcessorCount`、`1` で常に
+  逐次実行になる。幅が閾値（既定 2048 状態）を超えた水準だけが並列パスを通り、それ未満は従来どおり
+  逐次実行——**並列度をいくつにしても、できあがる ZDD のノード ID は逐次実行と完全に一致する**
+  （`tests/ZDD.Net.Tests/Frontier/ParallelFrontierTests.cs` で検証）。`CancellationToken` は
+  並列実行中も観測され、`GetChild` の例外は 1 パーティションだけの失敗なら元の例外型のまま、
+  複数パーティションが同時に失敗すれば `AggregateException` のまま伝播する。実測（4 コア）では、
+  このライブラリの組み込みスペックは状態表への登録コストが `GetChild` 自体より重いため大きな
+  高速化は見込めない（0.9x 前後）一方、`GetChild` 自体が重いスペックでは実際に効く（合成ベンチで
+  2.4x）——詳細と設計判断は [docs/benchmarks.md](docs/benchmarks.md) の M4-3 節、使い方は
+  [docs/frontier-guide.md](docs/frontier-guide.md) §6.3 を参照
+
 ### Changed
 
 - `ZDD.Net.Core.OperationCache`: サイズを自動拡大する際、旧実装は全エントリを捨てて空の配列に

@@ -11,6 +11,9 @@ namespace ZDD.Net.Frontier
     /// Equality and hashing are element-wise over the array, so a slot that no longer matters must be
     /// cleared to a fixed value; leftovers keep equivalent states from merging. Slots are stored packed
     /// into one to four bytes each, by the range of the values they hold, so small values cost less.
+    /// A wide-enough level is expanded by calling <see cref="GetChild"/> from several threads at once
+    /// (<see cref="BuildOptions.MaxDegreeOfParallelism"/>, M4-3) — see docs/frontier-spec-guide.md §4
+    /// for what that requires of the spec.
     /// </remarks>
     public interface IArrayDdSpec
     {

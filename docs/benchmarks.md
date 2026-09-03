@@ -623,3 +623,112 @@ issue の本文はハッシュと比較の両方を SIMD 化するよう求め�
 `src/ZDD.Net/ZDD.Net.csproj` の `IsAotCompatible`/`EnableTrimAnalyzer` はどちらも変更なしで
 維持（`Vector128`/`Vector256` の汎用 API はリフレクションを使わず、AOT・トリミングと両立する）。
 `Directory.Build.props` の `TreatWarningsAsErrors` の下でも警告 0 でビルドが通る。
+
+## M4-3: 並列フロンティア構築（レベル内展開の `Parallel.For` 化）
+
+`src/ZDD.Net/Frontier/TopDownExpander.cs` / `ArrayTopDownExpander.cs` のレベル内展開を
+`Parallel.For` 化した記録（issue #46）。測定環境は上表と同じだが、**このセッションのサンドボックスは
+論理コア 4（`Environment.ProcessorCount == 4`）**——issue が要求する「4 コアで 2.5 倍以上」を
+そのまま検証できる環境である。実行方法:
+
+```bash
+dotnet run -c Release --project bench/ZDD.Net.Benchmarks -- parallel-frontier
+```
+
+### 設計判断: パーティション別状態表 vs 単一スレッドでの結合（実測で決めた）
+
+issue 本文は「パーティション別状態表 → 結合」と「ロックフリーの共有表」のどちらを採るかを実測で
+決め、理由を書くよう求めている。ここではさらにもう 1 つ、**「状態表への登録（`GetOrAdd`）自体を
+パーティションごとに並列化するか、`GetChild` の計算だけを並列化して登録は結合時に 1 スレッドで
+まとめて行うか」**という設計判断があり、両方を実装して実測した。
+
+1. **案 A（パーティション別状態表）**: 各パーティションが自分専用の `StructLevelStateTable` /
+   `ArrayLevelStateTable` を持ち、`GetChild` の結果をそのパーティション内で重複除去してから、
+   結合時にその中の**重複を除いた状態だけ**を共有の状態表へ登録し直す。
+2. **案 B（単一スレッドでの結合、採用）**: 各パーティションは `GetChild` を呼ぶだけで、結果
+   （非終端なら子状態そのもの）をパーティションごとのスクラッチ配列に置くだけ。共有の状態表への
+   登録（ハッシュ計算・線形探索・比較を含む `GetOrAdd`）は、全パーティションの計算が終わったあと、
+   **単一スレッドがパーティション順に 1 回だけ**行う。
+
+案 A は「パーティション内で重複を先に潰せば、結合時に登録し直す件数が減る」という直感に基づく。
+実測すると次の 2 点で裏目に出た:
+
+- **パーティション内の重複率は、直感ほど高くない**。幅 200,000・パーティション 4 個の合成ケース
+  （下記 `Synthetic_WideCheapGetChild`）では、1 パーティションが担当するのは状態空間 200,000 に対して
+  約 100,000 回の書き込みで、期待される重複除去後の distinct 数は約 78,700（誕生日問題の近似）
+  ——重複はたかだか 2 割程度にしかならない。
+- **状態表への登録そのものが、既にこのライブラリの支配的コストである**。合成ケースで計測すると、
+  幅 200,000 の 1 水準あたり `GetChild` の並列計算（4 スレッド）は 0.5〜1 ms で終わるのに対し、
+  結合（単一スレッドでの `AddState`）には 14〜18 ms かかる——**登録コストは計算コストの
+  15〜30 倍**。案 A はこの支配的な登録コストを「パーティション内で 1 回・結合時にもう 1 回」と
+  **2 回払う**設計になり、パーティション内の重複除去がその 2 回目のコストをたかだか 2 割しか
+  減らせないため、トータルでは案 B（登録を 1 回だけ払う）に負ける。実測（幅 200,000 のケースで
+  案 A vs 案 B）は案 A が 0.70x（案 B は後述のとおり 0.9x 台）——**案 A は案 B より明確に遅い**。
+
+**採用したのは案 B**。理由は上記の実測に加え、実装も大幅に単純になる（パーティションごとの
+専用状態表・`PackedStateLayout`・水準別の「触れた水準」台帳が丸ごと不要になり、パーティションの
+スクラッチはただの配列 2 本で済む）。ロックフリー共有表（もう 1 つの選択肢）は、登録コストそのものを
+並列化できる可能性はあるが、オープンアドレス法の表を複数スレッドから安全に書き込めるようにする
+実装は本 PR の規模を大きく超えるため見送った——下記の結果が示すとおり、**このライブラリの
+組み込みスペックでは `GetChild` 自体がボトルネックになることは稀**なので、効果が実測で確認できる
+までは持ち越す判断とした。
+
+### 結果: 状態表がボトルネックな実ケースでは伸びない。`GetChild` がボトルネックなら伸びる
+
+| ケース | 内容 | DOP=1 (Min) | DOP=4 (Min) | 速度比 (Min) | 速度比（ラウンド中央値） |
+|---|---|---:|---:|---:|---:|
+| `LinearConstraint_1000ItemsKnapsack` | 既存 10 ケースの 1 つ（ピーク幅 12,751） | 2,216.5 ms | 2,384.4 ms | 0.93x | 0.91x |
+| `Path_Grid3x9_Shuffled_AsGiven` | M3-2 節と同じ（ピーク幅 457,728） | 468.4 ms | 541.0 ms | 0.87x | 0.87x |
+| `Synthetic_WideCheapGetChild` | 幅 200,000 が 17 水準続く合成ケース、`GetChild` は激安 | 326.8 ms | 360.6 ms | 0.91x | 0.91x |
+| `Synthetic_WideExpensiveGetChild` | 同じ幅の形だが `GetChild` に人為的な重い計算を入れたもの | 1,195.9 ms | 489.2 ms | **2.44x** | **2.44x** |
+
+（`bench/ZDD.Net.Benchmarks/ParallelFrontierReport.cs` 参照。`Synthetic_*` は
+`SyntheticWideSpecs.cs` の `ScratchWideSpec` / `ScratchExpensiveWideSpec`。DOP=1 と DOP=4 を
+1 ラウンドずつ交互に測り、Min と「ラウンドごとの比の中央値」の両方を見る——M3-2 節の方式と同じ。）
+
+- **正直な結果: 実在する組み込みスペック（`LinearConstraint`・`PathSpec`）は、どちらも
+  4 コアで速くならない、むしろわずかに遅い**（0.87〜0.93x）。理由は上の設計判断の節で測った通り、
+  **状態表への登録（ハッシュ計算・オープンアドレス法の探索・比較）が、このライブラリでは
+  `GetChild` よりずっと重い**ため。本実装は `GetChild` の計算だけを並列化するので、支配的コストが
+  並列化されない案 B ではそもそも大きな高速化を狙える構造になっていない——`Synthetic_WideCheapGetChild`
+  （`GetChild` を極限まで軽くした合成ケース)ですら 0.91x にしかならないのが、その裏付けになっている。
+- **メカニズムそのものは正しく機能する**: `GetChild` に人為的に重い計算を入れた
+  `Synthetic_WideExpensiveGetChild` は **2.44x**——4 コアでの理論上限 4x に対して妥当な値
+  （結合フェーズは並列化されない固定コストとして残るので、Amdahl の法則により 4x には届かない）。
+  issue が求める「4 コアで 2.5 倍以上」にわずかに届かないが、`_work` パラメータをさらに増やして
+  `GetChild` の比重を上げれば 2.5x 前後まで近づく（実測: `_work=1000` で 2.37x、`_work=3000` で
+  2.44x——収穫逓減しながら 4x に漸近する形）。**このメカニズムは、`GetChild` 自体が重い
+  スペック（複雑な組み合わせ制約の評価など）を書けば実際に効く**、という結論の裏付けである。
+- **今回計測した組み込みスペックはどれも 2.5x に届かない**——**正直にそう記録する**。
+  M4-2（issue #45）が状態ハッシュを SIMD 化までして最適化する必要があったのも、この
+  「状態表の操作がボトルネック」という同じ事実の裏返しである。並列化そのものは（決定性・上限・
+  キャンセル・例外伝播を含めて）正しく動作し、`GetChild` が重いカスタムスペックには実際に効くので
+  機能として残す価値はあるが、**このライブラリに同梱されている組み込みスペックだけを見るなら、
+  現時点で `MaxDegreeOfParallelism` を既定値以上に上げても大きな恩恵は無い**、というのが
+  この節の実測に基づく結論である。
+
+### 正しさ: 並列度によらずノード ID は完全一致
+
+- `tests/ZDD.Net.Tests/Frontier/ParallelFrontierTests.cs` が、`MaxDegreeOfParallelism` を
+  1・2・4 と変えて構築した一時ノード表（`TemporaryNodeTable`）が、水準・幅・全ノードの Lo/Hi まで
+  完全に一致することを検証する（複数回実行しても毎回一致することも検証）。`FrontierBuilder.Build`
+  経由でも `ZddManager.NodeCount` / `Zdd.Count` / `Zdd.ToDot()` の出力まで一致することを確認済み
+  ——「並列度によってノード ID が変わる」という、このお題最大の難所は起きていない。
+- `.github/workflows/ci.yml` に `build-test-parallel-frontier` ジョブを追加: 環境変数
+  `ZDD_FORCE_PARALLEL_FRONTIER=1` を立てて `ZDD.Net.Tests` 一式（1,344 件）を実行し、既存の
+  M1〜M3 の全テストを、通常なら幅が全く足りない小さなスペックでも並列パス（結合ロジックを含む）
+  を強制的に通した状態で確かめる（`ZDD_DISABLE_SIMD` と同じ仕組み。
+  `TopDownExpander`/`ArrayTopDownExpander` の `ComputePartitionCount` が読む）。ローカルでも
+  `ZDD_FORCE_PARALLEL_FRONTIER=1 dotnet test tests/ZDD.Net.Tests` で同じ経路を再現できる。
+- `CancellationToken` によるキャンセルは並列実行中も効く
+  （`ParallelFrontierTests.CancellationStopsAParallelBuild`）。並列展開中の例外は、
+  1 パーティションだけが投げた場合は `AggregateException` から自動的に unwrap されて元の例外型の
+  まま伝播し（`Parallel.For` は例外を投げたパーティションが 1 つでも必ず `AggregateException` で
+  包むため、単一パーティションの失敗を逐次実行と同じ見た目に揃えている）、複数パーティションが
+  同時に投げた場合は `AggregateException` のまま伝播する（`ParallelFrontierTests` の
+  `ASingleFailureDuringAParallelRoundUnwrapsToTheOriginalException` /
+  `MultipleFailuresDuringAParallelRoundPropagateAsAnAggregateException`）。
+- 組み込みスペックは全て「呼び出しをまたいで共有される可変フィールドを持たない」という並列構築の
+  要件（docs/frontier-spec-guide.md §4）を満たす——`Graph` / `FrontierManager` /
+  `VertexFrontierManager` と、構築時に 1 度だけ計算する `readonly` の補助テーブルだけを持ち、
+  `GetChild` の中で書き換えるフィールドを一切持たないことをソースレビューで確認済み。

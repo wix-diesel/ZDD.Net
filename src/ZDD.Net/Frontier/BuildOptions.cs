@@ -19,6 +19,7 @@ namespace ZDD.Net.Frontier
 
         private int _maxNodeCount = Unlimited;
         private int _maxFrontierSize = Unlimited;
+        private int _maxDegreeOfParallelism = Environment.ProcessorCount;
 
         /// <summary>
         /// Upper bound on the temporary nodes one build may create, counting every level together.
@@ -61,6 +62,28 @@ namespace ZDD.Net.Frontier
                 }
 
                 _maxFrontierSize = value;
+            }
+        }
+
+        /// <summary>
+        /// Upper bound on the worker threads a level's expansion may use at once (M4-3, issue #46).
+        /// <c>1</c> forces the sequential path unconditionally; above that, a level is still expanded
+        /// sequentially when it is too narrow for parallelism to pay for itself (docs/PLAN.md §10-8).
+        /// </summary>
+        /// <value>Positive. Defaults to <see cref="Environment.ProcessorCount"/>.</value>
+        /// <remarks>
+        /// Whatever degree is used, the build's node IDs are byte-identical to the sequential ones
+        /// (docs/frontier-guide.md §6.3): only <em>how</em> a wide level's states are computed and
+        /// merged into the shared per-level table changes, never the order they are registered in.
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">Value is not positive.</exception>
+        public int MaxDegreeOfParallelism
+        {
+            get => _maxDegreeOfParallelism;
+            set
+            {
+                ThrowHelper.ThrowIfNegativeOrZero(value, nameof(MaxDegreeOfParallelism));
+                _maxDegreeOfParallelism = value;
             }
         }
 

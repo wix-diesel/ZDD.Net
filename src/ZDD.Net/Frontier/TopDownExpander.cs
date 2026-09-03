@@ -1,6 +1,8 @@
 using System;
 using System.Diagnostics;
+using System.Runtime.ExceptionServices;
 using System.Threading;
+using System.Threading.Tasks;
 using ZDD.Net.Internal;
 
 namespace ZDD.Net.Frontier
@@ -30,6 +32,27 @@ namespace ZDD.Net.Frontier
     /// Write the spec as a <c>readonly struct</c>: it is held in a readonly field, so a mutable one is
     /// defensively copied on every call.
     /// </para>
+    /// <para>
+    /// <b>Parallel level expansion (M4-3, issue #46).</b> A level wide enough to be worth it is split
+    /// into contiguous, index-ordered partitions; each runs on its own thread, calling <c>GetChild</c>
+    /// independently and stashing a non-terminal child's state into a scratch slot private to that
+    /// partition (<see cref="RunPartition"/>) — never touching the shared per-level tables at all.
+    /// Once every partition finishes, a single thread walks their scratch slots back in partition order
+    /// — the same order a sequential run would have visited those states in — registering each one into
+    /// the shared tables through the ordinary <see cref="AddState"/> (<see cref="MergePartitions"/>).
+    /// That single-threaded replay is what makes the result deterministic: node IDs come from a state's
+    /// position in its level's table, so as long as states reach <see cref="AddState"/> in the same
+    /// order, the IDs match regardless of how many partitions ran or how their threads happened to
+    /// finish. An earlier version of this design gave each partition its own dedup table instead, so
+    /// that only the distinct states left after a partition-local pass paid for a second, shared-table
+    /// registration; docs/benchmarks.md's M4-3 section measured that against this one and found the
+    /// second hash-table pass cost more than the parallel <c>GetChild</c> calls saved, on every case
+    /// tried — so registration happens exactly once, on the merge thread, and only the state
+    /// computation itself runs in parallel. This requires the spec to share no mutable state across
+    /// calls (docs/frontier-spec-guide.md §4) — every built-in spec in this library satisfies that
+    /// already, since none holds anything beyond immutable reference data computed once at construction
+    /// (<c>Graph</c>, <c>FrontierManager</c>, precomputed arrays).
+    /// </para>
     /// </remarks>
     internal sealed class TopDownExpander<TSpec, TState>
         where TSpec : struct, IDdSpec<TState>
@@ -43,10 +66,19 @@ namespace ZDD.Net.Frontier
         /// </summary>
         private const int InitialLevelCapacity = 64;
 
+        /// <summary>
+        /// States a partition must hold before splitting a level any further pays for the thread
+        /// scheduling and merge overhead it costs (docs/benchmarks.md's M4-3 section). Also doubles as
+        /// the "level too small to parallelize" threshold: a level under twice this width never gets a
+        /// second partition, so it always takes the sequential path.
+        /// </summary>
+        private const int MinPartitionWidth = 2048;
+
         private readonly TSpec _spec;
         private readonly int _rootLevel;
         private readonly int _maxNodeCount;
         private readonly int _maxFrontierSize;
+        private readonly int _maxDegreeOfParallelism;
         private readonly CancellationToken _cancellationToken;
         private readonly IProgress<BuildProgress>? _progress;
 
@@ -64,6 +96,7 @@ namespace ZDD.Net.Frontier
             _rootLevel = rootLevel;
             _maxNodeCount = options.MaxNodeCount;
             _maxFrontierSize = options.MaxFrontierSize;
+            _maxDegreeOfParallelism = options.MaxDegreeOfParallelism;
             _cancellationToken = options.CancellationToken;
             _progress = options.Progress;
             _tables = new StructLevelStateTable<TSpec, TState>?[rootLevel + 1];
@@ -136,10 +169,47 @@ namespace ZDD.Net.Frontier
         }
 
         /// <summary>Turns every state of one level into a node, registering the children one level's worth ahead.</summary>
+        /// <remarks>
+        /// Expanding a level only ever adds to lower levels, so the width is fixed once it starts.
+        /// Dispatches to <see cref="ExpandLevelParallel"/> when the level is both wide enough to be
+        /// worth splitting and <see cref="BuildOptions.MaxDegreeOfParallelism"/> allows more than one
+        /// worker; otherwise runs the plain sequential loop.
+        /// </remarks>
         private void ExpandLevel(StructLevelStateTable<TSpec, TState> table, int level)
         {
-            // Expanding a level only ever adds to lower levels, so the width is fixed once it starts.
             int width = table.Count;
+            int partitionCount = _maxDegreeOfParallelism > 1 ? ComputePartitionCount(width) : 1;
+
+            if (partitionCount <= 1)
+            {
+                ExpandLevelSequential(table, level, width);
+            }
+            else
+            {
+                ExpandLevelParallel(table, level, width, partitionCount);
+            }
+        }
+
+        /// <summary>How many contiguous partitions a level of <paramref name="width"/> states should split into.</summary>
+        /// <remarks>
+        /// <see cref="FrontierParallelDiagnostics.ForceParallelForTesting"/> drops the width floor so
+        /// the parallel path — merge included — runs under the existing M1&#8211;M3 regression suite,
+        /// not only under dedicated wide-frontier tests (docs/PLAN.md's CI requirement for M4-3).
+        /// </remarks>
+        private int ComputePartitionCount(int width)
+        {
+            if (FrontierParallelDiagnostics.ForceParallelForTesting)
+            {
+                return Math.Min(_maxDegreeOfParallelism, width);
+            }
+
+            int byWidth = width / MinPartitionWidth;
+            return Math.Min(_maxDegreeOfParallelism, Math.Max(1, byWidth));
+        }
+
+        /// <summary>The plain, single-threaded expansion: every level takes this path when parallelism would not pay.</summary>
+        private void ExpandLevelSequential(StructLevelStateTable<TSpec, TState> table, int level, int width)
+        {
             TemporaryNode[] nodes = new TemporaryNode[width];
             int nextCancellationCheck = CancellationCheckInterval;
 
@@ -157,6 +227,185 @@ namespace ZDD.Net.Frontier
             }
 
             _levels[level] = nodes;
+        }
+
+        /// <summary>
+        /// Splits the level's states across <paramref name="partitionCount"/> contiguous, independently
+        /// computed partitions (<see cref="RunPartition"/>), then replays their results into the shared
+        /// per-level tables in partition order (<see cref="MergePartitions"/>) — see the type's remarks
+        /// for why that ordering is what keeps the result deterministic, and why registration itself
+        /// stays single-threaded instead of also being split per partition.
+        /// </summary>
+        private void ExpandLevelParallel(StructLevelStateTable<TSpec, TState> table, int level, int width, int partitionCount)
+        {
+            int[] starts = ComputePartitionStarts(width, partitionCount);
+            TemporaryNode[] nodes = new TemporaryNode[width];
+
+            // Every branch of every state gets one scratch slot, whether it turns out terminal or not:
+            // slot (index - starts[p]) * 2 + value. A terminal's TemporaryNodeId is already final and
+            // never touches pendingChildren; a non-terminal one stores its still-unregistered child
+            // state there and carries the slot as its own Index, which MergePartitions resolves.
+            TemporaryNodeId[][] pendingIds = new TemporaryNodeId[partitionCount][];
+            TState[][] pendingChildren = new TState[partitionCount][];
+
+            for (int p = 0; p < partitionCount; p++)
+            {
+                int partitionWidth = starts[p + 1] - starts[p];
+                pendingIds[p] = new TemporaryNodeId[partitionWidth * 2];
+                pendingChildren[p] = new TState[partitionWidth * 2];
+            }
+
+            ParallelOptions parallelOptions = new ParallelOptions
+            {
+                MaxDegreeOfParallelism = partitionCount,
+                CancellationToken = _cancellationToken,
+            };
+
+            try
+            {
+                Parallel.For(0, partitionCount, parallelOptions, partitionIndex =>
+                    RunPartition(table, level, starts, partitionIndex, pendingIds[partitionIndex], pendingChildren[partitionIndex]));
+            }
+            catch (AggregateException aggregate) when (aggregate.InnerExceptions.Count == 1)
+            {
+                // A spec's GetChild throwing is the only expected non-cancellation failure here, and
+                // Parallel.For always wraps it, even with a single partition at fault (docs/frontier-
+                // guide.md §6.3). Unwrapping the common single-exception case keeps that failure look
+                // the same as it would from the sequential path; a genuine multi-partition failure is
+                // rare enough (and only possible with a spec whose GetChild is not itself deterministic)
+                // that surfacing the real AggregateException, documented, is the honest choice.
+                ExceptionDispatchInfo.Capture(aggregate.InnerExceptions[0]).Throw();
+                throw; // Unreachable: Throw() above always throws.
+            }
+
+            MergePartitions(starts, partitionCount, nodes, pendingIds, pendingChildren);
+
+            _levels[level] = nodes;
+        }
+
+        /// <summary>Balanced contiguous partition boundaries: partition <c>p</c> is <c>[starts[p], starts[p + 1])</c>.</summary>
+        private static int[] ComputePartitionStarts(int width, int partitionCount)
+        {
+            int[] starts = new int[partitionCount + 1];
+
+            for (int p = 0; p <= partitionCount; p++)
+            {
+                starts[p] = (int)((long)width * p / partitionCount);
+            }
+
+            return starts;
+        }
+
+        /// <summary>
+        /// Computes one partition's share of a level: every branch of every state in
+        /// <c>[starts[partitionIndex], starts[partitionIndex + 1])</c>, calling <c>GetChild</c> but
+        /// never touching the shared per-level tables — a non-terminal result is just stashed in
+        /// <paramref name="pendingChildren"/> for <see cref="MergePartitions"/> to register afterwards.
+        /// </summary>
+        private void RunPartition(
+            StructLevelStateTable<TSpec, TState> table,
+            int level,
+            int[] starts,
+            int partitionIndex,
+            TemporaryNodeId[] pendingIds,
+            TState[] pendingChildren)
+        {
+            int start = starts[partitionIndex];
+            int end = starts[partitionIndex + 1];
+            int nextCancellationCheck = start + CancellationCheckInterval;
+
+            for (int index = start; index < end; index++)
+            {
+                if (index == nextCancellationCheck)
+                {
+                    _cancellationToken.ThrowIfCancellationRequested();
+                    nextCancellationCheck += CancellationCheckInterval;
+                }
+
+                int slot = (index - start) * 2;
+                pendingIds[slot] = ComputeChild(table[index], level, 0, pendingChildren, slot);
+                pendingIds[slot + 1] = ComputeChild(table[index], level, 1, pendingChildren, slot + 1);
+            }
+        }
+
+        /// <summary>
+        /// The parallel-path twin of <see cref="Branch"/>: a non-terminal child is stashed in
+        /// <paramref name="pendingChildren"/> rather than registered, since registration must stay on
+        /// the single merge thread (see the type's remarks).
+        /// </summary>
+        private TemporaryNodeId ComputeChild(in TState state, int level, int value, TState[] pendingChildren, int slot)
+        {
+            TState child = state;
+            int childLevel = _spec.GetChild(ref child, level, value);
+
+            Debug.Assert(
+                DdResult.IsTerminal(childLevel) || (childLevel >= 1 && childLevel < level),
+                "GetChild must return a level below the one it was given, or a terminal.");
+
+            if (childLevel == DdResult.False)
+            {
+                return TemporaryNodeId.Bottom;
+            }
+
+            if (childLevel == DdResult.True)
+            {
+                return TemporaryNodeId.Top;
+            }
+
+            pendingChildren[slot] = child;
+
+            // The Index here is this slot, not a table index yet — ResolvePending reads it back.
+            return new TemporaryNodeId(childLevel, slot);
+        }
+
+        /// <summary>
+        /// Replays every partition's pending children into the shared per-level tables, one partition at
+        /// a time in index order, filling in <paramref name="nodes"/> as it goes. Processing partitions
+        /// in order — never completion order — is what makes a state's final index the same one the
+        /// sequential path would have given it: partition 0's states reach <see cref="AddState"/> before
+        /// partition 1's, exactly as they would if a single thread had walked the whole level in order.
+        /// </summary>
+        private void MergePartitions(
+            int[] starts,
+            int partitionCount,
+            TemporaryNode[] nodes,
+            TemporaryNodeId[][] pendingIds,
+            TState[][] pendingChildren)
+        {
+            int nextCancellationCheck = CancellationCheckInterval;
+
+            for (int p = 0; p < partitionCount; p++)
+            {
+                int start = starts[p];
+                int end = starts[p + 1];
+                TemporaryNodeId[] ids = pendingIds[p];
+                TState[] children = pendingChildren[p];
+
+                for (int index = start; index < end; index++)
+                {
+                    if (index == nextCancellationCheck)
+                    {
+                        _cancellationToken.ThrowIfCancellationRequested();
+                        nextCancellationCheck += CancellationCheckInterval;
+                    }
+
+                    int slot = (index - start) * 2;
+                    nodes[index] = new TemporaryNode(
+                        ResolvePending(ids[slot], children),
+                        ResolvePending(ids[slot + 1], children));
+                }
+            }
+        }
+
+        /// <summary>Registers a pending child (if not already a terminal) and returns its final, shared id.</summary>
+        private TemporaryNodeId ResolvePending(TemporaryNodeId pending, TState[] pendingChildren)
+        {
+            if (pending.IsTerminal)
+            {
+                return pending;
+            }
+
+            return new TemporaryNodeId(pending.Level, AddState(pendingChildren[pending.Index], pending.Level));
         }
 
         /// <summary>Follows one branch of one state and returns where it lands.</summary>
