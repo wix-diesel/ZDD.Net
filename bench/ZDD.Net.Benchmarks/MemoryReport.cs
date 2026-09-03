@@ -59,6 +59,11 @@ namespace ZDD.Net.Benchmarks
             {
                 yield return (name, build, variableCount);
             }
+
+            foreach ((string name, Func<ZddManager, BuildOptions?, Zdd> build, int variableCount) in ComparisonReport.Cases())
+            {
+                yield return (name, build, variableCount);
+            }
         }
 
         /// <summary>Builds one case, reporting what it held at its widest.</summary>

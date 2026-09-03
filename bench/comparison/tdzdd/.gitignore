@@ -1,0 +1,10 @@
+# Build outputs and generated graph files (see README.md to rebuild/regenerate).
+gen_grid
+gen_complete
+grid_paths
+spanning_tree
+matching
+independent_set
+cardinality
+*.dat
+*.o
