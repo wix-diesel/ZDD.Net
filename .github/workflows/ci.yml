@@ -76,6 +76,12 @@ jobs:
         run: >
           dotnet run --project samples/Zdd.FrontierGuide --no-restore --no-build --configuration Release
 
+      - name: tutorial サンプルの実行
+        # docs/tutorial.md に載せているコード片(samples/Zdd.Tutorial)を実際に動かし、
+        # チュートリアルのサンプルが壊れていないことを確かめる。
+        run: >
+          dotnet run --project samples/Zdd.Tutorial --no-restore --no-build --configuration Release
+
       - name: DOT のアップロード
         uses: actions/upload-artifact@v7
         if: always()

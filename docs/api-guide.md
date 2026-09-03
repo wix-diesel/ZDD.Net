@@ -12,7 +12,9 @@
 dotnet run --project samples/Zdd.ApiGuide
 ```
 
-- 対象バージョン: v0.2（Core エンジン。フロンティア法・グラフ API は [docs/frontier-guide.md](frontier-guide.md) を参照）
+- 対象バージョン: v0.3（Core エンジン。以下の演算・API 自体は M1 完成時点から変わっていない。
+  フロンティア法・グラフ API は [docs/frontier-guide.md](frontier-guide.md)、
+  「格子グラフの s–t パスを数える」から始まる一本道の入門は [docs/tutorial.md](tutorial.md) を参照）
 
 ---
 
@@ -292,7 +294,10 @@ ZDD.Net は大量の小さな配列（ノード表・一意化表・演算キャ
 
 ## 6. さらに詳しく
 
-- フロンティア法フレームワーク・グラフ問題 API の使い方: [docs/frontier-guide.md](frontier-guide.md)
+- 「格子グラフの s–t パスを数える」から「実グラフを読み込んで解く」までの一本道の入門:
+  [docs/tutorial.md](tutorial.md)
+- フロンティア法フレームワーク・グラフ問題 API の使い方（`GraphSet`/`SetSet<T>`/グラフ入出力を含む）:
+  [docs/frontier-guide.md](frontier-guide.md)
 - スペックの規約の詳しい説明: [docs/frontier-spec-guide.md](frontier-spec-guide.md)
 - 仕様・アーキテクチャの全体像: [docs/PLAN.md](PLAN.md)
 - マイルストーン別の実装計画: [docs/ROADMAP.md](ROADMAP.md)

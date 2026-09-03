@@ -14,7 +14,8 @@ CI が毎回ビルドして実行している（`.github/workflows/ci.yml` の�
 dotnet run --project samples/Zdd.FrontierGuide
 ```
 
-- 対象バージョン: v0.2（M2 フロンティア法フレームワーク完成版）＋ M3-1（辺順序の最適化。次期リリース）
+- 対象バージョン: v0.3（M3「数千辺への対応と高レベル API」完成版。辺順序の最適化・状態の
+  bit-packing・スペック合成・`GraphSet`/`SetSet<T>`・グラフ入出力を含む）
 
 ---
 
@@ -98,6 +99,7 @@ Graph optimized = grid.Optimize(EdgeOrderStrategy.Bfs);
 | `CliqueSpec` | グラフのクリーク（内部で補グラフの `IndependentSetSpec` に委譲） | 同上（補グラフ上） | `IArrayDdSpec` |
 | `VertexCoverSpec` | グラフの頂点被覆 | フロンティア頂点ごとの選択フラグ | `IArrayDdSpec` |
 | `DominatingSetSpec` | グラフの支配集合 | フロンティア頂点ごとの「選択／被支配／未支配」の3値 | `IArrayDdSpec` |
+| `DegreeConstraintSpec` | 各頂点の次数が `[lo[v], hi[v]]` に収まる辺集合（マッチング・パス・サイクルなどの一般形） | フロンティア頂点ごとの現在の次数 | `IArrayDdSpec` |
 
 ```csharp
 using ZddManager manager = new ZddManager(variableCount: 5);
@@ -240,9 +242,9 @@ Console.WriteLine(optimized.EstimateMaxFrontierSize());    // 例: 42（並べ�
 | `Bfs` | 幅優先で頂点を訪問し、両端が訪問済みになった時点で辺を出す（既定） | 大半のグラフ。Graphillion と同じ既定 |
 | `Dfs` | 深さ優先版 | 中心から長い鎖が何本も伸びるグラフ（`Bfs` は全ての枝を同時に進めてしまう） |
 | `Grid` | 格子専用の蛇行順序（短い辺に沿って折り返しながら長い辺方向へ進む） | 格子。格子でなければ `Bfs` にフォールバックする |
-| `BeamSearchPathWidth` | パス幅の近似最小化 | **未実装（M3-3）**。呼ぶと `NotSupportedException` |
+| `BeamSearchPathWidth` | パス幅の近似最小化（頂点順序のビームサーチ。厳密最小化は NP 困難） | 格子ではない不規則なグラフ（道路網・電力網など、局所構造を持つが格子でない） |
 
-どの戦略が勝つかはグラフによる（[docs/benchmarks.md](benchmarks.md) の M3-1 節に実測値がある）。
+どの戦略が勝つかはグラフによる（[docs/benchmarks.md](benchmarks.md) の M3-1・M3-3 節に実測値がある）。
 `EstimateMaxFrontierSize(strategy)` は並べ替え後のグラフを作らずに幅だけを返すので、構築前に
 戦略を比較できる:
 
@@ -420,14 +422,43 @@ Zdd shortPaths = FrontierBuilder.Build<PathSpec>(manager, new PathSpec(graph, s,
 Zdd filtered = shortPaths.Subset<CardinalitySpec, int>(atMostTen);
 ```
 
-## 9. さらに詳しく
+## 9. 高レベル API: `GraphSet` / `SetSet<T>` とグラフ入出力
 
+ここまでは `FrontierBuilder.Build<TSpec>` を直接呼ぶ低レベル API を使ってきたが、日常的な用途では
+`ZDD.Net.Graphs.GraphSet`（Graphillion 相当の高レベル API）の方が短く書ける。中身はここまでの
+スペックの上に立つ薄いラッパーで、`GraphSet.Paths` / `Cycles` / `Trees` / `Forests` /
+`Matchings` / `HamiltonianPaths` / `HamiltonianCycles` / `Cliques` / `IndependentSets` という
+生成メソッドと、`Including` / `Excluding` / `Larger` / `Smaller` / `LenEquals` という構築時
+フィルタ（§8 の合成スペックと同じ考え方——絞り込む前の族を経由しない）、`MinIter` / `MaxIter` /
+`RandIter` という遅延列挙、`Sample` / `MaxWeight` / `TopK` などの問い合わせを持つ。
+
+```csharp
+GraphSet paths = GraphSet.Paths(Graph.Grid(9, 9), from: 0, to: 80);
+GraphSet shortPaths = paths.Smaller(20);
+var shortest = paths.MinWeight(edge => 1);
+```
+
+任意の要素型（グラフの辺以外）の族を同じ流儀で扱いたいときは `ZDD.Net.Sets.SetSet<T>` を使う。
+`Zdd` の変数は `int` index だが、`SetSet<T>` は要素 `T` ↔ index の対応を `SetUniverse<T>` に
+肩代わりさせ、`GraphSet` はこの上に立つ `SetSet<Edge>` の特殊化になっている。
+
+グラフを実データ（ファイル）から読み込みたいときは `ZDD.Net.Io`（`DimacsGraph` / `EdgeListGraph` /
+`SimpleTextGraph`）を使う。`GraphSet` と組み合わせた「実グラフを読み込んで解く」エンドツーエンドの
+例、および `Graph.Optimize` を組み合わせた実践的な指針は [docs/tutorial.md](tutorial.md) を参照
+——このガイドより短い一本道の入門としてはそちらの方が向いている。
+
+## 10. さらに詳しく
+
+- 「格子グラフの s–t パスを数える」から「実グラフを読み込んで解く」までの一本道の入門:
+  [docs/tutorial.md](tutorial.md)
 - スペックの規約の詳しい説明（`IDdSpec`/`IArrayDdSpec`/`IHybridDdSpec` の契約、状態の寿命、
   `struct` を強く勧める理由）: [docs/frontier-spec-guide.md](frontier-spec-guide.md)
 - Core（`ZddManager`/`Zdd`）の使い方: [docs/api-guide.md](api-guide.md)
-- ベンチ基準値（代表ケースの実行時間・フロンティア幅・ノード数）: [docs/benchmarks.md](benchmarks.md)
+- ベンチ基準値（代表ケースの実行時間・フロンティア幅・ノード数、数千辺の実グラフでの完走記録）:
+  [docs/benchmarks.md](benchmarks.md)
 - 仕様・アーキテクチャの全体像: [docs/PLAN.md](PLAN.md)
 - マイルストーン別の実装計画: [docs/ROADMAP.md](ROADMAP.md)
 - 実行できるサンプル: [`samples/Zdd.FrontierGuide`](../samples/Zdd.FrontierGuide)（このガイドの
-  コード片）、[`samples/Zdd.Cli`](../samples/Zdd.Cli)（CLI）、
+  コード片）、[`samples/Zdd.Tutorial`](../samples/Zdd.Tutorial)（チュートリアルのコード片）、
+  [`samples/Zdd.Cli`](../samples/Zdd.Cli)（CLI）、
   [`samples/Zdd.ApiGuide`](../samples/Zdd.ApiGuide)（Core のコード片）
