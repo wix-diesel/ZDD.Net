@@ -47,7 +47,16 @@ namespace ZDD.Net.Io
                     throw new ZddFormatException($"Malformed varint while reading '{fieldName}': too many continuation bytes.");
                 }
 
-                result |= (uint)(b & 0x7F) << shift;
+                int data = b & 0x7F;
+
+                // The 5th byte only has 4 valid data bits left (7*4 = 28, and 28 + 4 = 32); any of
+                // its top 3 bits being set would silently shift out of the 32-bit result below.
+                if (i == MaxBytes - 1 && data > 0x0F)
+                {
+                    throw new ZddFormatException($"Malformed varint while reading '{fieldName}': encodes a value that does not fit in 32 bits.");
+                }
+
+                result |= (uint)data << shift;
 
                 if ((b & 0x80) == 0)
                 {

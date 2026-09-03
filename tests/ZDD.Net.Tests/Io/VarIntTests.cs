@@ -59,5 +59,30 @@ namespace ZDD.Net.Tests.Io
 
             Assert.Throws<ZddFormatException>(() => VarInt.ReadUInt32(stream, "value"));
         }
+
+        [Fact]
+        public void TheMaximumValidFifthByteRoundTrips()
+        {
+            // uint.MaxValue's last byte carries data 0x0F (bits 28..31) — the largest value whose
+            // top 3 bits (which would land at result bits 32..34) are all zero.
+            using MemoryStream stream = new MemoryStream(new byte[] { 0xFF, 0xFF, 0xFF, 0xFF, 0x0F });
+
+            Assert.Equal(uint.MaxValue, VarInt.ReadUInt32(stream, "value"));
+        }
+
+        [Theory]
+        [InlineData(0x10)]
+        [InlineData(0x20)]
+        [InlineData(0x40)]
+        [InlineData(0x7F)]
+        public void AFifthByteWithBitsBeyondTheThirtySecondThrows(byte fifthByte)
+        {
+            // A well-formed encoder never emits these (they'd shift out of a 32-bit result), so a
+            // file containing one is corrupt rather than merely a larger-than-expected value.
+            using MemoryStream stream = new MemoryStream(new byte[] { 0xFF, 0xFF, 0xFF, 0xFF, fifthByte });
+
+            ZddFormatException ex = Assert.Throws<ZddFormatException>(() => VarInt.ReadUInt32(stream, "value"));
+            Assert.Contains("32 bits", ex.Message);
+        }
     }
 }
