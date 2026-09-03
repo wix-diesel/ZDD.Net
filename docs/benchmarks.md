@@ -340,7 +340,7 @@ dotnet run -c Release --project bench/ZDD.Net.Benchmarks -- real-graph
 （道路網 DIMACS チャレンジのデータなど）は使えなかった。代わりに、M3-3 節と同じ「点をランダムに
 配置し最近傍 k 点につなぐ」構成（`RealGraphReport.RoadNetwork`、`EdgeOrderReport.GeometricGraph` と
 同じ考え方）で道路網・電力網に近い局所構造を持つグラフを作り、**`ZDD.Net.Io.DimacsGraph` で実際に
-DIMACS テキストへ書き出してから読み直す**（`docs/tutorial.md` §5 のエンドツーエンドの流れそのもの）
+DIMACS テキストへ書き出してから読み直す**（`docs/tutorial.md` §3 のエンドツーエンドの流れそのもの）
 ことで、「ファイルから読んだ実データを扱う」という状況を再現している。正直さが要るのは
 データの出自ではなく**結果**（完走したか、何を要したか）の記述である。
 
@@ -393,7 +393,8 @@ DIMACS テキストへ書き出してから読み直す**（`docs/tutorial.md` �
   状態数そのものではない）。k=4 は各頂点の次数がおよそ倍になり、s–t 間の独立した迂回路の
   組み合わせが k=2 よりはるかに多い——**見積り API（幅）が小さく見えても、迂回路の多いグラフでは
   安全とは限らない**という実例になっている。
-- 実務上の対応は `docs/tutorial.md` §6・docs/frontier-guide.md §5 のとおり:
+- 実務上の対応は `docs/tutorial.md` §4「幅が大きすぎるときにどうするか」・
+  docs/frontier-guide.md §5 のとおり:
   `BuildOptions.MaxNodeCount` / `MaxFrontierSize` で上限を切って
   `BuildLimitExceededException` として安全に検知する（メモリを使い切って落ちるよりまし）、
   対象を絞る（`s`–`t` を近づける、`GraphSet.Smaller` で辺数を絞ってから数える）、

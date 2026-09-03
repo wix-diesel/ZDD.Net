@@ -65,7 +65,7 @@ namespace ZDD.Net.Benchmarks
         private static void RunCase(string name, int vertexCount, int k, int seed)
         {
             // Build a road-network-like graph, then round-trip it through DIMACS text exactly as a user
-            // loading a real data file would (docs/tutorial.md \xa76): the graph the build below actually
+            // loading a real data file would (docs/tutorial.md §3): the graph the build below actually
             // uses is the one that came back out of DimacsGraph.Read, not the in-memory one above.
             Graph source = RoadNetwork(vertexCount, k, seed);
             string dimacs = DimacsGraph.Write(source);
@@ -204,7 +204,15 @@ namespace ZDD.Net.Benchmarks
             return dist;
         }
 
-        /// <summary>Same nearest-neighbor construction as <see cref="EdgeOrderReport.GeometricGraph"/>, kept independent so this report's edge counts do not shift if that one changes.</summary>
+        /// <summary>
+        /// A nearest-neighbor construction similar in spirit to <see cref="EdgeOrderReport.GeometricGraph"/>
+        /// (kept independent so this report's edge counts do not shift if that one changes), but bucketed
+        /// into a uniform grid rather than sorting every other vertex by distance for each point: an
+        /// O(n&#178; log n) full sort is impractical at the tens-of-thousands-of-vertices scale this report
+        /// exercises. Each point instead only scans its own grid cell and an expanding ring of neighbors,
+        /// which is an approximate (not exact) k-nearest-neighbor search &#8212; fine for a graph standing in
+        /// for road-network structure, where the point is local connectivity, not an exact neighbor set.
+        /// </summary>
         private static Graph RoadNetwork(int vertexCount, int k, int seed)
         {
             uint state = (uint)seed + 0x9E3779B9u;
@@ -222,17 +230,78 @@ namespace ZDD.Net.Benchmarks
                 y[i] = NextDouble();
             }
 
-            var seen = new HashSet<Edge>();
-            var edges = new List<Edge>();
+            // A uniform grid over the unit square, sized so a cell holds a handful of points on
+            // average: each vertex's k nearest neighbors can then be found by scanning its own cell
+            // plus an expanding ring of neighboring cells, instead of every other vertex.
+            const int targetPointsPerCell = 8;
+            int cellsPerSide = Math.Max(1, (int)Math.Sqrt(vertexCount / (double)targetPointsPerCell));
+            double cellSize = 1.0 / cellsPerSide;
+            int CellIndex(double v) => Math.Min(cellsPerSide - 1, (int)(v / cellSize));
+
+            var cellOfVertex = new (int Cx, int Cy)[vertexCount];
+            var buckets = new List<int>[cellsPerSide, cellsPerSide];
+            for (int cx = 0; cx < cellsPerSide; cx++)
+            {
+                for (int cy = 0; cy < cellsPerSide; cy++)
+                {
+                    buckets[cx, cy] = new List<int>();
+                }
+            }
+
             for (int i = 0; i < vertexCount; i++)
             {
-                IEnumerable<int> nearest = Enumerable.Range(0, vertexCount)
-                    .Where(j => j != i)
-                    .OrderBy(j => ((x[i] - x[j]) * (x[i] - x[j])) + ((y[i] - y[j]) * (y[i] - y[j])))
-                    .Take(k);
+                int cx = CellIndex(x[i]);
+                int cy = CellIndex(y[i]);
+                cellOfVertex[i] = (cx, cy);
+                buckets[cx, cy].Add(i);
+            }
 
-                foreach (int j in nearest)
+            var seen = new HashSet<Edge>();
+            var edges = new List<Edge>();
+            var candidates = new List<(double DistSq, int Index)>();
+
+            for (int i = 0; i < vertexCount; i++)
+            {
+                (int cx, int cy) = cellOfVertex[i];
+
+                // Expand the search radius (in cells) until at least k other points have been found.
+                // Most points find enough neighbors at radius 1; only sparse regions near the grid's
+                // edges need to widen further.
+                int radius = 1;
+                do
                 {
+                    candidates.Clear();
+                    int minCx = Math.Max(0, cx - radius);
+                    int maxCx = Math.Min(cellsPerSide - 1, cx + radius);
+                    int minCy = Math.Max(0, cy - radius);
+                    int maxCy = Math.Min(cellsPerSide - 1, cy + radius);
+
+                    for (int ncx = minCx; ncx <= maxCx; ncx++)
+                    {
+                        for (int ncy = minCy; ncy <= maxCy; ncy++)
+                        {
+                            foreach (int j in buckets[ncx, ncy])
+                            {
+                                if (j == i)
+                                {
+                                    continue;
+                                }
+
+                                double dx = x[i] - x[j];
+                                double dy = y[i] - y[j];
+                                candidates.Add(((dx * dx) + (dy * dy), j));
+                            }
+                        }
+                    }
+
+                    radius++;
+                }
+                while (candidates.Count < k && radius <= cellsPerSide);
+
+                candidates.Sort((a, b) => a.DistSq.CompareTo(b.DistSq));
+                for (int c = 0; c < candidates.Count && c < k; c++)
+                {
+                    int j = candidates[c].Index;
                     var edge = new Edge(Math.Min(i, j), Math.Max(i, j));
                     if (seen.Add(edge))
                     {
