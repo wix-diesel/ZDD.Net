@@ -400,3 +400,99 @@ DIMACS テキストへ書き出してから読み直す**（`docs/tutorial.md` �
   対象を絞る（`s`–`t` を近づける、`GraphSet.Smaller` で辺数を絞ってから数える）、
   または「経路の総数」ではなく「最短経路」（`MinWeight`）や「上位 k 件」（`TopK`）など、
   数え上げより軽い問いに切り替える。
+
+## M4-1: 演算キャッシュの調整（サイズ自動調整 / キー分布 / ヒット率計測）
+
+`src/ZDD.Net/Core/OperationCache.cs`（M1-4 の初版）を実測に基づいて詰めた記録（issue #44）。
+測定環境は上表と同じ（測定日 2026-09-03）。実行方法:
+
+```bash
+dotnet run -c Release --project bench/ZDD.Net.Benchmarks -- cache-tuning
+```
+
+### 既存 10 ケースはこのキャッシュをほぼ測っていなかった
+
+`OperationCache`（`manager.Cache`）は**呼び出しをまたいだ**部分問題の再訪だけを拾う。1 回の
+`Apply` 呼び出し内の再訪は、既に `OperationWorkspace`（呼び出しごとのスクラッチ領域、エントリを
+一切捨てない）が完全にメモ化している。ところが既存 10 ケースのうちキャッシュを使う演算は
+`Union_TwoGrid6x6Paths` と `Product_Grid5x5PathsAndCardinality` の 2 つだけで、しかもどちらも
+**トップレベル演算を 1 回しか呼ばない**——つまり「呼び出しをまたいだ再訪」自体が起きようがなく、
+このキャッシュのチューニングを測るベンチとして機能していなかった。そこで
+`bench/ZDD.Net.Benchmarks/CacheTuningReport.cs` に、同じ変数順序を共有する族を`Zdd.Union` で
+何度も連結するワークロード（`CardinalityWindowChain_*` はカーディナリティ制約のスライディング
+ウィンドウを、`PathLengthWindowChain_Grid8x8` はグリッドの s-t パスを辺数のスライディング
+ウィンドウで絞ったもの——いずれも隣接ウィンドウ同士が部分木を大きく共有し、`GraphSet` を
+ループで少しずつ合成していくような実利用パターンを模している）を追加した。
+
+### 見つかったこと: サイズの自動調整が伸縮のたびにキャッシュを空にしていた
+
+`ZddManager` は全てのトップレベル演算の前に `TuneCache()`（`OperationCache.Tune`）を呼ぶ。
+上のワークロードのように `Union` をループでかけてノード数が単調に増え続けると、`Tune` は
+ループのかなりの割合の反復で「拡大」を発動する。旧実装は拡大のたびに**新しい配列を確保して
+古いエントリを全て捨てていた**（direct-mapped なのでスロット自体が意味を失うため、と
+コメントされていた）。実際に反復ごとのヒット数を記録すると、拡大が起きた直後の反復は
+決まってヒット 0 になっており、せっかく前の反復で書き込んだエントリが毎回ゼロから作り直されて
+いた。ヒット率は 3 ケースとも 1〜3% 程度と低いまま——「ロスあり cache なので捨ててもよい」は
+理屈としては正しいが、**このワークロードでは捨てるコストが実測で無視できないほど大きかった**。
+
+### 対応: 拡大時にエントリを移行する（discard → migrate）
+
+`OperationCache.Tune` を、新しい配列を確保したら生きているエントリを新しいスロットへ
+再配置する実装に変えた（`Migrate`、`OperationKey` に相当する `(Op, Key)` から `a`/`b` を
+復元してハッシュを引き直すだけなので追加の状態は不要）。拡大は 2 冪ごとにしか起きないので、
+ならせば最終サイズに対して O(1) 回分のコスト（doubling する配列と同じ償却）で済む。
+
+| ケース | 実行時間（前, 3 回の中央値） | 実行時間（後, 3 回の中央値） | 改善率 | ヒット率（前 → 後） |
+|---|---:|---:|---:|---:|
+| `CardinalityWindowChain_1000x21` | 1,181.2 ms | 1,112.4 ms | 5.8%（ばらつき大、後述） | 0.9% → 1.8% |
+| `CardinalityWindowChain_3000x33` | 19,621.0 ms | 16,694.3 ms | **14.9%** | 0.4% → 1.0% |
+| `PathLengthWindowChain_Grid8x8` | 9,320.6 ms | 9,389.7 ms | 変化なし（誤差内） | 2.8% → 6.0% |
+
+- **`CardinalityWindowChain_3000x33`（受け入れ条件の 10% 以上を満たす）**: ノード数が最も
+  大きく伸びる（103 万 → 862 万）ぶん `Tune` の発動回数も多く、discard の損失が最も顕著に
+  出るケース。3 回ずつの実行時間比（後÷前）は 0.80 / 0.91 / 0.80 で中央値 0.80——約 20% 速い。
+- **`CardinalityWindowChain_1000x21` は改善するが 10% には届かないことがある**: 3 回の比は
+  0.88 / 1.04 / 0.92 で中央値 0.92。この規模だと 1 回あたりの絶対時間が 1 ms 台に近く、
+  共有仮想環境のノイズ（測定環境の節に記載のとおり）が改善分と同程度になる。方向としては
+  一貫して改善側（3 回中 2 回）だが、正直に「10% を安定して超えるとは言えない」と記録する。
+- **`PathLengthWindowChain_Grid8x8` は改善しない**: ヒット率は 2.8% → 6.0% と着実に上がって
+  いるのに実行時間はほぼ変わらない。このケースはウィンドウ 1 個あたりの `AndSpec` 直接構築
+  そのもの（M3-5 節の直接構築コスト）が支配的で、キャッシュヒットで浮く時間が全体に占める
+  割合が小さいため。**ヒット率が改善したことと、そのケースの実行時間が改善することは別**
+  という、当然だが見落としやすい点の記録。
+- どのケースも `manager.NodeCount` と最終的な `Zdd.Count` は前後で完全一致する
+  （`OperationCacheTests.TuneMigratesLiveEntriesInsteadOfDroppingThem` /
+  `TuneNeverReturnsAWrongResultEvenWhenMigrationCollides` が正しさを回帰的に守る）。
+
+### キー分布: 下位ビットの直接マスクを Fibonacci hashing に統一
+
+`OperationCache` のスロット計算は `Hashing.Combine` の出力を `& (capacity - 1)`（下位ビットを
+直接マスク）していたが、`UniqueTable` と `OperationWorkspace` は同じ `Hashing.Combine` /
+`Hashing.Mix64` の出力を `Hashing.IndexForPowerOfTwo`（黄金比定数を掛けて上位ビットを取る
+Fibonacci hashing）で使っている——3 つの表の中でここだけ流儀が違っていた。上の
+`CardinalityWindowChain_*` / `PathLengthWindowChain_Grid8x8` で前後のヒット率を比べたが、
+**差は測定誤差の範囲**（例: `CardinalityWindowChain_1000x21` はどちらの方式でもヒット率
+1.8%、実行時間も互いの誤差内）だった。`Hashing.Mix64` 自体が SplitMix64 のファイナライザで
+十分な雪崩効果を持つため、下位ビットを取っても上位ビットを取っても分布はほぼ変わらない、
+という理屈通りの結果。**性能上の理由はないが、他 2 つの表と実装を揃えておく**という
+コード品質上の判断で変更した（実測が理屈を裏付けたので理屈だけでの変更ではない）。
+
+### サイズ自動調整の比率（`NodesPerEntry`）はそのまま
+
+既定の `NodesPerEntry = 4`（キャッシュサイズ ≒ ノード数 / 4）を 2（キャッシュを 2 倍）に
+変えて同じワークロードを測ったが、`CardinalityWindowChain_*` は誤差程度の改善、
+`PathLengthWindowChain_Grid8x8` はヒット率が 6.0% → 10.5% に上がったにもかかわらず実行時間が
+約 5% 悪化した（テーブルが大きくなるぶんの走査・移行コストが、増えたヒットで浮く時間を
+上回った）。**一貫した改善が見えなかったので 4 のままにした**——「改善は全て実測で判断する」
+という issue の方針どおり、変える理由が実測で得られなかった設定は変えていない。
+
+### メモリ上限・極端な設定での正しさ
+
+`ZddManagerOptions.MaxCacheCapacity` は M1-4 時点から公開済みで、`Migrate`後もこの上限
+（2 冪に切り下げ）を超えて成長しないことは `OperationCacheTests.TuneNeverShrinksAndStopsAtTheMaximum`
+が守っている。上限を 0（無効化）や 1（常に同じスロット）にしても、`OperationCacheTests` の
+`CacheSizes` 理論データ（0 / 1 / 2 / 8 / 既定）が全ての引き・書き込みテストを通しており、
+遅くなるだけで誤った結果は返らないことを確認済み。ホットパス（`TryGetBinary` /
+`PutBinary` など）は `Migrate` を経由しないので `OperationCacheTests.TheHotPathDoesNotAllocate`
+（アロケーション 0 を検証）は変更の影響を受けず、そのまま通っている。M1〜M3 の全テスト
+（1,262 件）も変わらず通る。

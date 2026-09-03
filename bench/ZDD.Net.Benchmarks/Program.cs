@@ -13,9 +13,11 @@ namespace ZDD.Net.Benchmarks
     /// <c>memory</c> / <c>time</c> run <see cref="MemoryReport"/> / <see cref="BuildTimeReport"/>,
     /// the peak-memory and build-time reports state bit-packing is measured against (issue #34), and
     /// <c>spec-composition</c> runs <see cref="SpecCompositionReport"/>, the direct-construction-vs-
-    /// post-filter comparison for composed specs (issue #37), and <c>real-graph</c> runs
+    /// post-filter comparison for composed specs (issue #37), <c>real-graph</c> runs
     /// <see cref="RealGraphReport"/>, the thousands-of-edges real-graph path counting record
-    /// docs/benchmarks.md's M3-11 section is built from (issue #43).
+    /// docs/benchmarks.md's M3-11 section is built from (issue #43), and <c>cache-tuning</c> runs
+    /// <see cref="CacheTuningReport"/>, the union-chain workloads docs/benchmarks.md's M4-1 section
+    /// (operation cache tuning) is measured against (issue #44).
     /// </summary>
     internal static class Program
     {
@@ -42,6 +44,12 @@ namespace ZDD.Net.Benchmarks
             if (args.Any(a => string.Equals(a, "real-graph", StringComparison.OrdinalIgnoreCase)))
             {
                 RealGraphReport.Run();
+                return;
+            }
+
+            if (args.Any(a => string.Equals(a, "cache-tuning", StringComparison.OrdinalIgnoreCase)))
+            {
+                CacheTuningReport.Run();
                 return;
             }
 
