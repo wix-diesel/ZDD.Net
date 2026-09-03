@@ -10,6 +10,16 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
 
 ### Added
 
+- `ZDD.Net.Io.ZddBinaryFormat`: 独自バイナリ形式による ZDD のシリアライズ（M5-1、issue #53）。
+  `Write(Zdd, Stream)` / `Read(Stream, ZddManagerOptions?)`。ノード表（`Level`/`Lo`/`Hi`）を
+  varint 圧縮してほぼそのまま書き出すため、構築よりも 1〜2 桁速く（`Write`）／小〜中規模の族では
+  同様に速く（`Read`）保存・復元できる。読み込みは一意化表への再登録によって正準性を保証する
+  ため、**フレッシュなマネージャへの読み込みならノード ID まで含めて元の族と一致する**
+  （族としての一致だけでなく、正準形が保たれることをテストで確認済み）。マジックナンバー・
+  版数・不正なノード参照（範囲外・循環・ゼロサプレス規則違反・レベル順序違反）はすべて
+  `ZddFormatException` になり、クラッシュしない。版数管理あり（`FormatVersion`、将来の版は
+  過去の版を読める方針を doc に明記）。本体 `PackageReference` は引き続き 0。詳細は
+  [docs/benchmarks.md](docs/benchmarks.md) の M5-1 節（構築時間との比較、ファイルサイズの実測）
 - `ZDD.Net.Io.DotOptions`: DOT 出力の拡張——状態ラベル・レベルラベル・部分表示・スタイル
   （M5-4、issue #56）。`Zdd.ToDot(DotOptions?)` / `Zdd.WriteDot(TextWriter, DotOptions?)` の
   引数として渡す。既定（`null` または新規インスタンス）は今までの `ToDot()` と完全に同じ出力
