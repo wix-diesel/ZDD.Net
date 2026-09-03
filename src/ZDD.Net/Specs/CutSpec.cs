@@ -87,7 +87,10 @@ namespace ZDD.Net.Specs
             _t = t;
             _minimalOnly = minimalOnly;
             _frontierManager = new FrontierManager(graph);
-            _relevant = ComputeRelevant(graph, s, t);
+
+            // Only MinimalOnly mode ever reads _relevant (every use below is guarded by _minimalOnly &&,
+            // short-circuiting before the array is touched) — skip the O(V + E) union-find otherwise.
+            _relevant = minimalOnly ? ComputeRelevant(graph, s, t) : Array.Empty<bool>();
         }
 
         /// <summary>The graph this spec searches.</summary>
