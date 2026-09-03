@@ -963,3 +963,56 @@ dotnet run -c Release --project bench/ZDD.Net.Benchmarks -- memory Path_Grid11x1
 - Graphillion の 8×8 外れ値の原因（内部の変数順序ヒューリスティクス）を掘り下げれば、
   Graphillion からの移行者に向けた「どんな入力で Graphillion が遅くなりやすいか」という
   ドキュメントが書けるかもしれないが、Graphillion 内部の詳細調査は本 PR の範囲外とした。
+
+## M5-1: バイナリシリアライズ（`ZddBinaryFormat`）
+
+`ZddBinaryFormat.Write`/`Read`（[src/ZDD.Net/Io/ZddBinaryFormat.cs](../src/ZDD.Net/Io/ZddBinaryFormat.cs)）の
+書き込み・読み込み時間を、同じ族を構築する時間（`FrontierBuilder.Build`）と比較した記録（issue #53）。
+測定環境は本ドキュメント冒頭の「測定環境」節と同じ。実行方法:
+
+```bash
+dotnet run -c Release --project bench/ZDD.Net.Benchmarks -- serialize
+```
+
+`docs/benchmarks.md` §35「結果」表と同じ代表 10 ケースに対し、構築 → `Write` → `Read` を
+1 回ずつ行った時間、ファイルサイズ、ノードあたりのバイト数を記録する（測定日 2026-09-03）。
+`Read` 側は毎回「ラウンドトリップでノード ID・ノード数が完全に一致すること」を検証してから
+時間を記録している（`FormatWriter`/`Reader` 側の正しさそのものの検証は
+[tests/ZDD.Net.Tests/Io/ZddBinaryFormatTests.cs](../tests/ZDD.Net.Tests/Io/ZddBinaryFormatTests.cs)）。
+
+| ケース | 構築 | `Write` | `Read` | ファイルサイズ | バイト/ノード | ノード数 |
+|---|---:|---:|---:|---:|---:|---:|
+| `Path_Grid5x5` | 19.71 ms | 3.07 ms | 9.47 ms | 2,243 B | 4.11 | 546 |
+| `Path_Grid6x6` | 24.12 ms | 0.20 ms | 0.42 ms | 9,458 B | 4.42 | 2,142 |
+| `Path_Grid7x7` | 58.13 ms | 0.81 ms | 2.47 ms | 35,846 B | 4.50 | 7,968 |
+| `SpanningTree_Complete8` | 5.39 ms | 0.20 ms | 0.33 ms | 10,588 B | 4.71 | 2,247 |
+| `PerfectMatching_Grid6x6` | 2.88 ms | 0.04 ms | 0.12 ms | 1,504 B | 3.90 | 386 |
+| `Cardinality_5000Choose2400To2600` | 2,825.79 ms | 457.33 ms | 3,057.16 ms | 62,967,366 B | 9.37 | 6,722,600 |
+| `LinearConstraint_1000ItemsKnapsack` | 2,887.58 ms | 163.28 ms | 2,022.45 ms | 59,157,809 B | 9.30 | 6,361,364 |
+| `Forest_Grid5x5_TwoComponents` | 8.03 ms | 0.60 ms | 0.13 ms | 9,681 B | 4.72 | 2,052 |
+| `Union_TwoGrid6x6Paths` | 59.13 ms | 0.26 ms | 0.87 ms | 85,968 B | 4.88 | 17,631 |
+| `Product_Grid5x5PathsAndCardinality` | 643.88 ms | 0.80 ms | 2.26 ms | 240,019 B | 5.74 | 41,828 |
+
+（`Path_Grid5x5` の `Write` が他の小ケースより目立って遅いのは、そのケースがプロセス内で最初に
+`ZddBinaryFormat` を叩くケースであるための JIT ウォームアップ——以降のケースはすべて 1 ms 未満。
+一度限りの現象であり、実装コストではない。）
+
+- **`Write` は「ノード配列をほぼそのまま書き出す」設計どおり、ほぼすべてのケースで構築より
+  1〜2 桁速い**（`LinearConstraint_1000ItemsKnapsack` で構築の約 1/18、`Cardinality_...` で約 1/6）。
+  フロンティア構築の重さ（レベルごとの状態表への登録）を一切払わず、ノード表を線形に走査して
+  varint を書くだけだから。
+- **`Read` は正直に記録すると、巨大なケースでは構築時間と同じオーダーになる**
+  （`Cardinality_...` は構築よりむしろ遅い、`LinearConstraint_...` は構築の約 0.7 倍）。
+  これは設計上の必然: 正準性を保証するために一意化表 (`UniqueTable.GetNode`) へ全ノードを
+  登録し直しており（本ファイルの `ZddBinaryFormat` remarks 参照）、これはフロンティア構築の
+  削減パスが払っているのと同じ「ノードあたり 1 回のハッシュ表挿入」コストである。小〜中規模の
+  ケースでは `Read` は構築よりずっと速い（`Path_Grid7x7` で約 1/24）——このコストが顕在化するのは
+  数百万ノード級のケースに限られる。正準性を諦めて配列をそのまま復元する版（issue のいう「後者」の
+  選択肢）にすれば速くなるが、不正なファイルで一意化表の不変条件が壊れうるため、本 PR では
+  正準性を優先する前者を選んだ（完了条件の「ノード ID まで含めて一致する」ラウンドトリップは
+  この設計に依存している）。
+- **ファイルサイズはノード数にほぼ線形**（バイト/ノードは 3.9〜9.4 の範囲）。ノード ID が小さい
+  ケース（数千ノード）では 1 ノードあたり 3 フィールド × 1〜2 バイトの varint で 4〜5 バイト、
+  ノード数が数百万に達し ID が大きくなるケース（`Cardinality_...` / `LinearConstraint_...`）でも
+  9 バイト台に収まる。固定長（`Level`/`Lo`/`Hi` を `int` 3 個 = 12 バイト/ノード）と比べて
+  22%〜67% 小さく、varint 圧縮（docs/PLAN.md §9 の「検討する」）の効果が実測で確認できる。
