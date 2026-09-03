@@ -121,7 +121,7 @@ Core レイヤは下から積むため、序盤の PR は `internal` のコー�
 | [x] | **M3-4** | サイクル・ハミルトン | `CycleSpec`（単一／複数）、`HamiltonianPathSpec`、`HamiltonianCycleSpec` | 完全グラフ・Petersen グラフの既知値と一致 | 〜300 | M2-12 |
 | [x] | **M3-5** | スペック合成 | `spec.And(other)` / `.Or(other)`、`zdd.Subset(spec)`（ZddSubsetting） | 「パス かつ 辺数 ≤ k」が直接構築でき、事後フィルタと結果一致。中間 ZDD が小さいこと | 〜300 | M3-4 |
 | [ ] | **M3-6** | 頂点系スペック | `IndependentSetSpec` / `CliqueSpec` / `VertexCoverSpec` / `DominatingSetSpec` | 素朴 DP と一致 | 〜350 | M2-12 |
-| [ ] | **M3-7** | 次数制約 | `DegreeConstraintSpec(lo[], hi[])` | マッチング・パスを次数制約で再現でき、結果が一致 | 〜250 | M3-4 |
+| [x] | **M3-7** | 次数制約 | `DegreeConstraintSpec(lo[], hi[])` | マッチング・パスを次数制約で再現でき、結果が一致 | 〜250 | M3-4 |
 | [ ] | **M3-8** | `SetSet<T>` | 任意要素型の族ラッパ、要素 ↔ 変数のマッピング、LINQ 連携 | 文字列要素の族で一通り動く | 〜300 | M2-12 |
 | [ ] | **M3-9** | `GraphSet` | `Paths`/`Cycles`/`Trees`/`Forests`/`Matchings`、`Including`/`Excluding`/`Larger`/`Smaller`、`MinIter`/`MaxIter`/`RandIter` | Graphillion のチュートリアル相当のシナリオが再現できる | 〜400 | M3-8, M3-5 |
 | [ ] | **M3-10** | グラフ入出力 | DIMACS / エッジリスト / 簡易テキストの読み書き | ラウンドトリップ。数千辺の実データを読み込める | 〜200 | M3-9 |
