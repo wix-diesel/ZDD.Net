@@ -11,11 +11,12 @@ namespace ZDD.Net.Benchmarks
     /// The cases docs/benchmarks.md's M4-8 section (Graphillion / TdZdd comparison, issue #51) times and
     /// measures memory for, beyond the 10 cases <see cref="Cases"/> already covers: the PLAN §10 target
     /// grid sizes <see cref="MemoryReport"/> and <see cref="BuildTimeReport"/> did not previously reach
-    /// (8&#215;8, 9&#215;9, 11&#215;11 — 7&#215;7 is already <c>Cases.Path_Grid7x7</c>), and an
-    /// independent-set case (no existing case uses <see cref="IndependentSetSpec"/>, the one built-in spec
-    /// whose variables are vertices rather than edges — the family algebra and spanning-tree/matching
-    /// comparisons reuse <c>Cardinality_5000Choose2400To2600</c>, <c>SpanningTree_Complete8</c>, and
-    /// <c>PerfectMatching_Grid6x6</c> from <see cref="Cases"/> directly).
+    /// (8&#215;8, 9&#215;9, 11&#215;11 — 7&#215;7 is already the <c>"Path_Grid7x7"</c> entry in
+    /// <see cref="Cases.All"/>), and an independent-set case (no existing case uses
+    /// <see cref="IndependentSetSpec"/>, the one built-in spec whose variables are vertices rather than
+    /// edges — the family algebra and spanning-tree/matching comparisons reuse
+    /// <c>Cardinality_5000Choose2400To2600</c>, <c>SpanningTree_Complete8</c>, and
+    /// <c>PerfectMatching_Grid6x6</c> from <see cref="Cases.All"/> directly).
     /// </summary>
     /// <remarks>
     /// These cases are folded into <see cref="MemoryReport.AllCases"/>, so the existing <c>-- time

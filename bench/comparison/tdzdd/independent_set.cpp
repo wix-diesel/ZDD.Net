@@ -70,6 +70,10 @@ int main(int argc, char** argv) {
     }
 
     int n = std::atoi(argv[1]);
+    if (n <= 0) {
+        std::fprintf(stderr, "n must be positive\n");
+        return 1;
+    }
 
     bench::Timer timer;
     IndependentSetZdd spec(n, n);
