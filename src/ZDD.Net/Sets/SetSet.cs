@@ -11,13 +11,13 @@ namespace ZDD.Net.Sets
     /// <summary>
     /// A family of sets over an arbitrary element type <typeparamref name="T"/> &#8212; a thin
     /// wrapper around <see cref="Core.Zdd"/> that translates between <typeparamref name="T"/> and
-    /// the ZDD's <c>int</c> item indices via a shared <see cref="SetSetUniverse{T}"/>.
+    /// the ZDD's <c>int</c> item indices via a shared <see cref="SetUniverse{T}"/>.
     /// </summary>
-    /// <typeparam name="T">The element type; compared with <see cref="SetSetUniverse{T}.Comparer"/>.</typeparam>
+    /// <typeparam name="T">The element type; compared with <see cref="SetUniverse{T}.Comparer"/>.</typeparam>
     /// <remarks>
     /// <para>
     /// Two <see cref="SetSet{T}"/> instances can only be combined (<see cref="Union"/>, <see cref="Product"/>, ...)
-    /// when they share the exact same <see cref="SetSetUniverse{T}"/> instance &#8212; mixing mappings
+    /// when they share the exact same <see cref="SetUniverse{T}"/> instance &#8212; mixing mappings
     /// would silently produce a meaningless result, so it throws instead, the same way mixing
     /// <see cref="ZddManager"/>s does on <see cref="Zdd"/>.
     /// </para>
@@ -33,14 +33,14 @@ namespace ZDD.Net.Sets
     public sealed class SetSet<T> : IEnumerable<IReadOnlySet<T>>, IEquatable<SetSet<T>>
         where T : notnull
     {
-        internal SetSet(SetSetUniverse<T> universe, Zdd zdd)
+        internal SetSet(SetUniverse<T> universe, Zdd zdd)
         {
             Universe = universe;
             Zdd = zdd;
         }
 
         /// <summary>The element &#8596; item-index mapping this family is expressed over.</summary>
-        public SetSetUniverse<T> Universe { get; }
+        public SetUniverse<T> Universe { get; }
 
         /// <summary>The underlying ZDD, for callers who want to drop down to the low-level API.</summary>
         public Zdd Zdd { get; }
@@ -50,7 +50,7 @@ namespace ZDD.Net.Sets
         /// <param name="sets">The member sets. Duplicate elements within one set are collapsed; duplicate sets are collapsed.</param>
         /// <exception cref="ArgumentNullException"><paramref name="universe"/>, <paramref name="sets"/>, or one of its sets is <see langword="null"/>.</exception>
         /// <exception cref="ArgumentException">An element is not part of <paramref name="universe"/>.</exception>
-        public static SetSet<T> FromSets(SetSetUniverse<T> universe, IEnumerable<IEnumerable<T>> sets)
+        public static SetSet<T> FromSets(SetUniverse<T> universe, IEnumerable<IEnumerable<T>> sets)
         {
             ArgumentNullException.ThrowIfNull(universe);
             ArgumentNullException.ThrowIfNull(sets);
@@ -78,7 +78,7 @@ namespace ZDD.Net.Sets
         /// <summary>Builds a family from explicit member sets, inferring a fresh universe from the elements encountered.</summary>
         /// <param name="sets">The member sets. Duplicate elements within one set are collapsed; duplicate sets are collapsed.</param>
         /// <param name="comparer">Equality comparer for elements; <see cref="EqualityComparer{T}.Default"/> if <see langword="null"/>.</param>
-        /// <returns>A family with a new <see cref="SetSetUniverse{T}"/> whose elements are ordered by first appearance in <paramref name="sets"/>.</returns>
+        /// <returns>A family with a new <see cref="SetUniverse{T}"/> whose elements are ordered by first appearance in <paramref name="sets"/>.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="sets"/> or one of its sets is <see langword="null"/>.</exception>
         public static SetSet<T> FromSets(IEnumerable<IEnumerable<T>> sets, IEqualityComparer<T>? comparer = null)
         {
@@ -104,13 +104,13 @@ namespace ZDD.Net.Sets
                 }
             }
 
-            var universe = new SetSetUniverse<T>(elements, comparer);
+            var universe = new SetUniverse<T>(elements, comparer);
             return FromSets(universe, materialized);
         }
 
         /// <summary>The empty family &#8709; over <paramref name="universe"/> (no member sets).</summary>
         /// <exception cref="ArgumentNullException"><paramref name="universe"/> is <see langword="null"/>.</exception>
-        public static SetSet<T> Empty(SetSetUniverse<T> universe)
+        public static SetSet<T> Empty(SetUniverse<T> universe)
         {
             ArgumentNullException.ThrowIfNull(universe);
             return new SetSet<T>(universe, universe.Manager.Empty);
@@ -118,7 +118,7 @@ namespace ZDD.Net.Sets
 
         /// <summary>The power set 2^U of <paramref name="universe"/>: every possible subset of its elements.</summary>
         /// <exception cref="ArgumentNullException"><paramref name="universe"/> is <see langword="null"/>.</exception>
-        public static SetSet<T> PowerSet(SetSetUniverse<T> universe)
+        public static SetSet<T> PowerSet(SetUniverse<T> universe)
         {
             ArgumentNullException.ThrowIfNull(universe);
             return new SetSet<T>(universe, universe.Manager.Empty.Complement());
@@ -128,7 +128,7 @@ namespace ZDD.Net.Sets
         /// <param name="items">The universe's elements; order fixes the item-index assignment.</param>
         /// <param name="comparer">Equality comparer for elements; <see cref="EqualityComparer{T}.Default"/> if <see langword="null"/>.</param>
         public static SetSet<T> PowerSet(IEnumerable<T> items, IEqualityComparer<T>? comparer = null) =>
-            PowerSet(new SetSetUniverse<T>(items, comparer));
+            PowerSet(new SetUniverse<T>(items, comparer));
 
         /// <summary>The exact number of member sets. See <see cref="IEnumerable{T}"/> remarks on why this hides LINQ's <c>Count()</c>.</summary>
         public BigInteger Count => Zdd.Count;
@@ -342,7 +342,7 @@ namespace ZDD.Net.Sets
 
             if (!ReferenceEquals(Universe, other.Universe))
             {
-                ThrowHelper.ThrowArgumentException(nameof(other), "The two SetSet<T> instances do not share the same SetSetUniverse<T>; only families built over the same universe can be combined.");
+                ThrowHelper.ThrowArgumentException(nameof(other), "The two SetSet<T> instances do not share the same SetUniverse<T>; only families built over the same universe can be combined.");
             }
 
             return new SetSet<T>(Universe, operation(Zdd, other.Zdd));

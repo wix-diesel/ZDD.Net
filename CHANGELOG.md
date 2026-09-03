@@ -10,10 +10,10 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
 
 ### Added
 
-- `ZDD.Net.Sets`: `SetSet<T>` / `SetSetUniverse<T>` — 任意要素型の族ラッパ（M3-8、issue #40）
-  - `Zdd` は変数が `int` index だが、`SetSet<T>` は要素 `T` ↔ index の対応を `SetSetUniverse<T>`
+- `ZDD.Net.Sets`: `SetSet<T>` / `SetUniverse<T>` — 任意要素型の族ラッパ（M3-8、issue #40）
+  - `Zdd` は変数が `int` index だが、`SetSet<T>` は要素 `T` ↔ index の対応を `SetUniverse<T>`
     （`IEqualityComparer<T>` 付き）に肩代わりさせ、「ZDD を知らない .NET 開発者が使える入口」にする
-  - 同じ `SetSetUniverse<T>` インスタンスを共有する `SetSet<T>` 同士でしか演算できない
+  - 同じ `SetUniverse<T>` インスタンスを共有する `SetSet<T>` 同士でしか演算できない
     （別マッピング同士は `ArgumentException`。`ZddManager` 不一致と同じ扱い）
   - `IEnumerable<IReadOnlySet<T>>` を実装するが `ICollection` は実装しない。`Count`（`BigInteger`
     プロパティ）が LINQ の `Count()` 拡張メソッドと曖昧参照にならないことをテストで確認済み

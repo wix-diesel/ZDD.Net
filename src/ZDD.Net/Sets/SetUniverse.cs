@@ -17,11 +17,11 @@ namespace ZDD.Net.Sets
     /// <c>elements</c> sequence, deduplicated by <see cref="Comparer"/>; that index is also the
     /// element's <see cref="ZddManager"/> item index (<see cref="Manager"/>'s variable count equals
     /// <see cref="Count"/>). Only <see cref="SetSet{T}"/> instances built from the very same
-    /// <see cref="SetSetUniverse{T}"/> instance can be combined with each other.
+    /// <see cref="SetUniverse{T}"/> instance can be combined with each other.
     /// </para>
     /// <para>Immutable once constructed: the element set and the manager's variable count never change.</para>
     /// </remarks>
-    public sealed class SetSetUniverse<T>
+    public sealed class SetUniverse<T>
         where T : notnull
     {
         private readonly T[] _elements;
@@ -33,7 +33,7 @@ namespace ZDD.Net.Sets
         /// <param name="comparer">Equality comparer for elements; <see cref="EqualityComparer{T}.Default"/> if <see langword="null"/>.</param>
         /// <param name="managerOptions">Tuning knobs forwarded to the <see cref="ZddManager"/> constructor; <see langword="null"/> uses defaults.</param>
         /// <exception cref="ArgumentNullException"><paramref name="elements"/> is <see langword="null"/>.</exception>
-        public SetSetUniverse(IEnumerable<T> elements, IEqualityComparer<T>? comparer = null, ZddManagerOptions? managerOptions = null)
+        public SetUniverse(IEnumerable<T> elements, IEqualityComparer<T>? comparer = null, ZddManagerOptions? managerOptions = null)
         {
             ArgumentNullException.ThrowIfNull(elements);
 

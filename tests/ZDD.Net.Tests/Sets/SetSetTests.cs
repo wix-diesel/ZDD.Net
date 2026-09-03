@@ -47,7 +47,7 @@ namespace ZDD.Net.Tests.Sets
         [Fact]
         public void SetOperationsMatchOrdinarySetAlgebra()
         {
-            var universe = new SetSetUniverse<string>(new[] { "a", "b", "c" });
+            var universe = new SetUniverse<string>(new[] { "a", "b", "c" });
 
             SetSet<string> f = SetSet<string>.FromSets(universe, new[] { new[] { "a" }, new[] { "a", "b" } });
             SetSet<string> g = SetSet<string>.FromSets(universe, new[] { new[] { "a" }, new[] { "b", "c" } });
@@ -118,8 +118,8 @@ namespace ZDD.Net.Tests.Sets
         [Fact]
         public void OperationsBetweenDifferentUniversesThrow()
         {
-            var universe1 = new SetSetUniverse<string>(new[] { "a", "b" });
-            var universe2 = new SetSetUniverse<string>(new[] { "a", "b" });
+            var universe1 = new SetUniverse<string>(new[] { "a", "b" });
+            var universe2 = new SetUniverse<string>(new[] { "a", "b" });
 
             SetSet<string> f = SetSet<string>.FromSets(universe1, new[] { new[] { "a" } });
             SetSet<string> g = SetSet<string>.FromSets(universe2, new[] { new[] { "a" } });
@@ -224,7 +224,7 @@ namespace ZDD.Net.Tests.Sets
         [Fact]
         public void CustomComparerDeduplicatesUniverseElements()
         {
-            var universe = new SetSetUniverse<string>(new[] { "A", "a", "b" }, StringComparer.OrdinalIgnoreCase);
+            var universe = new SetUniverse<string>(new[] { "A", "a", "b" }, StringComparer.OrdinalIgnoreCase);
 
             Assert.Equal(2, universe.Count);
             Assert.Equal(new[] { "A", "b" }, universe.Elements);
@@ -236,7 +236,7 @@ namespace ZDD.Net.Tests.Sets
         [Fact]
         public void OperationsMatchTheUnderlyingZddOperations()
         {
-            var universe = new SetSetUniverse<string>(new[] { "a", "b", "c" });
+            var universe = new SetUniverse<string>(new[] { "a", "b", "c" });
             ZddManager manager = universe.Manager;
 
             Zdd RawSet(params string[] items)
@@ -275,7 +275,7 @@ namespace ZDD.Net.Tests.Sets
         [Fact]
         public void EmptyAndPowerSetFactoriesMatchTheirZddCounterparts()
         {
-            var universe = new SetSetUniverse<string>(new[] { "a", "b" });
+            var universe = new SetUniverse<string>(new[] { "a", "b" });
 
             SetSet<string> empty = SetSet<string>.Empty(universe);
             Assert.True(empty.IsEmpty);
