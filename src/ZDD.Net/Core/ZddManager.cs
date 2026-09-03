@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using ZDD.Net.Internal;
 
 namespace ZDD.Net.Core
@@ -27,13 +30,20 @@ namespace ZDD.Net.Core
     /// even for reads that traverse the node table (e.g. <see cref="Zdd.NodeCount"/>).
     /// </para>
     /// <para>
-    /// <see cref="Dispose"/> drops references to the node table, unique table, and operation cache
-    /// (no unmanaged resources, so skipping it just delays GC). After disposal, operations that read
-    /// the tables (<see cref="Empty"/>, <see cref="Base"/>, <see cref="Singleton"/>, <see cref="NodeCount"/>,
-    /// <see cref="GetStatistics"/>, and <see cref="Zdd.NodeCount"/> / <see cref="Zdd.Support"/> on its
-    /// handles) throw <see cref="ObjectDisposedException"/>; others (<see cref="VariableCount"/>,
-    /// <see cref="IsDisposed"/>, <see cref="Zdd"/> equality, <see cref="Zdd.IsEmpty"/>, <see cref="Zdd.IsBase"/>)
-    /// keep working.
+    /// <see cref="Dispose"/> drops references to the node table, unique table, operation cache, and
+    /// <see cref="RootSet"/> (no unmanaged resources, so skipping it just delays reclamation by the
+    /// .NET runtime's own garbage collector — unrelated to this type's own <see cref="Collect()"/>).
+    /// After disposal, operations that read the tables (<see cref="Empty"/>, <see cref="Base"/>,
+    /// <see cref="Singleton"/>, <see cref="NodeCount"/>, <see cref="GetStatistics"/>,
+    /// <see cref="RootSet"/>, <see cref="Collect()"/>, and <see cref="Zdd.NodeCount"/> /
+    /// <see cref="Zdd.Support"/> on its handles) throw <see cref="ObjectDisposedException"/>; others
+    /// (<see cref="VariableCount"/>, <see cref="IsDisposed"/>, <see cref="Zdd"/> equality,
+    /// <see cref="Zdd.IsEmpty"/>, <see cref="Zdd.IsBase"/>) keep working.
+    /// </para>
+    /// <para>
+    /// Node ids are stable for a family's lifetime <b>except across <see cref="Collect()"/></b>,
+    /// which compacts and renumbers surviving nodes; see <see cref="RootSet"/> and
+    /// <see cref="ZddCollectedException"/> (docs/PLAN.md &#167;4.4).
     /// </para>
     /// </remarks>
     public sealed class ZddManager : IDisposable
@@ -55,10 +65,34 @@ namespace ZDD.Net.Core
         /// <remarks>
         /// Stable for the manager's lifetime, since variable count is fixed and the unique table
         /// always returns the same id for the same family; <see cref="NodeTable.Bottom"/> is safe as
-        /// the "uncomputed" sentinel because <c>2^U</c> is never the empty family. Must be reset
-        /// alongside <see cref="OperationCache.Clear"/> if a future node-GC pass ever renumbers nodes.
+        /// the "uncomputed" sentinel because <c>2^U</c> is never the empty family. <see cref="Collect()"/>
+        /// remaps this alongside the unique table (or resets it back to the sentinel if it did not
+        /// survive collection), so it is never left dangling.
         /// </remarks>
         private int _powerSetRoot;
+
+        /// <summary>
+        /// Bumped by every <see cref="Collect()"/> call. Stamped onto each <see cref="Zdd"/> handle
+        /// at creation (see <see cref="Zdd.Generation"/>) so a handle created before the most recent
+        /// collection — and not refreshed via <see cref="RootSet"/> — can be told apart from a
+        /// current one even if collection happened to reassign its old id to a different family.
+        /// </summary>
+        private int _generation;
+
+        /// <summary>Families to keep alive across <see cref="Collect()"/>; see <see cref="RootSet"/>.</summary>
+        private readonly ZddRootSet _rootSet;
+
+        /// <summary>Total number of completed <see cref="Collect()"/> calls.</summary>
+        private long _collectionCount;
+
+        /// <summary>Nodes removed by the most recent <see cref="Collect()"/> call; 0 if never collected.</summary>
+        private long _lastCollectionRemovedNodeCount;
+
+        /// <summary>Fraction of nodes removed by the most recent <see cref="Collect()"/> call, of the count right before it ran; 0 if never collected.</summary>
+        private double _lastCollectionReductionRatio;
+
+        /// <summary>Wall-clock time the most recent <see cref="Collect()"/> call took; <see cref="TimeSpan.Zero"/> if never collected.</summary>
+        private TimeSpan _lastCollectionDuration;
 
         /// <summary>
         /// Rental pool of workspaces used by iterative operation implementations, reused across
@@ -95,6 +129,7 @@ namespace ZDD.Net.Core
                 effective.InitialUniqueTableCapacity);
             _cache = new OperationCache(effective.InitialCacheCapacity, effective.MaxCacheCapacity);
             _workspaces = new OperationWorkspace?[InitialWorkspaceDepth];
+            _rootSet = new ZddRootSet(this);
         }
 
         /// <summary>The number of item variables this manager handles. Fixed after construction.</summary>
@@ -106,6 +141,25 @@ namespace ZDD.Net.Core
 
         /// <summary>Whether this manager has been <see cref="Dispose"/>d.</summary>
         public bool IsDisposed => _table is null;
+
+        /// <summary>
+        /// The families this manager keeps alive across <see cref="Collect()"/>. Any <see cref="Zdd"/>
+        /// handle not registered here when <see cref="Collect()"/> runs may be swept, and using it
+        /// afterward throws <see cref="ZddCollectedException"/>; re-read the (possibly renumbered)
+        /// handle from this set instead.
+        /// </summary>
+        /// <exception cref="ObjectDisposedException">This manager has been disposed.</exception>
+        public ZddRootSet RootSet
+        {
+            get
+            {
+                EnsureNotDisposed();
+                return _rootSet;
+            }
+        }
+
+        /// <summary>Bumped by every <see cref="Collect()"/> call; stamped onto every <see cref="Zdd"/> handle at creation.</summary>
+        internal int Generation => _generation;
 
         /// <summary>The empty family &#8709; (no sets), corresponding to terminal &#8869;.</summary>
         /// <exception cref="ObjectDisposedException">This manager has been disposed.</exception>
@@ -162,7 +216,11 @@ namespace ZDD.Net.Core
                 maxCacheCapacity: cache.MaxCapacity,
                 cacheLookups: cache.Lookups,
                 cacheHits: cache.Hits,
-                cacheOverwrites: cache.Collisions);
+                cacheOverwrites: cache.Collisions,
+                collectionCount: _collectionCount,
+                lastCollectionRemovedNodeCount: _lastCollectionRemovedNodeCount,
+                lastCollectionReductionRatio: _lastCollectionReductionRatio,
+                lastCollectionDuration: _lastCollectionDuration);
         }
 
         /// <summary>
@@ -177,6 +235,69 @@ namespace ZDD.Net.Core
             _powerSetRoot = NodeTable.Bottom;
             _workspaces = Array.Empty<OperationWorkspace?>();
             _workspaceDepth = 0;
+            _rootSet.Clear();
+        }
+
+        /// <summary>
+        /// Reclaims every node not reachable from <see cref="RootSet"/> (mark &amp; sweep), then
+        /// compacts the survivors and reassigns their ids from <see cref="NodeTable.FirstNodeId"/>
+        /// (docs/PLAN.md &#167;4.4 / docs/ROADMAP.md M5-3).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Renumbering invalidates every existing <see cref="Zdd"/> handle except the ones
+        /// registered in <see cref="RootSet"/>, which are remapped in place — re-read them from
+        /// <see cref="RootSet"/> after this call rather than reusing old local variables. Using an
+        /// unregistered handle afterward throws <see cref="ZddCollectedException"/>; reference
+        /// counting is deliberately not used instead (it would slow down every ZDD operation, see
+        /// docs/PLAN.md &#167;4.4).
+        /// </para>
+        /// <para>
+        /// Marking uses an explicit stack, not recursion, so a chain as deep as the variable count
+        /// cannot overflow the stack (docs/PLAN.md &#167;4.5). The unique table is rebuilt from the
+        /// compacted nodes and the operation cache is cleared, since both index by node id.
+        /// </para>
+        /// <para>If <see cref="RootSet"/> is empty, every non-terminal node is collected.</para>
+        /// </remarks>
+        /// <exception cref="ObjectDisposedException">This manager has been disposed.</exception>
+        public void Collect()
+        {
+            NodeGarbageCollector.Result result = NodeGarbageCollector.Collect(this);
+
+            _collectionCount++;
+            _lastCollectionRemovedNodeCount = result.NodesRemoved;
+            _lastCollectionReductionRatio = result.NodesBefore == 0 ? 0.0 : (double)result.NodesRemoved / result.NodesBefore;
+            _lastCollectionDuration = result.Duration;
+            _generation++;
+        }
+
+        /// <summary>
+        /// Registers <paramref name="roots"/> in <see cref="RootSet"/> (skipping ones already
+        /// there), then calls <see cref="Collect()"/>. A convenience for collecting around a
+        /// handful of families without registering them one at a time first.
+        /// </summary>
+        /// <param name="roots">Families to keep alive; each must belong to this manager and not be <c>default(Zdd)</c> or already collected.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="roots"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException">A root belongs to a different manager, or is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ZddCollectedException">A root predates an earlier <see cref="Collect()"/> call and was not kept alive.</exception>
+        /// <exception cref="ObjectDisposedException">This manager has been disposed.</exception>
+        public void Collect(params Zdd[] roots)
+        {
+            ThrowHelper.ThrowIfNull(roots, nameof(roots));
+
+            // Validate every root before registering any of them, so a bad one in the middle of
+            // the array never leaves an earlier, valid one registered behind a thrown exception.
+            foreach (Zdd root in roots)
+            {
+                EnsureOwns(root, nameof(roots));
+            }
+
+            foreach (Zdd root in roots)
+            {
+                RootSet.Add(root);
+            }
+
+            Collect();
         }
 
         /// <summary>Union <c>f &#8746; g</c>: sets belonging to either family.</summary>
@@ -479,6 +600,27 @@ namespace ZDD.Net.Core
         }
 
         /// <summary>
+        /// Applies a <see cref="Collect()"/> id remap (see <see cref="NodeGarbageCollector"/>) to the
+        /// cached power-set root: follows it to its new id if it survived, or resets it back to the
+        /// "not yet computed" sentinel if it didn't (<see cref="PowerSetRoot"/> rebuilds it lazily).
+        /// </summary>
+        internal void RemapPowerSetRoot(ReadOnlySpan<int> oldToNewId)
+        {
+            if (_powerSetRoot == NodeTable.Bottom)
+            {
+                return;
+            }
+
+            if (NodeTable.IsTerminal(_powerSetRoot))
+            {
+                return;
+            }
+
+            int newId = oldToNewId[_powerSetRoot];
+            _powerSetRoot = newId == NodeTable.DeadId ? NodeTable.Bottom : newId;
+        }
+
+        /// <summary>
         /// Common entry point for unary operations that don't take an item: checks ownership, tunes
         /// the cache, then delegates to <see cref="ExtremalOperations.Apply"/>.
         /// </summary>
@@ -670,22 +812,38 @@ namespace ZDD.Net.Core
         }
 
         /// <summary>
-        /// Confirms <paramref name="zdd"/> belongs to this manager. Mixing families from different
-        /// managers always throws, since node ids are only meaningful within their own manager.
+        /// Confirms <paramref name="zdd"/> belongs to this manager and was not invalidated by a
+        /// later <see cref="Collect()"/>. Mixing families from different managers always throws,
+        /// since node ids are only meaningful within their own manager; so does using a handle
+        /// whose <see cref="Zdd.Generation"/> predates this manager's current one, unless its id is
+        /// a terminal (terminals never move, so they stay valid across any number of collections).
         /// </summary>
         internal void EnsureOwns(in Zdd zdd, string paramName)
         {
-            if (ReferenceEquals(zdd.Owner, this))
+            if (!ReferenceEquals(zdd.Owner, this))
             {
-                return;
+                ThrowHelper.ThrowArgumentException(
+                    paramName,
+                    zdd.Owner is null
+                        ? $"'{paramName}' is a default Zdd handle, which does not belong to any manager."
+                        : $"'{paramName}' belongs to a different ZddManager; node ids are only meaningful within the manager that created them.");
             }
 
-            ThrowHelper.ThrowArgumentException(
-                paramName,
-                zdd.Owner is null
-                    ? $"'{paramName}' is a default Zdd handle, which does not belong to any manager."
-                    : $"'{paramName}' belongs to a different ZddManager; node ids are only meaningful within the manager that created them.");
+            if (zdd.Generation != _generation && !NodeTable.IsTerminal(zdd.Id))
+            {
+                ThrowCollected(paramName, zdd.Id);
+            }
         }
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void ThrowCollected(string paramName, int id) =>
+            throw new ZddCollectedException(
+                $"'{paramName}' (node id {id}) was created before the manager's last Collect() call and was " +
+                "not registered in ZddManager.RootSet at that time, so it no longer refers to a valid family. " +
+                "Register handles you need to keep in RootSet before calling Collect(), and re-read them from " +
+                "RootSet afterward instead of reusing the old local variable.");
 
         /// <summary>Counts the non-terminal nodes reachable from <paramref name="rootId"/>.</summary>
         internal long CountReachableNodes(int rootId)

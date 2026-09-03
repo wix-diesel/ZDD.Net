@@ -26,7 +26,11 @@ namespace ZDD.Net.Core
             int maxCacheCapacity,
             long cacheLookups,
             long cacheHits,
-            long cacheOverwrites)
+            long cacheOverwrites,
+            long collectionCount,
+            long lastCollectionRemovedNodeCount,
+            double lastCollectionReductionRatio,
+            TimeSpan lastCollectionDuration)
         {
             NodeCount = nodeCount;
             PeakNodeCount = peakNodeCount;
@@ -38,6 +42,10 @@ namespace ZDD.Net.Core
             CacheLookups = cacheLookups;
             CacheHits = cacheHits;
             CacheOverwrites = cacheOverwrites;
+            CollectionCount = collectionCount;
+            LastCollectionRemovedNodeCount = lastCollectionRemovedNodeCount;
+            LastCollectionReductionRatio = lastCollectionReductionRatio;
+            LastCollectionDuration = lastCollectionDuration;
         }
 
         /// <summary>
@@ -47,8 +55,9 @@ namespace ZDD.Net.Core
         public long NodeCount { get; }
 
         /// <summary>
-        /// Highest value <see cref="NodeCount"/> has reached. Currently always equal to
-        /// <see cref="NodeCount"/>, since node GC does not exist yet.
+        /// Highest value <see cref="NodeCount"/> has reached. Equal to <see cref="NodeCount"/>
+        /// until the manager's first <see cref="ZddManager.Collect()"/>, since collection can lower
+        /// <see cref="NodeCount"/> without lowering this high-water mark.
         /// </summary>
         public long PeakNodeCount { get; }
 
@@ -98,6 +107,26 @@ namespace ZDD.Net.Core
         /// <remarks>The cache is direct-mapped and overwrites unconditionally on collision; a high value relative to <see cref="CacheLookups"/> means the table is too small.</remarks>
         public long CacheOverwrites { get; }
 
+        /// <summary>Total number of completed <see cref="ZddManager.Collect()"/> calls; 0 if never collected.</summary>
+        public long CollectionCount { get; }
+
+        /// <summary>Nodes reclaimed by the most recent <see cref="ZddManager.Collect()"/> call; 0 if never collected.</summary>
+        public long LastCollectionRemovedNodeCount { get; }
+
+        /// <summary>
+        /// Fraction of nodes the most recent <see cref="ZddManager.Collect()"/> call reclaimed,
+        /// relative to the node count right before that call ran (0.0-1.0); 0 if never collected.
+        /// </summary>
+        /// <remarks>
+        /// Fixed at the moment of collection, unlike <see cref="LastCollectionRemovedNodeCount"/>
+        /// combined with the current <see cref="NodeCount"/> — nodes built after that collection
+        /// would otherwise skew a ratio computed from today's count.
+        /// </remarks>
+        public double LastCollectionReductionRatio { get; }
+
+        /// <summary>Wall-clock time the most recent <see cref="ZddManager.Collect()"/> call took; <see cref="TimeSpan.Zero"/> if never collected.</summary>
+        public TimeSpan LastCollectionDuration { get; }
+
         /// <inheritdoc/>
         public bool Equals(ZddStatistics other) =>
             NodeCount == other.NodeCount
@@ -109,7 +138,11 @@ namespace ZDD.Net.Core
             && MaxCacheCapacity == other.MaxCacheCapacity
             && CacheLookups == other.CacheLookups
             && CacheHits == other.CacheHits
-            && CacheOverwrites == other.CacheOverwrites;
+            && CacheOverwrites == other.CacheOverwrites
+            && CollectionCount == other.CollectionCount
+            && LastCollectionRemovedNodeCount == other.LastCollectionRemovedNodeCount
+            && LastCollectionReductionRatio.Equals(other.LastCollectionReductionRatio)
+            && LastCollectionDuration == other.LastCollectionDuration;
 
         /// <inheritdoc/>
         public override bool Equals(object? obj) => obj is ZddStatistics other && Equals(other);
@@ -128,6 +161,10 @@ namespace ZDD.Net.Core
             hash.Add(CacheLookups);
             hash.Add(CacheHits);
             hash.Add(CacheOverwrites);
+            hash.Add(CollectionCount);
+            hash.Add(LastCollectionRemovedNodeCount);
+            hash.Add(LastCollectionReductionRatio);
+            hash.Add(LastCollectionDuration);
             return hash.ToHashCode();
         }
 
@@ -152,7 +189,13 @@ namespace ZDD.Net.Core
             text.Append(CultureInfo.InvariantCulture, $"unique table    : {UniqueTableCapacity:N0} slots, {UniqueTableLoadFactor:P1} load, {UniqueTableCollisions:N0} collision(s)\n");
             text.Append(CultureInfo.InvariantCulture, $"operation cache : {CacheCapacity:N0} / {MaxCacheCapacity:N0} entries\n");
             text.Append(CultureInfo.InvariantCulture, $"cache lookups   : {CacheLookups:N0} ({CacheHits:N0} hit, {CacheMisses:N0} miss, {CacheHitRate:P1} hit rate)\n");
-            text.Append(CultureInfo.InvariantCulture, $"cache overwrites: {CacheOverwrites:N0}");
+            text.Append(CultureInfo.InvariantCulture, $"cache overwrites: {CacheOverwrites:N0}\n");
+            text.Append(CultureInfo.InvariantCulture, $"collections     : {CollectionCount:N0}");
+            if (CollectionCount > 0)
+            {
+                text.Append(CultureInfo.InvariantCulture,
+                    $" (last: -{LastCollectionRemovedNodeCount:N0} nodes, {LastCollectionReductionRatio:P1}, {LastCollectionDuration.TotalMilliseconds:N1} ms)");
+            }
 
             return text.ToString();
         }

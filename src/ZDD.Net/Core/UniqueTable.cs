@@ -280,6 +280,49 @@ namespace ZDD.Net.Core
         private static int ComputeGrowThreshold(int capacity) =>
             (int)((long)capacity * MaxLoadFactorPercent / 100);
 
+        /// <summary>
+        /// Rebuilds the slot array from scratch to match <see cref="Nodes"/>' current contents,
+        /// after <see cref="NodeTable.Compact"/> has renumbered every id — the old slots would
+        /// otherwise point at the wrong node (or none at all).
+        /// </summary>
+        /// <remarks>
+        /// Sized for <see cref="NodeTable.Count"/> using the same rule as the constructor, so the
+        /// load factor right after a collection matches what a freshly built table of that size
+        /// would have. No duplicate check is needed while reinserting: compaction only renumbers
+        /// nodes, it cannot introduce two nodes with the same <c>(level, lo, hi)</c>, since it never
+        /// touches canonicity. Collision and lookup statistics are cumulative and untouched, like
+        /// <see cref="OperationCache.Clear"/>'s.
+        /// </remarks>
+        internal void RebuildAfterCollection()
+        {
+            int liveCount = _nodes.Count;
+            int capacity = Math.Max(MinimumCapacity, (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(liveCount, 1)));
+            while (capacity < MaxCapacity && ComputeGrowThreshold(capacity) < liveCount)
+            {
+                capacity *= 2;
+            }
+
+            int[] rebuilt = new int[capacity];
+            int mask = capacity - 1;
+
+            for (int id = NodeTable.FirstNodeId; id < NodeTable.FirstNodeId + liveCount; id++)
+            {
+                ref ZddNode node = ref _nodes[id];
+                int slot = Hashing.IndexForPowerOfTwo(Hashing.Combine(node.Level, node.Lo, node.Hi), capacity);
+
+                while (rebuilt[slot] != EmptySlot)
+                {
+                    slot = (slot + 1) & mask;
+                }
+
+                rebuilt[slot] = id;
+            }
+
+            _slots = rebuilt;
+            _count = liveCount;
+            _growThreshold = ComputeGrowThreshold(capacity);
+        }
+
         /// <summary>Validates that the key is structurally sound (positive level, children exist).</summary>
         /// <remarks>
         /// Runs before the zero-suppression early-return path too, so the guarantee holds in

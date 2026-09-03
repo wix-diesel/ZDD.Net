@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using ZDD.Net.Internal;
 
@@ -28,6 +29,12 @@ namespace ZDD.Net.Core
 
         /// <summary>Sentinel meaning "no next" for <see cref="ZddNode.Next"/>.</summary>
         public const int NoNext = -1;
+
+        /// <summary>
+        /// Sentinel <see cref="Compact"/> uses, in the map it returns, for an id that did not
+        /// survive collection (was not reachable from any mark root).
+        /// </summary>
+        public const int DeadId = -1;
 
         /// <summary>Default initial capacity (includes the 2 terminal slots).</summary>
         public const int DefaultCapacity = 1024;
@@ -98,7 +105,11 @@ namespace ZDD.Net.Core
         public int Count => _count - FirstNodeId;
 
         /// <summary>Highest value <see cref="Count"/> has ever reached.</summary>
-        /// <remarks>Currently always equal to <see cref="Count"/> since there is no node GC yet (planned M5-3).</remarks>
+        /// <remarks>
+        /// Equal to <see cref="Count"/> until the first <see cref="ZddManager.Collect()"/>; a
+        /// collection can shrink <see cref="Count"/> without lowering this, since it tracks the
+        /// high-water mark rather than the current size.
+        /// </remarks>
         public int PeakCount => _peakCount - FirstNodeId;
 
         /// <summary>Id the next <see cref="Add"/> call will return.</summary>
@@ -210,6 +221,94 @@ namespace ZDD.Net.Core
             ZddNode[] grown = GC.AllocateUninitializedArray<ZddNode>(newCapacity);
             Array.Copy(_nodes, grown, capacity);
             _nodes = grown;
+        }
+
+        /// <summary>
+        /// Compacts the table in place, keeping only the nodes marked in <paramref name="live"/>
+        /// (terminals are always kept regardless of <paramref name="live"/>) and renumbering the
+        /// survivors densely from <see cref="FirstNodeId"/>, in their original relative order.
+        /// </summary>
+        /// <param name="live">
+        /// Liveness by id, indexed 0 .. <see cref="NextId"/> - 1 (entries for <see cref="Bottom"/>/<see cref="Top"/> are ignored).
+        /// </param>
+        /// <returns>
+        /// Old id -&gt; new id map, length <see cref="NextId"/> as of this call. Terminals map to
+        /// themselves; a dead (non-terminal, not live) id maps to <see cref="DeadId"/>.
+        /// </returns>
+        /// <remarks>
+        /// A node's <see cref="ZddNode.Lo"/>/<see cref="ZddNode.Hi"/> always have a strictly smaller
+        /// id than the node itself: the unique table requires both children to already exist before
+        /// a new node can reference them, so a child is always added first. Walking old ids in
+        /// increasing order therefore guarantees every live child's new id is already known by the
+        /// time its parent is remapped, so this single forward pass can safely write each surviving
+        /// node to its new (never larger) slot without a second array: <c>newId &lt;= oldId</c>
+        /// always holds, so a slot is never overwritten before it has been read.
+        /// </remarks>
+        internal int[] Compact(ReadOnlySpan<bool> live)
+        {
+            int oldCount = _count;
+            int[] map = new int[oldCount];
+            map[Bottom] = Bottom;
+            map[Top] = Top;
+
+            int writeId = FirstNodeId;
+            for (int oldId = FirstNodeId; oldId < oldCount; oldId++)
+            {
+                if (!live[oldId])
+                {
+                    map[oldId] = DeadId;
+                    continue;
+                }
+
+                int level;
+                int lo;
+                int hi;
+                {
+                    ref ZddNode src = ref _nodes[oldId];
+                    level = src.Level;
+                    lo = src.Lo;
+                    hi = src.Hi;
+                }
+
+                map[oldId] = writeId;
+
+                ref ZddNode dst = ref _nodes[writeId];
+                dst.Level = level;
+                dst.Lo = IsTerminal(lo) ? lo : map[lo];
+                dst.Hi = IsTerminal(hi) ? hi : map[hi];
+                dst.Next = NoNext;
+
+                writeId++;
+            }
+
+            _count = writeId;
+            ShrinkToFit();
+
+            return map;
+        }
+
+        /// <summary>
+        /// Reallocates the backing array to the smallest power-of-two capacity (at least
+        /// <see cref="DefaultCapacity"/>) that fits the current <see cref="Count"/>, if that is
+        /// meaningfully smaller than what is currently allocated. Called after <see cref="Compact"/>
+        /// so a collection that frees most of the table actually returns the memory.
+        /// </summary>
+        private void ShrinkToFit()
+        {
+            int currentCapacity = _nodes.Length;
+
+            long desired = Math.Max(DefaultCapacity, (long)BitOperations.RoundUpToPowerOf2((uint)Math.Max(_count, 1)));
+            desired = Math.Min(desired, (long)_capacityLimit);
+
+            // Only worth reallocating (and copying) when it actually halves usage or more.
+            if (desired > currentCapacity / 2)
+            {
+                return;
+            }
+
+            ZddNode[] shrunk = GC.AllocateUninitializedArray<ZddNode>((int)desired);
+            Array.Copy(_nodes, shrunk, _count);
+            _nodes = shrunk;
         }
     }
 }
