@@ -302,6 +302,42 @@ foreach (int[] edgeSet in paths.Sets())
 `struct` かつ型引数で受けていれば、JIT がスペックごとに特殊化し `GetChild` はインライン展開される。
 同じ方針の背景は [docs/api-guide.md](api-guide.md) §5.1（`IDdEval`/`IWeightOps`）にも書いてある。
 
+### 6.3 並列構築（`BuildOptions.MaxDegreeOfParallelism`）
+
+幅が十分広い水準（既定の閾値は 2048 状態）は、`Parallel.For` で複数スレッドから同時に展開される
+（M4-3、issue #46）。既定では論理コア数（`Environment.ProcessorCount`）を使い、`1` を指定すると
+常に逐次実行になる:
+
+```csharp
+var options = new BuildOptions { MaxDegreeOfParallelism = Environment.ProcessorCount };
+Zdd result = FrontierBuilder.Build<PathSpec>(manager, spec, options);
+```
+
+**並列度をいくつにしても、できあがる ZDD のノード ID は逐次実行と完全に一致する**——水準内の
+状態は「パーティションの並び順・パーティション内の到着順」で登録され、それは常に逐次実行と同じ
+順序になるように結合される（実装は `TopDownExpander`/`ArrayTopDownExpander` の XML doc 参照）。
+どのスレッドが先に終わったかには依存しない。
+
+**実測に基づく現実的な期待値**（詳しくは [docs/benchmarks.md](benchmarks.md) の M4-3 節）:
+このライブラリの組み込みスペックは、状態表への登録（ハッシュ計算・比較。M4-2 で SIMD 化した箇所
+そのもの）が `GetChild` 自体よりずっと重く、並列化されるのは `GetChild` の計算だけなので、
+**組み込みスペックだけでは大きな高速化は見込めない**（実測では 4 コアで 0.9x 前後——むしろ僅かに
+遅くなることもある）。**`GetChild` 自体が重い**（複雑な組み合わせ制約の評価など）カスタムスペックでは
+実際に効く（合成ベンチマークで 4 コアあたり 2.4x）。効くかどうか分からないときは、
+`MaxDegreeOfParallelism = 1` と既定値の両方で `docs/benchmarks.md` の `-- time` 相当の計測を
+行ってから決めるとよい。
+
+**例外の伝播**: 並列実行中に `GetChild` が例外を投げた場合、ちょうど 1 パーティションだけが投げた
+ときは元の例外型のまま伝播する（`Parallel.For` は内部で必ず `AggregateException` に包むが、
+単一の例外なら unwrap して逐次実行と同じ見た目に揃えている）。複数パーティションが同時に例外を
+投げた場合は `AggregateException`（`InnerExceptions` に複数個）がそのまま伝播する——`catch`
+する側は両方のケースを想定しておくこと。`CancellationToken` によるキャンセルは並列実行中も
+（水準の境界だけでなく、パーティション内でも一定間隔で）観測される。
+
+独自スペックを書くときにもう 1 つ要件が増える: **スペック自身が、呼び出しをまたいで共有される
+可変フィールドを持たないこと**（docs/frontier-spec-guide.md §4）。組み込みスペックは全てこの
+要件を満たす。
+
 ## 7. `IDdSpec<TState>` の書き方: 独自スペックを 1 つ書いてみる
 
 スペックの契約（`GetRoot`/`GetChild` の戻り値の規約、状態の寿命、`StateEquals`/`StateHashCode` の

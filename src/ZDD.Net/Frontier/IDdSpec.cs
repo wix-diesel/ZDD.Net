@@ -11,6 +11,10 @@ namespace ZDD.Net.Frontier
     /// <remarks>
     /// A state must hold only what still affects later transitions, in canonical form; anything else splits
     /// the level's state set and the width explodes. Full contract: <c>docs/frontier-spec-guide.md</c>.
+    /// A wide-enough level is expanded by calling <see cref="GetChild"/> from several threads at once
+    /// (<see cref="BuildOptions.MaxDegreeOfParallelism"/>, M4-3): the spec value itself is copied
+    /// per-thread automatically as long as it is a <c>readonly struct</c>, but it must not hold a
+    /// reference to anything it mutates — see docs/frontier-spec-guide.md §4.
     /// </remarks>
     public interface IDdSpec<TState>
     {

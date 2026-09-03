@@ -145,3 +145,53 @@ jobs:
           name: test-results-simd-fallback
           path: "**/*.trx"
           retention-days: 14
+
+  build-test-parallel-frontier:
+    # M4-3（issue #46）: レベル内展開の並列パスは、幅が閾値（既定 2048 状態）を超えた水準でしか
+    # 動かないが、既存のテストのお題はほとんどそこまで幅が無い。ZDD_FORCE_PARALLEL_FRONTIER=1 で
+    # 閾値を無視させ、既存の M1〜M3 の全テスト（結合ロジックを含む）を並列パス経由で強制的に通し、
+    # 逐次実行と変わらず通ることを確かめる（並列度によらずノード ID が一致するという本機能の
+    # 決定性の主張を、既存の全テストで裏付ける。docs/benchmarks.md の M4-3 節参照）。
+    runs-on: ubuntu-latest
+    env:
+      ZDD_FORCE_PARALLEL_FRONTIER: "1"
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v7
+
+      - name: .NET セットアップ
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: リストア
+        run: dotnet restore ZDD.Net.sln
+
+      - name: ビルド
+        run: dotnet build ZDD.Net.sln --no-restore --configuration Release
+
+      - name: テスト（並列フロンティア経路）
+        run: >
+          dotnet test tests/ZDD.Net.Tests/ZDD.Net.Tests.csproj
+          --no-restore
+          --no-build
+          --configuration Release
+          --logger trx
+          --results-directory ./coverage-parallel-frontier
+
+      - name: プロパティテスト（並列フロンティア経路）
+        run: >
+          dotnet test tests/ZDD.Net.Tests.Properties/ZDD.Net.Tests.Properties.csproj
+          --no-restore
+          --no-build
+          --configuration Release
+          --logger trx
+          --results-directory ./coverage-parallel-frontier
+
+      - name: テスト結果のアップロード
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: test-results-parallel-frontier
+          path: "**/*.trx"
+          retention-days: 14
