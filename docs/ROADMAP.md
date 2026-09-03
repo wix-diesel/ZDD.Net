@@ -123,7 +123,7 @@ Core レイヤは下から積むため、序盤の PR は `internal` のコー�
 | [ ] | **M3-6** | 頂点系スペック | `IndependentSetSpec` / `CliqueSpec` / `VertexCoverSpec` / `DominatingSetSpec` | 素朴 DP と一致 | 〜350 | M2-12 |
 | [x] | **M3-7** | 次数制約 | `DegreeConstraintSpec(lo[], hi[])` | マッチング・パスを次数制約で再現でき、結果が一致 | 〜250 | M3-4 |
 | [x] | **M3-8** | `SetSet<T>` | 任意要素型の族ラッパ、要素 ↔ 変数のマッピング、LINQ 連携 | 文字列要素の族で一通り動く | 〜300 | M2-12 |
-| [ ] | **M3-9** | `GraphSet` | `Paths`/`Cycles`/`Trees`/`Forests`/`Matchings`、`Including`/`Excluding`/`Larger`/`Smaller`、`MinIter`/`MaxIter`/`RandIter` | Graphillion のチュートリアル相当のシナリオが再現できる | 〜400 | M3-8, M3-5 |
+| [x] | **M3-9** | `GraphSet` | `Paths`/`Cycles`/`Trees`/`Forests`/`Matchings`、`Including`/`Excluding`/`Larger`/`Smaller`、`MinIter`/`MaxIter`/`RandIter` | Graphillion のチュートリアル相当のシナリオが再現できる | 〜400 | M3-8, M3-5 |
 | [ ] | **M3-10** | グラフ入出力 | DIMACS / エッジリスト / 簡易テキストの読み書き | ラウンドトリップ。数千辺の実データを読み込める | 〜200 | M3-9 |
 | [ ] | **M3-11** | v0.3 リリース | ドキュメント、チュートリアル、CHANGELOG | **数千辺の実グラフで経路数え上げが完走する** | ドキュメント | M3-10 |
 
