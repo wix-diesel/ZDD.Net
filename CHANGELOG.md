@@ -21,6 +21,15 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
   `UniqueTable` / `OperationWorkspace` と同じ Fibonacci hashing
   （`Hashing.IndexForPowerOfTwo`）に統一。実測ではヒット率・実行時間とも有意差はなかった
   （`Hashing.Mix64` が既に十分な雪崩効果を持つため）が、3 つの表で流儀を揃えた
+- `ZDD.Net.Internal.Hashing.Combine(ReadOnlySpan<byte>)`: フロンティア法の状態表
+  （`ArrayLevelStateTable.GetOrAdd`）が呼ぶ状態ハッシュを、256 バイト以上の入力では
+  `Vector256`/`Vector128`（`System.Runtime.Intrinsics`、ハードウェア非対応環境では自動的に
+  元のスカラー実装へフォールバック）で計算するように変更（M4-2、issue #45）。256 バイト未満は
+  ベクトル化のオーバーヘッドが上回ると実測されたため、元のスカラー経路のまま。代表ベンチで
+  フロンティアが広いケースは実行時間 7〜17% 改善、狭いケースは分岐自体が変わらないため無変化
+  （詳細は [docs/benchmarks.md](docs/benchmarks.md) の M4-2 節）。状態比較
+  （`ReadOnlySpan<byte>.SequenceEqual`）は .NET ランタイム自体が既にベクトル化しており、
+  手書き実装を測っても上回らなかったため変更なし
 
 ## [0.3.0] - 2026-09-03
 

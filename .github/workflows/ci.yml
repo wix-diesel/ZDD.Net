@@ -105,3 +105,43 @@ jobs:
           name: test-results
           path: "**/*.trx"
           retention-days: 14
+
+  build-test-simd-fallback:
+    # M4-2（issue #45）: 状態表のハッシュ計算はハードウェアが対応していれば SIMD
+    # （Vector256/Vector128）を使うが、この CI ランナーは AVX2 を持つのでその分岐は
+    # 通常のジョブでは通らない。ZDD_DISABLE_SIMD=1 で強制的にスカラー経路（非対応環境の
+    # フォールバックと同じコード）を通し、全テストが変わらず通ることを確かめる。
+    runs-on: ubuntu-latest
+    env:
+      ZDD_DISABLE_SIMD: "1"
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v7
+
+      - name: .NET セットアップ
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: リストア
+        run: dotnet restore ZDD.Net.sln
+
+      - name: ビルド
+        run: dotnet build ZDD.Net.sln --no-restore --configuration Release
+
+      - name: テスト（SIMD フォールバック経路）
+        run: >
+          dotnet test tests/ZDD.Net.Tests/ZDD.Net.Tests.csproj
+          --no-restore
+          --no-build
+          --configuration Release
+          --logger trx
+          --results-directory ./coverage-simd-fallback
+
+      - name: テスト結果のアップロード
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: test-results-simd-fallback
+          path: "**/*.trx"
+          retention-days: 14

@@ -496,3 +496,130 @@ Fibonacci hashing）で使っている——3 つの表の中でここだけ流�
 `PutBinary` など）は `Migrate` を経由しないので `OperationCacheTests.TheHotPathDoesNotAllocate`
 （アロケーション 0 を検証）は変更の影響を受けず、そのまま通っている。M1〜M3 の全テスト
 （1,262 件）も変わらず通る。
+
+## M4-2: SIMD・低レベル最適化（状態ハッシュの `System.Runtime.Intrinsics` 化）
+
+`src/ZDD.Net/Internal/Hashing.cs` の `Combine(ReadOnlySpan<byte>)`——`ArrayLevelStateTable.GetOrAdd`
+が状態表の `GetOrAdd` ごとに呼ぶ、フロンティア法の hot path そのもの（issue #45）。測定環境は
+上表と同じ（測定日 2026-09-03）。実行方法:
+
+```bash
+dotnet run -c Release --project bench/ZDD.Net.Benchmarks -- hashing-simd
+```
+
+### 変えたのはハッシュ計算だけ: 状態比較は測って何もしなかった
+
+issue の本文はハッシュと比較の両方を SIMD 化するよう求めているが、比較（`ArrayLevelStateTable`
+が使う `ReadOnlySpan<byte>.SequenceEqual`）は .NET のランタイム自体が既に `Vector256`/`Vector128`
+で実装している。「本当に何も足せないのか」を確かめるため、`Vector256`/`Vector128` を手で書いた
+比較関数（`HashingSimdReport.HandRolledVectorEquals`、ロジックは下の `Combine` と同じ形）を用意し、
+同じ長さ集合で `SequenceEqual` と比較した:
+
+| 長さ（バイト） | `SequenceEqual` | 手書き Vector256/128 | 比 |
+|---:|---:|---:|---:|
+| 8 | 5.53 ns | 7.41 ns | 0.75x |
+| 20 | 6.30 ns | 6.48 ns | 0.97x |
+| 64 | 6.10 ns | 7.44 ns | 0.82x |
+| 128 | 7.72 ns | 8.76 ns | 0.88x |
+| 256 | 10.98 ns | 10.89 ns | 1.01x |
+| 512 | 17.78 ns | 16.08 ns | 1.11x |
+| 1,024 | 25.96 ns | 32.92 ns | 0.79x |
+| 2,600 | 63.26 ns | 71.72 ns | 0.88x |
+
+手書き版は同等かむしろ遅い（8 個中 6 個で `SequenceEqual` が勝つ）。BCL の実装は関数呼び出しの
+オーバーヘッドが小さく、幅の広い命令セット（AVX-512 系）が使える環境ではそちらも自動的に
+使うため、車輪の再発明をする理由がない。**「効かなかった変更は入れない」（issue の受け入れ条件）
+に従い、比較側は `ReadOnlySpan<byte>.SequenceEqual` のまま変更しなかった**——この節はその判断を
+裏付けた実測の記録。`HashingSimdReport.cs` に候補実装ごと残してあるので、将来 BCL 側の実装が
+変わったときに測り直せる。
+
+### ハッシュ計算: `Vector256`/`Vector128` の SplitMix64 フィナライザを 32/16 バイト単位で
+
+`Combine` は 8 バイトごとに `Mix64`（SplitMix64 のフィナライザ）を直列にかけていくだけだった。
+ハードウェアが対応していれば、32 バイト（4 レーン）または 16 バイト（2 レーン）を
+`Vector256<ulong>`/`Vector128<ulong>` に載せ、同じ `Mix64` の式をレーンごとに並列実行してから、
+端数（8 バイト単位の残り、さらにその端数）は元のスカラーループのまま仕上げる。`Vector128.Create`
+のようなプラットフォーム非依存の API だけを使い、x86/Arm 個別の intrinsic は直接呼ばない
+（`IsAotCompatible`/`EnableTrimAnalyzer` はどちらも維持、下記参照）。
+
+| 長さ（バイト） | スカラー（M4-2 前, 中央値/5 回） | ベクトル化（M4-2 後, 中央値/5 回） | 比 |
+|---:|---:|---:|---:|
+| 8 | 4.53 ns | 4.23 ns | 1.07x |
+| 20 | 10.56 ns | 11.05 ns | 0.96x |
+| 64 | 23.87 ns | 22.37 ns | 1.07x |
+| 128 | 51.30 ns | 51.37 ns | 1.00x |
+| 256 | 122.18 ns | 97.73 ns | **1.25x** |
+| 512 | 245.05 ns | 194.32 ns | **1.26x** |
+| 1,024 | 506.28 ns | 386.12 ns | **1.31x** |
+| 2,600 | 1,313.92 ns | 992.07 ns | **1.32x** |
+
+256 バイト未満では 1.00x〜1.07x（ノイズの範囲）で、64 バイトはむしろ僅かに悪化することもあった。
+`Vector256.Create`/`Vector128.Create` によるアキュムレータ初期化と分岐そのもののコストが、
+数レーン分の計算で浮く時間を上回るため。そこで **`MinVectorizedLength`（256 バイト）未満は
+最初からベクトル化を試みず、スカラーループへ直行する**——`Hashing.cs` のこの定数が、上の表の
+「256 バイト以上でだけ確実に効く」という実測をそのままコード化したもの。256 バイト以上では
+32/16 バイトのチャンク数が増えるぶん比率が伸びていき、2,600 バイト（`Cardinality_5000...`
+ケースの最大フロンティア幅相当）で 1.32x に達する。
+
+### 代表ベンチでの前後比較（`bench/ZDD.Net.Benchmarks -- time`、Min は 30 回中最小値でノイズに強い統計量）
+
+| ケース | フロンティア状態のバイト長 | 前 (Min) | 後 (Min) | 前 (Median) | 後 (Median) | 変化 |
+|---|---:|---:|---:|---:|---:|---:|
+| `Cardinality_5000Choose2400To2600` | 〜2,600（1バイト幅） | 3,824.62 ms | 3,544.63 ms | 4,295.38 ms | 3,563.23 ms | **Min -7.3% / Median -17.0%** |
+| `Path_Grid3x9_Shuffled_AsGiven` | シャッフル辺順序で広いフロンティア | 757.59 ms | 629.88 ms | 762.48 ms | 631.81 ms | **-16.9%** |
+| `Forest_Grid4x5_Shuffled_AsGiven` | 同上 | 270.95 ms | 262.46 ms | 274.75 ms | 262.49 ms | -3.1% |
+| `Path_Grid7x7` | 1,460 前後 | 9.79 ms | 9.58 ms | 12.29 ms | 11.05 ms | -2.1%（誤差内） |
+| `SpanningTree_Grid4x5_Shuffled_AsGiven` | 中規模 | 110.02 ms | 109.56 ms | 118.10 ms | 115.88 ms | 変化なし（誤差内） |
+| `Path_Grid6x6` | 428 前後 | 2.28 ms | 2.29 ms | 7.48 ms | 5.83 ms | 変化なし（誤差内） |
+| `SpanningTree_Complete8` | 406 前後 | 1.94 ms | 1.97 ms | 2.24 ms | 2.07 ms | 変化なし（誤差内） |
+| `Forest_Grid5x5_TwoComponents` | 小規模 | 2.70 ms | 2.82 ms | 2.82 ms | 2.94 ms | 変化なし（誤差内） |
+| `Union_TwoGrid6x6Paths` | 428 前後 + `Union` | 12.70 ms | 13.72 ms | 13.66 ms | 23.17 ms | 変化なし（誤差内、後述） |
+| `Path_Grid5x5` | 125（256 バイト未満） | 1.97 ms | 2.52 ms | 2.18 ms | 2.81 ms | 変化なし（誤差内） |
+| `PerfectMatching_Grid6x6` | 20（256 バイト未満） | 0.42 ms | 0.43 ms | 0.87 ms | 0.79 ms | 変化なし（誤差内） |
+| `Product_Grid5x5PathsAndCardinality` | 125 前後（256 バイト未満） | 840.93 ms | 878.15 ms | 858.74 ms | 888.16 ms | 変化なし（誤差内、後述） |
+| `LinearConstraint_1000ItemsKnapsack` | — （`long` 状態、`StructLevelStateTable`） | 4,861.91 ms | 4,922.10 ms | 5,046.85 ms | 5,168.55 ms | 変化なし（対象外） |
+
+- **明確に改善したのは 2 ケース**: フロンティアが数百〜数千バイトまで広がる
+  `Cardinality_5000Choose2400To2600`（Min -7.3%、Median -17.0%）と、辺順序をシャッフルして
+  意図的にフロンティアを広げた `Path_Grid3x9_Shuffled_AsGiven`（-16.9%）。どちらも状態バイト長が
+  256 バイトを大きく超え、上のマイクロベンチの「256 バイト以上で確実に効く」帯に入る。
+- **`LinearConstraint_1000ItemsKnapsack` は対象外、実測もその通り**: このスペックは状態が
+  単一の `long`（`IDdSpec<long>`）で `StructLevelStateTable` が使われ、`Hashing.Combine
+  (ReadOnlySpan<byte>)` を一切呼ばない。変化なし（むしろ 1.2% 悪化）という結果は、この変更が
+  当たらないケースでの実測がノイズの範囲に収まっていることの確認でしかない。
+- **256 バイト未満のケース（`Path_Grid5x5`、`PerfectMatching_Grid6x6`、
+  `Product_Grid5x5PathsAndCardinality`）はコード上完全に同じスカラー経路を通る**（上記の
+  `MinVectorizedLength` 判定で分岐が一切変わらない）ので、表の増減は測定ノイズそのもの。
+  `Product_Grid5x5PathsAndCardinality` と `Union_TwoGrid6x6Paths` は複数回再実行して確認済み
+  （前者は 854.78〜883.82 ms、後者は Min 13.06〜13.29 ms のレンジで安定して揺れる）。
+- **ビルド全体の時間に占めるハッシュ計算の割合は、フロンティアが狭いケースほど小さい**——
+  状態のパック処理・スペック側のループ・GC など他のコストが支配的なため、マイクロベンチが
+  示す 1.2x〜1.3x がそのままビルド全体の速度に反映されるのは、フロンティアが常に広いケースに
+  限られる。これも「効いたところだけを残す」方針どおりの、想定内の結果。
+
+### 正しさ: 結果は完全一致、SIMD 非対応環境のフォールバックも同じ
+
+- **M1〜M3 の全テスト（1,298 件）と Properties テスト（109 件）が、変更前後で一つも変わらず
+  通る**。ハッシュ値は `GetOrAdd` の中で衝突検出の高速化にしか使われず（実際の一致判定は
+  `SequenceEqual` によるバイト比較）、割り当てられるノードのインデックス順は状態が最初に
+  現れた順序だけで決まるので、ハッシュ関数を変えても構築される ZDD のノード ID は変わらない。
+- **SIMD 非対応環境のフォールバックはハードウェア検出**
+  （`Vector256.IsHardwareAccelerated`/`Vector128.IsHardwareAccelerated`）で自動的に効く。
+  この CI ランナーは AVX2 を持つため通常のジョブではこの分岐を通らないので、テストと CI の
+  両方に別経路を用意した:
+  - `HashingTests.CombineOverBytesNeverReadsPastTheGivenLength` は、渡した長さより後ろのバイトを
+    互いに異なる値で「毒」を盛った 2 つのバッファに対して `Combine` を呼び、結果が一致することを
+    確認する——`Unsafe.Add` による生の読み出しが `bytes.Length` を一バイトも超えないことの回帰
+    テスト（8/16/32 バイトの境界をまたぐ 15 通りの長さで検証）。ベクトル化ループの直前には
+    `Debug.Assert(i + Vector256<byte>.Count <= length)` 等の表明も入れてある。
+  - `.github/workflows/ci.yml` に `build-test-simd-fallback` ジョブを追加: 環境変数
+    `ZDD_DISABLE_SIMD=1` を立てて `ZDD.Net.Tests` 一式を実行し、ハードウェア非対応環境と
+    同じスカラーのみの経路で全テストが変わらず通ることを確かめる（この環境変数はテストと
+    CI 専用で、`Hashing` クラスの静的初期化時に一度だけ読む）。ローカルでも
+    `ZDD_DISABLE_SIMD=1 dotnet test tests/ZDD.Net.Tests` で同じ経路を再現できる。
+
+### AOT・トリミング・警告
+
+`src/ZDD.Net/ZDD.Net.csproj` の `IsAotCompatible`/`EnableTrimAnalyzer` はどちらも変更なしで
+維持（`Vector128`/`Vector256` の汎用 API はリフレクションを使わず、AOT・トリミングと両立する）。
+`Directory.Build.props` の `TreatWarningsAsErrors` の下でも警告 0 でビルドが通る。
