@@ -20,6 +20,7 @@ namespace ZDD.Net.Samples.FrontierGuide
             WhatIsTheFrontierMethod();
             BuiltInSpecs();
             GraphAndFrontierManager();
+            M4Specs();
             EdgeOrderOptimization();
             BuildOptionsLimits();
             CustomSpecNoThreeConsecutive();
@@ -138,6 +139,66 @@ namespace ZDD.Net.Samples.FrontierGuide
 
             Zdd dominatingSets = FrontierBuilder.Build<DominatingSetSpec>(vertexManager, new DominatingSetSpec(grid));
             Assert(dominatingSets.Count > 0, "DominatingSetSpec: a 3x3 grid has dominating sets (at least the full vertex set)");
+        }
+
+        /// <summary>
+        /// 「組み込みスペックの一覧と使い方」節、M4 で追加した 6 スペック
+        /// （ConnectedSubgraphSpec / SteinerTreeSpec / GraphPartitionSpec / CutSpec / ColoringSpec / DfaSpec）。
+        /// </summary>
+        private static void M4Specs()
+        {
+            Graph grid = Graph.Grid(3, 3);
+            int s = 0;
+            int t = grid.VertexCount - 1;
+            using ZddManager manager = new ZddManager(grid.EdgeCount);
+
+            // ConnectedSubgraphSpec: terminals が全て同じ連結成分に入る辺集合。terminals が 2 個のとき、
+            // Minimal() は PathSpec の s-t パスと一致する（tests/.../ConnectedSubgraphSpecTests.cs）。
+            Zdd connected = FrontierBuilder.Build<ConnectedSubgraphSpec>(
+                manager, new ConnectedSubgraphSpec(grid, new[] { s, t }));
+            Zdd paths = FrontierBuilder.Build<PathSpec>(manager, new PathSpec(grid, s, t));
+            Assert(connected.Minimal() == paths, "ConnectedSubgraphSpec({s,t}).Minimal() matches PathSpec(s,t)");
+
+            // SteinerTreeSpec: terminals を含むシュタイナー木。terminals が 2 個のときは、族そのものが
+            // PathSpec の s-t パスと一致する（分岐点があれば非 terminal の葉ができてしまうため）。
+            Zdd steinerTrees = FrontierBuilder.Build<SteinerTreeSpec>(
+                manager, new SteinerTreeSpec(grid, new[] { s, t }));
+            Assert(steinerTrees == paths, "SteinerTreeSpec({s,t}) matches PathSpec(s,t)");
+
+            // GraphPartitionSpec: 「残す」辺で連結な K 個のブロックに分割し、各ブロックの頂点数を絞る区割り。
+            Zdd partitions = FrontierBuilder.Build<GraphPartitionSpec>(
+                manager, new GraphPartitionSpec(grid, k: 3, minBlockSize: 3, maxBlockSize: 3));
+            Assert(partitions.Count > 0, "GraphPartitionSpec: a 3x3 grid can be split into three 3-vertex blocks");
+
+            // CutSpec: s-t カット。既定は全てのカット、MinimalOnly: true で極小カットだけに絞れる
+            // （極小カットは全カットの部分集合になる）。
+            Zdd cuts = FrontierBuilder.Build<CutSpec>(manager, new CutSpec(grid, s, t));
+            Zdd minimalCuts = FrontierBuilder.Build<CutSpec>(manager, new CutSpec(grid, s, t, minimalOnly: true));
+            Assert(cuts.Count > 0, "CutSpec: a 3x3 grid has s-t cuts");
+            Assert(minimalCuts.IsSubsetOf(cuts), "CutSpec(minimalOnly: true) is a subset of all cuts");
+
+            // ColoringSpec: グラフの k 彩色。変数は頂点 x 色（ArrayLength/VariableCount はスペック自身が計算する）。
+            // K3（三角形）は 3 色全て使わないと塗れないので、彩色数は 3! = 6。
+            Graph triangle = Graph.Complete(3);
+            var coloringSpec = new ColoringSpec(triangle, k: 3);
+            using ZddManager colorManager = new ZddManager(coloringSpec.VariableCount);
+
+            Zdd colorings = FrontierBuilder.Build<ColoringSpec>(colorManager, coloringSpec);
+            Assert(colorings.Count == 6, "ColoringSpec: K3 with 3 colors has 3! = 6 proper colorings");
+
+            // RepresentativesOnly: 色の付け替えで同一視できる彩色を 1 つの代表だけに絞る。
+            // K3 はどの彩色も 3 色全部を使うので、代表数はちょうど 6 / 3! = 1。
+            Zdd representatives = FrontierBuilder.Build<ColoringSpec>(
+                colorManager, new ColoringSpec(triangle, k: 3, representativesOnly: true));
+            Assert(representatives.Count == 1, "ColoringSpec(representativesOnly: true): K3 has exactly 1 representative");
+
+            // DfaSpec: 長さ固定の 2 値文字列のうち DFA が受理するものの族。1 の個数が偶数個の文字列を
+            // 受理する 2 状態 DFA（長さ 6 なら 2^5 = 32 通り）。
+            int[,] transitions = { { 0, 1 }, { 1, 0 } };
+            using ZddManager dfaManager = new ZddManager(variableCount: 6);
+            Zdd accepted = FrontierBuilder.Build<DfaSpec, int>(
+                dfaManager, new DfaSpec(transitions, initialState: 0, acceptStates: new[] { 0 }, length: 6));
+            Assert(accepted.Count == 32, "DfaSpec: length-6 strings with an even number of 1s number 2^5 = 32");
         }
 
         /// <summary>

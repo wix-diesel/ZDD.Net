@@ -12,7 +12,7 @@
 dotnet run --project samples/Zdd.ApiGuide
 ```
 
-- 対象バージョン: v0.3（Core エンジン。以下の演算・API 自体は M1 完成時点から変わっていない。
+- 対象バージョン: v0.4（Core エンジン。以下の演算・API 自体は M1 完成時点から変わっていない。
   フロンティア法・グラフ API は [docs/frontier-guide.md](frontier-guide.md)、
   「格子グラフの s–t パスを数える」から始まる一本道の入門は [docs/tutorial.md](tutorial.md) を参照）
 

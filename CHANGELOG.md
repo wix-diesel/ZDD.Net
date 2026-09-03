@@ -6,10 +6,81 @@
 
 v1.0 までは API 未確定のプレリリース版として公開する（[docs/PLAN.md](docs/PLAN.md) §13）。
 
-## [Unreleased]
+## [0.4.0] - 2026-09-03
+
+M4「性能と残りのスペック」マイルストーン（[docs/PLAN.md](docs/PLAN.md) §12）の完了リリース。
+性能改善（キャッシュ調整・SIMD 化・並列構築）を実測付きで積み上げ、残っていたグラフ系スペック
+（連結部分グラフ・シュタイナー木・分割・カット・彩色・オートマトン）で M0〜M4 の機能面が出揃った。
+Graphillion・TdZdd との比較で `docs/PLAN.md` §10 の性能目標を全て達成し（M4-8）、v0.5（I/O・GC）と
+v1.0（安定化・公開）へ進む前提が整った状態になる。
 
 ### Added
 
+- `bench/comparison`: Graphillion（Python + C++ コア）・TdZdd（生 C++・ヘッダオンリー）との性能比較
+  （M4-8、issue #51）。`docs/PLAN.md` §10 の 3 つの性能目標——9×9 格子 1 秒以内・11×11 格子
+  60 秒以内/メモリ 8 GB 以内・Graphillion 比 3 倍以内（最終的に 2 倍以内）——を全て達成:
+  9×9 格子（3,266,598,486,981,642 通り）206.12 ms（目標の約 1/5）、11×11 格子
+  （1,568,758,030,464,750,013,214,100 通り）3,666.40 ms・プロセスピーク RSS 約 476 MB（目標の
+  約 6%）、Graphillion 比は測定した 8 ケース全てで 0.017x〜0.75x（3 倍どころか全ケースで
+  Graphillion を下回った）。一方 TdZdd（P/Invoke・GC を持たない生 C++）には全ケースで 2.0x〜21.4x
+  遅い——「C++ に勝つ」ではなく「同じオーダーで .NET から依存なしに使える」という PLAN.md §0 の
+  位置づけと整合する結果として正直に記録した。8×8 格子で Graphillion が外れ値的に遅くなる現象
+  （複数回再実行で再現、原因は Graphillion 内部のブラックボックス）も分析付きで記載。
+  詳細は [docs/benchmarks.md](docs/benchmarks.md) の M4-8 節、比較対象の入手・ビルド手順は
+  `bench/comparison/README.md`
+- `ZDD.Net.Specs.ColoringSpec` / `ZDD.Net.Specs.DfaSpec`: 彩色とオートマトン（M4-7、issue #50）
+  - `ColoringSpec(graph, k, representativesOnly: false)`: グラフの `k` 彩色の族。**変数は「頂点 × 色」の
+    組**（変数 `v*K+c`）——このネームスペースの他のグラフ系スペックが変数を辺または頂点にしているのとは
+    異なる割り当て。フロンティアの導入・忘却は `VertexFrontierManager` をそのまま再利用する
+    （1 頂点 1 変数のときとトポロジが同じため）。`representativesOnly: true` にすると、色の付け替えで
+    同型になる `k!` 通りの解を代表解 1 つに絞れる（`Complete(n)` のように全彩色が `k` 色すべてを使う
+    グラフでは、解数がちょうど元の `1/k!` になることをテストで確認）
+  - `DfaSpec(transitions, initialState, acceptStates, length, pruneDeadStates: true)`: 決定性有限
+    オートマトンが受理する固定長 2 値文字列の族。状態遷移表がそのまま `GetChild` になる、グラフに
+    限らない汎用スペック（docs/PLAN.md §7.2）。既定で有効な `pruneDeadStates` は、受理状態に到達不能な
+    状態への遷移を構築前に逆向き到達可能性で前計算し、`GetChild` がそこへ着地した時点で即座に
+    `DdResult.False` を返す——できあがる族は変わらず、構築中の一時ノード数だけが減る
+  - どちらも `readonly struct`・`GetChild` 非アロケーション。`ColoringSpec` は `Complete`/`Cycle`/`Path`
+    の彩色多項式の閉形式、`DfaSpec` は全入力列の総当たりシミュレーションと照合済み
+    （`tests/ZDD.Net.Tests/Specs/ColoringSpecTests.cs` / `DfaSpecTests.cs`）
+- `ZDD.Net.Specs.GraphPartitionSpec` / `ZDD.Net.Specs.CutSpec`: 分割・カット（M4-6、issue #49）
+  - `GraphPartitionSpec(graph, k, minBlockSize, maxBlockSize)`: 「残す」辺で連結な `K` 個のブロックに
+    分割し、各ブロックの頂点数が `[minBlockSize, maxBlockSize]` に収まる辺集合の族（区割り問題）。
+    次数 0 の孤立頂点はそれぞれ独立したサイズ 1 のブロックとして自動的に数える。`K == 1` かつ
+    バランス範囲が非拘束のときは、全頂点を terminal にした `ConnectedSubgraphSpec` と一致する族になる
+  - `CutSpec(graph, s, t, minimalOnly: false)`: `s`–`t` カット（除去すると `s`/`t` が別成分になる辺集合）
+    の族。既定は全てのカット、`minimalOnly: true` で極小カット（真部分集合がカットにならないもの）
+    だけに絞れる——極小カットは `(S, T)` 頂点二分割の辺境界と一対一対応することを利用し、
+    成分＋`s`/`t` 側フラグの状態に加えて、決定済みの全ての辺（採用・カット問わず）にわたる
+    パリティ Union-Find で「他の辺経由で到達可能と分かっている冗長な決定」を検出する
+  - どちらも小規模グラフでの総当たり照合、`CutSpec` はさらに `minimalOnly` の族が全カットの族の
+    `Minimal()` と一致すること、最小重みカットが独立実装した最大流（最大流最小カット定理）と
+    一致することを確認済み（`tests/ZDD.Net.Tests/Specs/GraphPartitionSpecTests.cs` / `CutSpecTests.cs`）
+- `ZDD.Net.Specs.SteinerTreeSpec`: シュタイナー木（M4-5、issue #48）
+  - `SteinerTreeSpec(graph, terminals)`: terminals を含む連結・非巡回な部分グラフで、全ての葉が
+    terminal であるもの（標準的なシュタイナー木の定義）の族。状態は `ConnectedSubgraphSpec`
+    （M4-4）の成分配列＋端子カウンタに、フロンティア頂点ごとの飽和次数カウンタ
+    （`DegreeConstraintSpec` と同様の設計）を足したもの。辺を採るとき両端が既に同一成分なら
+    閉路として即棄却し、頂点を忘れるとき最終次数がちょうど 1（葉）かつ非 terminal なら棄却する
+    ——「非 terminal の葉を禁止する」この 1 本の条件だけで、terminal を含まない孤立した枝も
+    自動的に弾かれる（そのような枝は必ず非 terminal の葉を 2 つ以上持つため）
+  - `Zdd.MinWeight` と組み合わせれば最小シュタイナー木が求まる（族自体は重み最小とは限らない
+    シュタイナー木も全て含む）。terminal が 2 個の全族は `PathSpec` の `s`–`t` パスと、全頂点が
+    terminal の全族は `SpanningTreeSpec` の全域木と**厳密に一致**することをテストで確認済み
+    （`ConnectedSubgraphSpec.Minimal()` 経由の比較より強い等価性チェック。
+    `tests/ZDD.Net.Tests/Specs/SteinerTreeSpecTests.cs`）
+- `ZDD.Net.Specs.ConnectedSubgraphSpec`: 連結部分グラフ（M4-4、issue #47）
+  - `ConnectedSubgraphSpec(graph, terminals)`: terminals が全て同じ連結成分に入る辺集合の族。
+    `SpanningTreeSpec`（M2-9）の「全頂点が 1 つの成分」を「指定した頂点だけが 1 つの成分」へ
+    一般化したもので、`SteinerTreeSpec`（M4-5）・`GraphPartitionSpec`（M4-6）が積み上がる基礎になる。
+    状態は `SpanningTreeSpec` と同じ成分配列（`ConnectedComponentState`。符号ビットで
+    「その成分が terminal を含むか」を表す）に、terminal の入り繰りを数える 2 つの末尾カウンタを
+    足したもの。`SpanningTreeSpec` と異なり同一成分どうしの辺は棄却しない（閉路も連結部分グラフとして
+    正当）
+  - terminal 0〜1 個では全ての辺部分集合が族に含まれ（`PowerSetSpec` と一致）、全頂点が terminal な
+    らば `SpanningTreeSpec` の全域木が `Zdd.Minimal()` の要素になり、terminal が 2 個ならば
+    `Zdd.Minimal()` は `PathSpec` の `s`–`t` パスと一致することをテストで確認済み
+    （`tests/ZDD.Net.Tests/Specs/ConnectedSubgraphSpecTests.cs`）
 - `ZDD.Net.Frontier.BuildOptions.MaxDegreeOfParallelism`: フロンティア構築のレベル内展開を
   `Parallel.For` で並列化（M4-3、issue #46）。既定値は `Environment.ProcessorCount`、`1` で常に
   逐次実行になる。幅が閾値（既定 2048 状態）を超えた水準だけが並列パスを通り、それ未満は従来どおり

@@ -11,7 +11,7 @@ C# ネイティブ実装の ZDD（Zero-suppressed Decision Diagram）／フロ�
 比例する手間で行える。.NET にはこれのネイティブ実装が事実上存在しない（CUDD の P/Invoke ラッパ
 しか選択肢がない）ことが、このライブラリの動機になっている。
 
-## 到達点（v0.3 = Core + フロンティア法フレームワーク + 数千辺への対応と高レベル API）
+## 到達点（v0.4 = v0.3 + 性能改善 + 残りのグラフ系スペック）
 
 - **Core レイヤ（ZDD エンジン）**: `ZddManager` / `Zdd` によるノード表・一意化表・演算キャッシュと、
   家族代数の全演算（和・積・差・対称差・積(`*`)・商・剰余・Meet・`SupersetsOf`/`SubsetsOf` などの
@@ -29,10 +29,11 @@ C# ネイティブ実装の ZDD（Zero-suppressed Decision Diagram）／フロ�
   つき）と、その上に実装された組み込みスペック（`PathSpec`（s–t 単純パス）/ `SpanningTreeSpec` /
   `ForestSpec` / `MatchingSpec` / `CycleSpec` / `HamiltonianPathSpec` / `HamiltonianCycleSpec` /
   `IndependentSetSpec` / `CliqueSpec` / `VertexCoverSpec` / `DominatingSetSpec` /
-  `DegreeConstraintSpec` / `PowerSetSpec` / `CardinalitySpec` / `LinearConstraintSpec` /
-  `KnapsackSpec`）。いずれも正しさを検証済み（OEIS A007764・Kirchhoff の行列木定理・パーマネント照合・
-  完全グラフとPetersenグラフの既知値など。[docs/benchmarks.md](docs/benchmarks.md) に実行時間・
-  フロンティア幅の基準値）
+  `DegreeConstraintSpec` / `ConnectedSubgraphSpec` / `SteinerTreeSpec` / `GraphPartitionSpec` /
+  `CutSpec` / `ColoringSpec` / `DfaSpec` / `PowerSetSpec` / `CardinalitySpec` /
+  `LinearConstraintSpec` / `KnapsackSpec`）。いずれも正しさを検証済み（OEIS A007764・Kirchhoff の
+  行列木定理・パーマネント照合・彩色多項式・最大流最小カット定理・完全グラフとPetersenグラフの
+  既知値など。[docs/benchmarks.md](docs/benchmarks.md) に実行時間・フロンティア幅の基準値）
 - **数千辺への対応**: 辺順序の自動最適化（`Graph.Optimize`。BFS/DFS/格子専用/ビームサーチの
   4 戦略）と構築前の見積り（`Graph.EstimateMaxFrontierSize`）、フロンティア状態の bit-packing
   （メモリ 64〜65% 削減）。数千〜数万辺の実データ規模で s–t パス数え上げが完走することを
@@ -42,6 +43,13 @@ C# ネイティブ実装の ZDD（Zero-suppressed Decision Diagram）／フロ�
   遅延列挙）と、任意の要素型を扱える `SetSet<T>`
 - **グラフ入出力（`ZDD.Net.Io`）**: DIMACS / エッジリスト / 本ライブラリ独自の簡易テキスト形式の
   読み書き。実データファイルをそのまま `Graph` として読み込める
+- **性能改善（v0.4）**: 演算キャッシュのサイズ自動調整（拡大時にエントリを移行、代表ケースで
+  15〜20% 改善）、状態ハッシュの SIMD 化（`Vector256`/`Vector128`、フロンティアが広いケースで
+  7〜17% 改善）、フロンティア構築の並列化（`BuildOptions.MaxDegreeOfParallelism`。並列度によらず
+  ノード ID は完全一致）。Graphillion（Python + C++ コア）・TdZdd（生 C++）との比較で
+  [docs/PLAN.md](docs/PLAN.md) §10 の性能目標（9×9 格子 1 秒以内・11×11 格子 60 秒以内/8 GB 以内・
+  Graphillion 比 3 倍以内）を全て達成——測定した全ケースで Graphillion を上回った
+  （[docs/benchmarks.md](docs/benchmarks.md) の M4-1〜M4-3・M4-8 節）
 
 `GraphSet` を使った 5 行サンプル（5×5 格子の対角 s–t 単純パスを 1 本も展開せずに数える）:
 
@@ -61,7 +69,7 @@ Console.WriteLine(paths.Count); // 8512（OEIS A007764）
 
 ## インストール
 
-NuGet パッケージは `v0.3.0-preview.1` のようなプレリリースタグから生成される
+NuGet パッケージは `v0.4.0-preview.1` のようなプレリリースタグから生成される
 （v1.0 に達するまではプレリリース版として `--prerelease` が要る）。
 
 ```sh
@@ -103,7 +111,8 @@ CLI から触ってみたい場合は [`samples/Zdd.Cli`](samples/Zdd.Cli)（`do
   フィルタ・サンプリング → 実グラフ（DIMACS）を読み込んで解くまでの一本道）
 - **[docs/api-guide.md](docs/api-guide.md)** — API ガイド（`ZddManager`/`Zdd` の使い方、演算一覧、性能上の注意）
 - **[docs/frontier-guide.md](docs/frontier-guide.md)** — フロンティア法ガイド（フロンティア法とは何か、
-  組み込みスペック一覧、`Graph`/`FrontierManager`/`BuildOptions`、性能の勘所、独自スペックの実例）
+  組み込みスペック一覧、`Graph`/`FrontierManager`/`BuildOptions`、性能の勘所と性能チューニングの指針、
+  独自スペックの実例）
 - **[docs/frontier-spec-guide.md](docs/frontier-spec-guide.md)** — スペックの書き方（`IDdSpec` 等の契約）
 - **[docs/benchmarks.md](docs/benchmarks.md)** — ベンチ基準値（代表ケースの実行時間・フロンティア幅・ノード数）
 - **[docs/PLAN.md](docs/PLAN.md)** — 機能・仕様・アーキテクチャ
