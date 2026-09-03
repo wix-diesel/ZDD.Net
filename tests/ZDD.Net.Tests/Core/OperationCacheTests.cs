@@ -529,10 +529,15 @@ namespace ZDD.Net.Tests.Core
             OperationCache cache = new OperationCache(256, 256);
 
             // 先に JIT を通しておく。測るのは定常状態のアロケーション。
-            Exercise(cache, 200);
+            // ループ回数は他の TheHotPathDoesNotAllocate 系テスト（ExtremalOperationTests 等）と
+            // 揃えて 20/200 に抑える。20_000 回まで回すと OSR（On-Stack Replacement）による
+            // 実行中の再 JIT がこの計測区間内で発生することがあり、その際の内部アロケーションを
+            // 誤って「ホットパスのアロケーション」として検出してしまう（issue: CI の
+            // build-test-parallel-frontier ジョブで散発的に失敗）。
+            Exercise(cache, 20);
 
             long before = GC.GetAllocatedBytesForCurrentThread();
-            Exercise(cache, 20_000);
+            Exercise(cache, 200);
             long after = GC.GetAllocatedBytesForCurrentThread();
 
             Assert.Equal(0L, after - before);
