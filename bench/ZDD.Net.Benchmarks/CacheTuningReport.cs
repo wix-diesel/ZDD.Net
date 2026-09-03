@@ -22,7 +22,7 @@ namespace ZDD.Net.Benchmarks
             Console.WriteLine($"{"Case",-34} {"Elapsed",10} {"Lookups",12} {"Hits",12} {"HitRate",8} {"Overwrites",11} {"CacheCap",9} {"Nodes",10}");
 
             Report("CardinalityWindowChain_1000x21", () => CardinalityWindowChain(itemCount: 1000, windowWidth: 200, step: 40));
-            Report("CardinalityWindowChain_3000x31", () => CardinalityWindowChain(itemCount: 3000, windowWidth: 400, step: 80));
+            Report("CardinalityWindowChain_3000x33", () => CardinalityWindowChain(itemCount: 3000, windowWidth: 400, step: 80));
             Report("PathLengthWindowChain_Grid8x8", () => PathLengthWindowChain(gridSize: 8));
         }
 

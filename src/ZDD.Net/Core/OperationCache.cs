@@ -249,9 +249,9 @@ namespace ZDD.Net.Core
 
         /// <summary>
         /// Computes the slot index for <c>(op, a, b)</c> via <see cref="Hashing.Combine(int, int, int)"/>,
-        /// extracted the same way <see cref="UniqueTable"/> and <see cref="OperationWorkspace"/> do
+        /// extracted the same way <see cref="UniqueTable"/> and <see cref="OperationWorkspace"/> do it
         /// (<see cref="Hashing.IndexForPowerOfTwo"/>: multiply by the golden-ratio constant and take
-        /// the high bits) rather than masking the low bits directly.
+        /// the high bits), rather than masking the low bits directly.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static int SlotOf(ZddOperation op, int a, int b, int capacity)

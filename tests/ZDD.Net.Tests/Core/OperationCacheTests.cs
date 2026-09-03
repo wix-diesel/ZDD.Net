@@ -343,7 +343,9 @@ namespace ZDD.Net.Tests.Core
             cache.PutBinary(ZddOperation.Union, 2, 3, 10);
             Assert.True(cache.Tune(4000));
 
-            // 新しいテーブルでも同じスロットに落ちる限り、計算済みの結果は生き残る。
+            // Migrate は新しい容量で再ハッシュし正しいスロットへ再配置するので、生存条件は
+            // 「同じスロットに落ちること」ではなく「移行先スロットが他エントリに上書きされないこと」。
+            // ここは他に書き込みが無いので確実に生き残る。
             Assert.True(cache.TryGetBinary(ZddOperation.Union, 2, 3, out int result));
             Assert.Equal(10, result);
         }

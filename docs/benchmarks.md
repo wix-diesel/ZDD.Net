@@ -445,10 +445,10 @@ dotnet run -c Release --project bench/ZDD.Net.Benchmarks -- cache-tuning
 | ケース | 実行時間（前, 3 回の中央値） | 実行時間（後, 3 回の中央値） | 改善率 | ヒット率（前 → 後） |
 |---|---:|---:|---:|---:|
 | `CardinalityWindowChain_1000x21` | 1,181.2 ms | 1,112.4 ms | 5.8%（ばらつき大、後述） | 0.9% → 1.8% |
-| `CardinalityWindowChain_3000x31` | 19,621.0 ms | 16,694.3 ms | **14.9%** | 0.4% → 1.0% |
+| `CardinalityWindowChain_3000x33` | 19,621.0 ms | 16,694.3 ms | **14.9%** | 0.4% → 1.0% |
 | `PathLengthWindowChain_Grid8x8` | 9,320.6 ms | 9,389.7 ms | 変化なし（誤差内） | 2.8% → 6.0% |
 
-- **`CardinalityWindowChain_3000x31`（受け入れ条件の 10% 以上を満たす）**: ノード数が最も
+- **`CardinalityWindowChain_3000x33`（受け入れ条件の 10% 以上を満たす）**: ノード数が最も
   大きく伸びる（103 万 → 862 万）ぶん `Tune` の発動回数も多く、discard の損失が最も顕著に
   出るケース。3 回ずつの実行時間比（後÷前）は 0.80 / 0.91 / 0.80 で中央値 0.80——約 20% 速い。
 - **`CardinalityWindowChain_1000x21` は改善するが 10% には届かないことがある**: 3 回の比は
