@@ -61,8 +61,9 @@ namespace ZDD.Net.Specs
         /// <exception cref="ArgumentNullException"><paramref name="graph"/>, <paramref name="lo"/> or <paramref name="hi"/> is <see langword="null"/>.</exception>
         /// <exception cref="ArgumentException">
         /// <paramref name="lo"/> or <paramref name="hi"/> does not have exactly <see cref="Graph.VertexCount"/> entries,
-        /// some <c>lo[v]</c> is negative, or some <c>hi[v]</c> is less than <c>lo[v]</c>.
+        /// or some <c>hi[v]</c> is less than <c>lo[v]</c>.
         /// </exception>
+        /// <exception cref="ArgumentOutOfRangeException">Some <c>lo[v]</c> is negative.</exception>
         public DegreeConstraintSpec(Graph graph, int[] lo, int[] hi)
         {
             ArgumentNullException.ThrowIfNull(graph);
@@ -120,7 +121,8 @@ namespace ZDD.Net.Specs
         /// <param name="lo">The minimum degree, applied to every vertex.</param>
         /// <param name="hi">The maximum degree, applied to every vertex.</param>
         /// <exception cref="ArgumentNullException"><paramref name="graph"/> is <see langword="null"/>.</exception>
-        /// <exception cref="ArgumentOutOfRangeException"><paramref name="lo"/> is negative, or <paramref name="hi"/> is less than <paramref name="lo"/>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="hi"/> is less than <paramref name="lo"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="lo"/> is negative.</exception>
         public DegreeConstraintSpec(Graph graph, int lo, int hi)
             : this(graph, Uniform(graph, lo), Uniform(graph, hi))
         {
