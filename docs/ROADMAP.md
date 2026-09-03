@@ -119,7 +119,7 @@ Core レイヤは下から積むため、序盤の PR は `internal` のコー�
 | [x] | **M3-2** | フロンティア状態の bit-packing | 状態を `byte`/`short`/ビットフィールドに圧縮、状態表のインライン格納 | **メモリ 50% 以上削減、結果は不変**（M2 のテストが全て通る） | 〜350 | M3-1 |
 | [x] | **M3-3** | 辺順序（ビームサーチ） | パス幅近似最小化。幅の見積りに基づく探索 | 主要ベンチで M3-1 比 20% 以上の改善 | 〜350 | M3-2 |
 | [x] | **M3-4** | サイクル・ハミルトン | `CycleSpec`（単一／複数）、`HamiltonianPathSpec`、`HamiltonianCycleSpec` | 完全グラフ・Petersen グラフの既知値と一致 | 〜300 | M2-12 |
-| [ ] | **M3-5** | スペック合成 | `spec.And(other)` / `.Or(other)`、`zdd.Subset(spec)`（ZddSubsetting） | 「パス かつ 辺数 ≤ k」が直接構築でき、事後フィルタと結果一致。中間 ZDD が小さいこと | 〜300 | M3-4 |
+| [x] | **M3-5** | スペック合成 | `spec.And(other)` / `.Or(other)`、`zdd.Subset(spec)`（ZddSubsetting） | 「パス かつ 辺数 ≤ k」が直接構築でき、事後フィルタと結果一致。中間 ZDD が小さいこと | 〜300 | M3-4 |
 | [ ] | **M3-6** | 頂点系スペック | `IndependentSetSpec` / `CliqueSpec` / `VertexCoverSpec` / `DominatingSetSpec` | 素朴 DP と一致 | 〜350 | M2-12 |
 | [ ] | **M3-7** | 次数制約 | `DegreeConstraintSpec(lo[], hi[])` | マッチング・パスを次数制約で再現でき、結果が一致 | 〜250 | M3-4 |
 | [ ] | **M3-8** | `SetSet<T>` | 任意要素型の族ラッパ、要素 ↔ 変数のマッピング、LINQ 連携 | 文字列要素の族で一通り動く | 〜300 | M2-12 |

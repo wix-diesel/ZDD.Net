@@ -10,6 +10,28 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
 
 ### Added
 
+- `ZDD.Net.Frontier`: スペック合成 `AndSpec` / `OrSpec` と `Zdd.Subset(spec)`（M3-5、issue #37）
+  - `spec1.And<SpecA, StateA, SpecB, StateB>(spec2)` / `.Or<...>(...)`: 2 つのスペックの状態を
+    タプルにして同時展開し、中間 ZDD を経由せずに交差／和の族を直接構築する
+    （`TState` は `where` 節にしか現れないため型引数の明示が必要——`FrontierBuilder.Build<TSpec, TState>`
+    と同じ事情）。合成スペック自体も `IDdSpec<TState>` なので `a.And(b).And(c)` のように何段でも積める
+  - **水準の同期**: 2 つのスペックが互いに異なる水準を次の決定点にしている（どちらかが水準を
+    飛ばした）ときの規約を決めた——飛ばした側にとってその間のアイテムは暗黙に「入れない」なので、
+    もう一方がそこで「入れる」を選ぶと、`And` は全体を ⊥ に、`Or` はその側だけを以降ずっと
+    不成立（dead）にする
+  - `ZddSpec`: 既存の `Zdd` をスペックとして扱うアダプタ。`zdd.Subset(spec)`
+    （TdZdd の `zddSubset` 相当）は `ZddSpec` と `spec` の `AndSpec` として実装されている
+  - `ArrayDdSpecAdapter<TSpec>`: 可変長状態の `IArrayDdSpec`（`PathSpec` など）を
+    `IDdSpec<int[]>` へ橋渡しし、固定長 struct 状態のスペックと合成できるようにする
+    （分岐ごとに配列を複製することで、参照型状態のフィールドコピーが枝を共有してしまう問題を防ぐ）
+  - `TSpec` はどこも型引数 + `struct` 制約で受けており、interface 型としては受けていない
+    （docs/frontier-guide.md §6.2 の方針どおり）
+  - 効果（[docs/benchmarks.md](docs/benchmarks.md) の M3-5 節。
+    `dotnet run -c Release --project bench/ZDD.Net.Benchmarks -- spec-composition` で再現できる）:
+    固定長 struct どうしの合成はピーク幅・一時ノード数・実行時間のすべてで事後フィルタに勝る
+    （実行時間で 3.4 倍）。可変長配列を橋渡しする場合は一時ノードのピークで事後フィルタに
+    劣ることがあるが、**構築後にマネージャへ残る中間結果**は 10×10 格子で約 1,900 倍小さい
+    ——事後フィルタが最後まで保持する「使われなかった大きな中間 ZDD」を直接構築は作らずに済む
 - `ZDD.Net.Specs`: サイクル・ハミルトン系のグラフスペック（M3-4、issue #36）
   - `CycleSpec(graph, single:)`: 単純サイクルの族。`single: true`（既定）は単一の単純サイクル、
     `single: false` は互いに素な単純サイクルの和（空集合は含まない）。`single` のほうが常に

@@ -334,7 +334,69 @@ Zdd family = FrontierBuilder.Build<NoThreeConsecutiveSpec, int>(manager, new NoT
 `CustomSpecNoThreeConsecutive`）で確かめている——「チュートリアルどおりに書けば独自スペックが
 作れる」ことの実例である。
 
-## 8. さらに詳しく
+## 8. スペックの合成: `And` / `Or` / `Subset`
+
+「s–t パス かつ 辺数 10 以下」のような制約は、素直にやれば「パスを全部作ってから
+`Intersect` で絞る」になる。だがパスの族が事後フィルタで捨てる分まで含めて巨大なら、
+その**捨てる前の中間 ZDD** を作ること自体が無駄であり、時にはそれ自体が破綻の原因になる
+（docs/PLAN.md §6.3、docs/benchmarks.md の M3-5 節に実測がある）。
+
+`AndSpec` / `OrSpec` は、2 つのスペックの状態をタプルにして**両方を同時に展開しながら**
+1 回で ZDD を構築する。ビルド結果は事後フィルタと完全に一致するが、中間結果を経由しない。
+
+```csharp
+CardinalitySpec atMostTen = new CardinalitySpec(graph.EdgeCount, 0, 10);
+PathSpec path = new PathSpec(graph, s, t);
+
+// PathSpec は可変長状態 (IArrayDdSpec) なので、まず IDdSpec<int[]> へ橋渡しする。
+AndSpec<ArrayDdSpecAdapter<PathSpec>, int[], CardinalitySpec, int> combined =
+    path.AsDdSpec().And<ArrayDdSpecAdapter<PathSpec>, int[], CardinalitySpec, int>(atMostTen);
+
+Zdd result = FrontierBuilder.Build<
+    AndSpec<ArrayDdSpecAdapter<PathSpec>, int[], CardinalitySpec, int>,
+    AndState<int[], int>>(manager, combined);
+```
+
+`TState` は `.And`/`.Or` の型引数からは推論できない（`where` 節にしか現れないため。
+`FrontierBuilder.Build<TSpec, TState>` と同じ事情）ので、呼び出し側は 4 つの型引数を
+明示する。両辺がどちらも `IDdSpec<TState>`（固定長 `struct` 状態）なら、そのまま
+`.And<SpecA, StateA, SpecB, StateB>(...)` と書ける。
+
+### 水準の同期
+
+2 つのスペックは必ずしも同じ水準で決定するとは限らない（どちらかが水準を飛ばすことがある、
+§3）。合成スペックは、常に**両者のうち根に近い方の水準**を次の決定点にする——もう一方は
+まだ自分の水準に届いていない「スキップ中」で、届くまでのアイテムは暗黙に「入れない」を
+要求している。そのため、まだ届いていない側の水準でアイテムを「入れる」（`value == 1`）を
+選ぶと、その側の暗黙の要求と矛盾する:
+
+- **`And`**: 矛盾した時点で全体が ⊥ になる（両方を同時に満たせないため）。
+- **`Or`**: 矛盾した側だけが「以降ずっと不成立（dead）」になり、もう一方が生きていれば
+  枝はそのまま残る（どちらか一方が受理すれば全体として受理なので）。
+
+### `IArrayDdSpec` との橋渡し: `ArrayDdSpecAdapter`
+
+`AndSpec`/`OrSpec` は状態をプレーンな `struct` のフィールドコピーで枝ごとに複製する
+（§4 の「状態の寿命」と同じ約束）。`IArrayDdSpec` の状態（`int[]`/`Span<int>`）は参照型なので、
+そのままではフィールドコピーが配列の**参照**しか複製せず、兄弟の枝を壊してしまう。
+`ArrayDdSpecAdapter<TSpec>` はこれを、`GetChild` のたびに配列を複製することで防いでいる
+（複製 1 回ぶんの割り当てが増える代わりに安全になる、docs/benchmarks.md M3-5 節に実測差がある）。
+両辺が最初から固定長 `struct` 状態（`IDdSpec<TState>`）どうしの合成には、この複製コストは
+かからない。
+
+### `zdd.Subset(spec)`（TdZdd の `zddSubset` 相当）
+
+既存の `Zdd` をスペックとして扱うアダプタ `ZddSpec` を使えば、「族をスペックで絞り込む」を
+`AndSpec` の特殊形として実装できる。`zdd.Subset(spec)` はまさにそれで、
+`zdd.Intersect(FrontierBuilder.Build<TSpec, TState>(zdd.Manager, spec))` と同じ結果を、
+`spec` 側の ZDD を単独で作らずに返す。
+
+```csharp
+Zdd shortPaths = FrontierBuilder.Build<PathSpec>(manager, new PathSpec(graph, s, t));
+Zdd filtered = shortPaths.Subset<CardinalitySpec, int>(atMostTen);
+```
+
+## 9. さらに詳しく
 
 - スペックの規約の詳しい説明（`IDdSpec`/`IArrayDdSpec`/`IHybridDdSpec` の契約、状態の寿命、
   `struct` を強く勧める理由）: [docs/frontier-spec-guide.md](frontier-spec-guide.md)
