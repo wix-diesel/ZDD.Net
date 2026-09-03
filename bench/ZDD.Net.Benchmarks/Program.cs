@@ -22,6 +22,9 @@ namespace ZDD.Net.Benchmarks
     /// section (state hashing) is measured against (issue #45), and <c>parallel-frontier</c> runs
     /// <see cref="ParallelFrontierReport"/>, the sequential-vs-parallel build time comparison
     /// docs/benchmarks.md's M4-3 section (parallel level expansion) is measured against (issue #46).
+    /// <see cref="ComparisonReport"/> adds no CLI mode of its own — its cases (issue #51 / M4-8, the
+    /// Graphillion/TdZdd comparison) are folded into <see cref="MemoryReport.AllCases"/>, so
+    /// <c>time</c>/<c>memory</c> above already reach them.
     /// </summary>
     internal static class Program
     {
