@@ -21,7 +21,9 @@ namespace ZDD.Net.Benchmarks
     /// <see cref="HashingSimdReport"/>, the scalar-vs-vectorized comparison docs/benchmarks.md's M4-2
     /// section (state hashing) is measured against (issue #45), and <c>parallel-frontier</c> runs
     /// <see cref="ParallelFrontierReport"/>, the sequential-vs-parallel build time comparison
-    /// docs/benchmarks.md's M4-3 section (parallel level expansion) is measured against (issue #46).
+    /// docs/benchmarks.md's M4-3 section (parallel level expansion) is measured against (issue #46), and
+    /// <c>serialize</c> runs <see cref="SerializationReport"/>, the <c>ZddBinaryFormat</c> write/read
+    /// timing vs. build-time comparison docs/benchmarks.md's M5-1 section is measured against (issue #53).
     /// <see cref="ComparisonReport"/> adds no CLI mode of its own — its cases (issue #51 / M4-8, the
     /// Graphillion/TdZdd comparison) are folded into <see cref="MemoryReport.AllCases"/>, so
     /// <c>time</c>/<c>memory</c> above already reach them.
@@ -69,6 +71,12 @@ namespace ZDD.Net.Benchmarks
             if (args.Any(a => string.Equals(a, "parallel-frontier", StringComparison.OrdinalIgnoreCase)))
             {
                 ParallelFrontierReport.Run();
+                return;
+            }
+
+            if (args.Any(a => string.Equals(a, "serialize", StringComparison.OrdinalIgnoreCase)))
+            {
+                SerializationReport.Run();
                 return;
             }
 
