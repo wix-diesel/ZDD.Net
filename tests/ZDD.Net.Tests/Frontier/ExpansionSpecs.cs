@@ -284,9 +284,19 @@ namespace ZDD.Net.Tests.Frontier
         {
             if (level == _poisonLevel)
             {
-                // 全パーティションがここへ揃うまで待つ: 揃わなければテストのバグなので、
-                // 待ちっぱなしにせず、タイムアウトで投げて失敗を目に見える形にする。
-                _rendezvous.SignalAndWait(TimeSpan.FromSeconds(30));
+                // 全パーティションがここへ揃うまで待つ: 揃わなければテストのバグ（想定した
+                // パーティション数とテストが渡した Barrier の参加者数がずれている等）なので、
+                // 待ちっぱなしにせず、タイムアウトなら意味の分かる例外で止める
+                // （揃った場合と同じ FrontierPoisonException にしてしまうと、テスト失敗時に
+                // 「タイムアウトだった」のか「本来の合図で投げた」のか区別が付かなくなる）。
+                if (!_rendezvous.SignalAndWait(TimeSpan.FromSeconds(30)))
+                {
+                    throw new TimeoutException(
+                        $"Rendezvous at level {level} timed out: fewer than {_rendezvous.ParticipantCount} " +
+                        "partitions reached the poison level within 30s. Check that the partition count the " +
+                        "test computed still matches the Barrier's participant count.");
+                }
+
                 throw new FrontierPoisonException();
             }
 
