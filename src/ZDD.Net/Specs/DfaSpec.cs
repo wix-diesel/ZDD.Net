@@ -142,11 +142,32 @@ namespace ZDD.Net.Specs
 
         /// <summary>Whether <paramref name="state"/> is one of the DFA's accept states.</summary>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="state"/> is outside <c>0 .. StateCount - 1</c>.</exception>
-        public bool IsAccepting(int state) => _acceptStates[state];
+        public bool IsAccepting(int state)
+        {
+            ValidateState(state, nameof(state));
+            return _acceptStates[state];
+        }
 
         /// <summary>The transition function: the state reached from <paramref name="state"/> on <paramref name="symbol"/>.</summary>
-        /// <exception cref="ArgumentOutOfRangeException"><paramref name="state"/> or <paramref name="symbol"/> is out of range.</exception>
-        public int Transition(int state, int symbol) => _transitions[state, symbol];
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="state"/> is outside <c>0 .. StateCount - 1</c>, or <paramref name="symbol"/> is not <c>0</c> or <c>1</c>.</exception>
+        public int Transition(int state, int symbol)
+        {
+            ValidateState(state, nameof(state));
+            if (symbol != 0 && symbol != 1)
+            {
+                throw new ArgumentOutOfRangeException(nameof(symbol), symbol, "Must be 0 or 1.");
+            }
+
+            return _transitions[state, symbol];
+        }
+
+        private void ValidateState(int state, string paramName)
+        {
+            if ((uint)state >= (uint)StateCount)
+            {
+                throw new ArgumentOutOfRangeException(paramName, state, $"Must be in 0 .. {StateCount - 1}.");
+            }
+        }
 
         /// <inheritdoc/>
         public int GetRoot(ref int state)

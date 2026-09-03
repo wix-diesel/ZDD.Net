@@ -130,7 +130,8 @@ namespace ZDD.Net.Tests.Specs
         [Fact]
         public void InitialStateItselfDeadBuildsEmptyRegardlessOfPruning()
         {
-            // State 1 is a trap with no accept state at all: dead from the moment the DFA starts.
+            // State 0 is accepting, but the DFA starts at state 1, a trap that only ever transitions to
+            // itself: state 0 is unreachable from the start, so every state is dead from the outset.
             var transitions = new int[,] { { 1, 1 }, { 1, 1 } };
             var acceptStates = new[] { 0 };
 
