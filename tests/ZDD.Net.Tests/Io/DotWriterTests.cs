@@ -258,6 +258,30 @@ namespace ZDD.Net.Tests.Io
             DotSyntax.Validate(dot);
         }
 
+        /// <summary>
+        /// <see cref="DotOptions.LevelLabel"/>/<see cref="DotOptions.StateLabels"/> はデリゲート・辞書という
+        /// 呼び出し元由来の値なので、null 許容の宣言を無視して実行時に null を返す・持つこともあり得る。
+        /// 例外にせず、その部分を素通りさせるだけにする。
+        /// </summary>
+        [Fact]
+        public void ANullLevelOrStateLabelIsTreatedAsAbsentRatherThanThrowing()
+        {
+            using ZddManager manager = new ZddManager(1);
+
+            Zdd family = manager.CreateNode(0, lo: manager.Empty, hi: manager.Base);
+
+            DotOptions options = new DotOptions
+            {
+                LevelLabel = _ => null!,
+                StateLabels = new Dictionary<int, string> { [family.Id] = null! },
+            };
+
+            string dot = family.ToDot(options);
+
+            Assert.Contains($"n{family.Id} [label=\"\"];", dot, StringComparison.Ordinal);
+            DotSyntax.Validate(dot);
+        }
+
         [Fact]
         public void StyleOptionsCustomizeShapeColorAndEdgeStyles()
         {

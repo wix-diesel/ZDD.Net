@@ -256,7 +256,9 @@ namespace ZDD.Net.Io
                 writer.Write(" [label=\"");
                 WriteLevelLabel(writer, item, options.LevelLabel);
 
-                if (options.StateLabels is not null && options.StateLabels.TryGetValue(id, out string? stateLabel))
+                if (options.StateLabels is not null
+                    && options.StateLabels.TryGetValue(id, out string? stateLabel)
+                    && stateLabel is not null)
                 {
                     writer.Write("\\n");
                     WriteEscaped(writer, stateLabel);
@@ -422,9 +424,19 @@ namespace ZDD.Net.Io
             }
         }
 
-        /// <summary>Writes <paramref name="text"/> into a DOT quoted string, escaping <c>"</c>, <c>\</c> and newlines.</summary>
-        private static void WriteEscaped(TextWriter writer, string text)
+        /// <summary>
+        /// Writes <paramref name="text"/> into a DOT quoted string, escaping <c>"</c>, <c>\</c> and
+        /// newlines — or writes nothing when it is <see langword="null"/>. <see cref="DotOptions.LevelLabel"/>
+        /// and <see cref="DotOptions.StateLabels"/> are caller-supplied and nullability is only a
+        /// compile-time hint, so a careless caller can still hand back null here.
+        /// </summary>
+        private static void WriteEscaped(TextWriter writer, string? text)
         {
+            if (text is null)
+            {
+                return;
+            }
+
             foreach (char c in text)
             {
                 switch (c)

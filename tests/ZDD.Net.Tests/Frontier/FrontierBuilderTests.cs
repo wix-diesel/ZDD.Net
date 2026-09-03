@@ -434,6 +434,23 @@ namespace ZDD.Net.Tests.Frontier
             Assert.Empty(stateLabels);
         }
 
+        /// <summary>
+        /// 記録無効時の空辞書は複数回の呼び出しで共有される 1 個のインスタンスだが、
+        /// <see cref="IDictionary{TKey, TValue}"/> へダウンキャストしても書き換えられない
+        /// ——読み取り専用ラッパーであって、単に読み取り専用インタフェース越しに見せているだけではない。
+        /// </summary>
+        [Fact]
+        public void TheSharedEmptyStateLabelsCannotBeMutatedThroughADowncast()
+        {
+            using ZddManager manager = new ZddManager(3);
+            BuildOptions options = new BuildOptions();
+
+            FrontierBuilder.Build<CardinalitySpec, int>(
+                manager, new CardinalitySpec(3, 0, 3), options, out IReadOnlyDictionary<int, string> stateLabels);
+
+            Assert.Throws<NotSupportedException>(() => ((IDictionary<int, string>)stateLabels)[0] = "x");
+        }
+
         [Fact]
         public void RecordStatesLabelsEveryNodeWithTheStatesDefaultToString()
         {

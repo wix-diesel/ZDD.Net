@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using ZDD.Net.Core;
 using ZDD.Net.Internal;
 
@@ -102,8 +103,13 @@ namespace ZDD.Net.Frontier
             return zdd;
         }
 
-        /// <summary>Shared, never-mutated stand-in for "no states were recorded".</summary>
-        private static readonly IReadOnlyDictionary<int, string> EmptyStateLabels = new Dictionary<int, string>();
+        /// <summary>
+        /// Shared stand-in for "no states were recorded". A genuinely read-only wrapper, not just a
+        /// <see cref="Dictionary{TKey, TValue}"/> exposed through the read-only interface — a caller
+        /// could otherwise downcast and mutate the one shared instance every non-recording call returns.
+        /// </summary>
+        private static readonly IReadOnlyDictionary<int, string> EmptyStateLabels =
+            new ReadOnlyDictionary<int, string>(new Dictionary<int, string>());
 
         /// <summary>
         /// Translates recorded (level, index) labels into node-id-keyed ones. A temporary node the

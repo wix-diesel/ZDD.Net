@@ -698,37 +698,58 @@ namespace ZDD.Net.Core
         public static Zdd operator ~(Zdd operand) => operand.Manager.Complement(operand);
 
         /// <summary>Writes this family as Graphviz DOT source, ready for <c>dot -Tsvg</c>.</summary>
-        /// <param name="options">
-        /// State labels, level labels, partial-display cutoffs and styling (M5-4, issue #56); the
-        /// default rendering when <see langword="null"/>.
-        /// </param>
         /// <returns>DOT source, with <c>\n</c> line endings regardless of platform.</returns>
         /// <remarks>
         /// 0-branches are dashed, 1-branches solid; terminals ⊥/⊤ are drawn as boxes, and nodes for
         /// the same item share a rank. See <see cref="Io.DotWriter"/> for the full convention. For
-        /// large families prefer <see cref="WriteDot"/>, which streams instead of buffering the
-        /// whole string, and consider <see cref="DotOptions.MaxLevels"/> / <see cref="DotOptions.MaxNodes"/>,
-        /// since a huge family cannot be rendered by Graphviz either way.
+        /// large families prefer <see cref="WriteDot(TextWriter)"/>, which streams instead of buffering
+        /// the whole string.
         /// </remarks>
         /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
         /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
-        public string ToDot(DotOptions? options = null) => DotWriter.Write(this, options);
+        public string ToDot() => DotWriter.Write(this);
+
+        /// <summary>
+        /// Writes this family as Graphviz DOT source as <see cref="ToDot()"/> does, additionally
+        /// applying <paramref name="options"/> (M5-4, issue #56): state labels, level labels,
+        /// partial-display cutoffs and styling.
+        /// </summary>
+        /// <param name="options">Rendering knobs; the same as <see cref="ToDot()"/> when <see langword="null"/>.</param>
+        /// <returns>DOT source, with <c>\n</c> line endings regardless of platform.</returns>
+        /// <remarks>
+        /// Consider <see cref="DotOptions.MaxLevels"/> / <see cref="DotOptions.MaxNodes"/> for a large
+        /// family, since Graphviz cannot render one either way.
+        /// </remarks>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
+        public string ToDot(DotOptions? options) => DotWriter.Write(this, options);
 
         /// <summary>Streams this family's DOT representation to <paramref name="writer"/>, avoiding buffering it all in memory.</summary>
         /// <param name="writer">The destination writer.</param>
-        /// <param name="options">
-        /// State labels, level labels, partial-display cutoffs and styling (M5-4, issue #56); the
-        /// default rendering when <see langword="null"/>.
-        /// </param>
         /// <remarks>
-        /// Same output as <see cref="ToDot"/>. The list of reachable nodes is still built in
-        /// memory once, to group nodes by rank (proportional to node count, or to <see cref="DotOptions.MaxNodes"/>
-        /// when that is lower).
+        /// Same output as <see cref="ToDot()"/>. The list of reachable nodes is still built in
+        /// memory once, to group nodes by rank (proportional to node count).
         /// </remarks>
         /// <exception cref="ArgumentNullException"><paramref name="writer"/> is <see langword="null"/>.</exception>
         /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
         /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
-        public void WriteDot(TextWriter writer, DotOptions? options = null) => DotWriter.Write(this, writer, options);
+        public void WriteDot(TextWriter writer) => DotWriter.Write(this, writer);
+
+        /// <summary>
+        /// Streams this family's DOT representation to <paramref name="writer"/> as
+        /// <see cref="WriteDot(TextWriter)"/> does, additionally applying <paramref name="options"/>
+        /// (M5-4, issue #56): state labels, level labels, partial-display cutoffs and styling.
+        /// </summary>
+        /// <param name="writer">The destination writer.</param>
+        /// <param name="options">Rendering knobs; the same as <see cref="WriteDot(TextWriter)"/> when <see langword="null"/>.</param>
+        /// <remarks>
+        /// The list of reachable nodes is still built in memory once, to group nodes by rank
+        /// (proportional to node count, or to <see cref="DotOptions.MaxNodes"/> when that is lower).
+        /// </remarks>
+        /// <exception cref="ArgumentNullException"><paramref name="writer"/> is <see langword="null"/>.</exception>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
+        public void WriteDot(TextWriter writer, DotOptions? options) => DotWriter.Write(this, writer, options);
 
         /// <summary>A short debug representation. Does not expand the family's contents.</summary>
         public override string ToString()
