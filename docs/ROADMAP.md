@@ -139,7 +139,7 @@ Core レイヤは下から積むため、序盤の PR は `internal` のコー�
 | [x] | **M4-4** | 連結部分グラフ | `ConnectedSubgraphSpec(terminals)` | 小グラフで総当たり照合 | 〜300 | M3-11 |
 | [x] | **M4-5** | シュタイナー木 | `SteinerTreeSpec` | 既知の最小シュタイナー木と一致 | 〜250 | M4-4 |
 | [x] | **M4-6** | 分割・カット | `GraphPartitionSpec(k, balance)` / `CutSpec(s,t)` | 小グラフで総当たり照合 | 〜350 | M4-4 |
-| [ ] | **M4-7** | 彩色・オートマトン | `ColoringSpec(k)` / `DfaSpec` | 彩色多項式と一致 | 〜300 | M3-11 |
+| [x] | **M4-7** | 彩色・オートマトン | `ColoringSpec(k)` / `DfaSpec` | 彩色多項式と一致 | 〜300 | M3-11 |
 | [ ] | **M4-8** | 比較レポート | Graphillion / TdZdd との比較を `docs/benchmarks.md` に記載 | 目標（3 倍以内）の達否を明記 | ドキュメント | M4-3 |
 | [ ] | **M4-9** | v0.4 リリース | — | — | ドキュメント | M4-8 |
 
