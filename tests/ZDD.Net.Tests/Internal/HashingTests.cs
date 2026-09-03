@@ -39,6 +39,57 @@ namespace ZDD.Net.Tests.Internal
             }
         }
 
+        /// <summary>
+        /// M4-2's vectorized path (<c>Vector256</c>/<c>Vector128</c> lanes over 32/16-byte chunks,
+        /// then a scalar tail) reads through raw <c>Unsafe.Add</c> offsets rather than bounds-checked
+        /// <see cref="ReadOnlySpan{T}"/> indexing, so it is on this class to prove no load ever
+        /// reaches past the span it was given: allocate two buffers that agree on the first
+        /// <paramref name="length"/> bytes and disagree on everything after, and check that
+        /// <see cref="Hashing.Combine(ReadOnlySpan{byte})"/> gives the same answer for both — if it
+        /// ever read one byte past <paramref name="length"/>, the two hashes would diverge. The
+        /// lengths span every chunk-size boundary (8/16/32-byte) on both sides.
+        /// </summary>
+        [Theory]
+        [InlineData(0)]
+        [InlineData(1)]
+        [InlineData(7)]
+        [InlineData(8)]
+        [InlineData(9)]
+        [InlineData(15)]
+        [InlineData(16)]
+        [InlineData(17)]
+        [InlineData(31)]
+        [InlineData(32)]
+        [InlineData(33)]
+        [InlineData(63)]
+        [InlineData(64)]
+        [InlineData(65)]
+        [InlineData(100)]
+        public void CombineOverBytesNeverReadsPastTheGivenLength(int length)
+        {
+            const int guardBytes = 64;
+            var random = new Random(length * 7919 + 1);
+
+            byte[] prefix = new byte[length];
+            random.NextBytes(prefix);
+
+            byte[] bufferA = new byte[length + guardBytes];
+            byte[] bufferB = new byte[length + guardBytes];
+            prefix.CopyTo(bufferA, 0);
+            prefix.CopyTo(bufferB, 0);
+
+            random.NextBytes(bufferA.AsSpan(length));
+            for (int i = length; i < bufferB.Length; i++)
+            {
+                bufferB[i] = (byte)~bufferA[i];
+            }
+
+            ulong hashA = Hashing.Combine(bufferA.AsSpan(0, length));
+            ulong hashB = Hashing.Combine(bufferB.AsSpan(0, length));
+
+            Assert.Equal(hashA, hashB);
+        }
+
         [Fact]
         public void CombineIsDeterministic()
         {

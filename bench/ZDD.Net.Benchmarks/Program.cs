@@ -17,7 +17,9 @@ namespace ZDD.Net.Benchmarks
     /// <see cref="RealGraphReport"/>, the thousands-of-edges real-graph path counting record
     /// docs/benchmarks.md's M3-11 section is built from (issue #43), and <c>cache-tuning</c> runs
     /// <see cref="CacheTuningReport"/>, the union-chain workloads docs/benchmarks.md's M4-1 section
-    /// (operation cache tuning) is measured against (issue #44).
+    /// (operation cache tuning) is measured against (issue #44), and <c>hashing-simd</c> runs
+    /// <see cref="HashingSimdReport"/>, the scalar-vs-vectorized comparison docs/benchmarks.md's M4-2
+    /// section (state hashing) is measured against (issue #45).
     /// </summary>
     internal static class Program
     {
@@ -50,6 +52,12 @@ namespace ZDD.Net.Benchmarks
             if (args.Any(a => string.Equals(a, "cache-tuning", StringComparison.OrdinalIgnoreCase)))
             {
                 CacheTuningReport.Run();
+                return;
+            }
+
+            if (args.Any(a => string.Equals(a, "hashing-simd", StringComparison.OrdinalIgnoreCase)))
+            {
+                HashingSimdReport.Run();
                 return;
             }
 
