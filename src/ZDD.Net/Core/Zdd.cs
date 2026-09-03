@@ -10,33 +10,55 @@ using ZDD.Net.Io;
 namespace ZDD.Net.Core
 {
     /// <summary>
-    /// A value-type handle representing a family of sets. Holds only a reference to the owning
-    /// <see cref="ZddManager"/> and a node ID (16 bytes); the family itself lives in the manager's node table.
+    /// A value-type handle representing a family of sets. Holds a reference to the owning
+    /// <see cref="ZddManager"/>, a node ID, and the manager generation it was stamped with
+    /// (16 bytes total); the family itself lives in the manager's node table.
     /// </summary>
     /// <remarks>
     /// Since ZDDs are canonical, two families are equal iff their node IDs are equal (within the
     /// same manager) — no traversal needed. <c>default(Zdd)</c> is an invalid handle belonging to
     /// no manager (<see cref="IsDefault"/> is <see langword="true"/>); only equality and
     /// <see cref="GetHashCode"/> work on it without throwing.
+    /// <para>
+    /// <see cref="ZddManager.Collect()"/> renumbers surviving nodes, which invalidates every
+    /// handle not registered in <see cref="ZddManager.RootSet"/> at the time (docs/PLAN.md &#167;4.4).
+    /// The stamped generation is what lets a stale handle be detected and rejected with
+    /// <see cref="ZddCollectedException"/> instead of silently returning a wrong (or nonexistent)
+    /// family after ids have moved.
+    /// </para>
     /// </remarks>
     public readonly struct Zdd : IEquatable<Zdd>, IEnumerable<int[]>
     {
         private readonly ZddManager? _manager;
         private readonly int _id;
 
+        /// <summary>
+        /// The manager's <see cref="ZddManager.Generation"/> at the time this handle was created.
+        /// Compared against the manager's current generation to detect a handle that predates a
+        /// <see cref="ZddManager.Collect()"/> call (see <see cref="ZddCollectedException"/>).
+        /// Meaningless (and unchecked) for terminal ids, which never move.
+        /// </summary>
+        private readonly int _generation;
+
         internal Zdd(ZddManager manager, int id)
         {
             _manager = manager;
             _id = id;
+            _generation = manager.Generation;
         }
 
         /// <summary>The manager that owns this family.</summary>
         /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ZddCollectedException">
+        /// This handle predates the manager's last <see cref="ZddManager.Collect()"/> call and was
+        /// not kept alive via <see cref="ZddManager.RootSet"/> at that time.
+        /// </exception>
         public ZddManager Manager
         {
             get
             {
                 EnsureNotDefault();
+                _manager!.EnsureOwns(this, nameof(Manager));
                 return _manager!;
             }
         }
@@ -639,14 +661,26 @@ namespace ZDD.Net.Core
 
         /// <summary>Whether two handles refer to the same family in the same manager.</summary>
         /// <param name="other">The handle to compare against.</param>
-        public bool Equals(Zdd other) => ReferenceEquals(_manager, other._manager) && _id == other._id;
+        /// <remarks>
+        /// Also compares <see cref="Generation"/> (terminals excepted, since they never move): a
+        /// collection can reassign a stale handle's old id to an unrelated family, so two handles
+        /// with equal ids from different generations are not the same family and must not compare
+        /// equal.
+        /// </remarks>
+        public bool Equals(Zdd other) =>
+            ReferenceEquals(_manager, other._manager)
+            && _id == other._id
+            && (NodeTable.IsTerminal(_id) || _generation == other._generation);
 
         /// <inheritdoc/>
         public override bool Equals(object? obj) => obj is Zdd other && Equals(other);
 
         /// <inheritdoc/>
         public override int GetHashCode() =>
-            HashCode.Combine(_manager is null ? 0 : RuntimeHelpers.GetHashCode(_manager), _id);
+            HashCode.Combine(
+                _manager is null ? 0 : RuntimeHelpers.GetHashCode(_manager),
+                _id,
+                NodeTable.IsTerminal(_id) ? 0 : _generation);
 
         /// <summary>Whether two handles refer to the same family in the same manager.</summary>
         /// <param name="left">Left-hand operand.</param>
@@ -772,6 +806,9 @@ namespace ZDD.Net.Core
 
         /// <summary>This family's root node ID. Meaningless for <c>default(Zdd)</c>.</summary>
         internal int Id => _id;
+
+        /// <summary>The manager generation this handle was stamped with at creation. Meaningless for <c>default(Zdd)</c>.</summary>
+        internal int Generation => _generation;
 
         private void EnsureNotDefault()
         {

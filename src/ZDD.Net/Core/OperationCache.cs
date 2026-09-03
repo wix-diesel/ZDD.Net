@@ -158,7 +158,7 @@ namespace ZDD.Net.Core
 
         /// <summary>
         /// Discards all entries. Must be called after any operation that changes what node IDs mean
-        /// (e.g. a future node-table GC compaction).
+        /// (e.g. <see cref="ZddManager.Collect()"/>'s node-table compaction).
         /// </summary>
         /// <remarks>Statistics (<see cref="Lookups"/> etc.) are cumulative and not reset.</remarks>
         public void Clear() => Array.Clear(_entries);

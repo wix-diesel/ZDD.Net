@@ -16,7 +16,7 @@ namespace ZDD.Net.Core
     /// Also tracks whether each subfamily contains the empty set (<see cref="HasEmptySet"/>),
     /// needed for lexicographic ordering where the empty set sorts first.
     /// The table is rebuilt on demand rather than cached on the manager, since node IDs can be
-    /// invalidated by future node GC. Traversal uses an explicit stack, not recursion, since ZDD
+    /// invalidated by <see cref="ZddManager.Collect()"/>. Traversal uses an explicit stack, not recursion, since ZDD
     /// depth equals the variable count and a naive recursive walk can overflow the stack.
     /// </remarks>
     internal sealed class CardinalityTable

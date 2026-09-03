@@ -20,6 +20,16 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
   `ZddFormatException` になり、クラッシュしない。版数管理あり（`FormatVersion`、将来の版は
   過去の版を読める方針を doc に明記）。本体 `PackageReference` は引き続き 0。詳細は
   [docs/benchmarks.md](docs/benchmarks.md) の M5-1 節（構築時間との比較、ファイルサイズの実測）
+- `ZddManager.Collect()` / `Collect(params Zdd[] roots)` / `ZddManager.RootSet`: ノード GC
+  （mark & sweep + コンパクション + ID リマップ、M5-3、issue #55）。参照カウントは採らず
+  （ユーザ API が重くなるため）、明示 GC 方式にした（docs/PLAN.md §4.4）。`RootSet` に登録した
+  族だけが `Collect()` を生き延び、ID が振り直された新しいハンドルとして読み直せる。登録していない
+  古いハンドルを GC 後に使うと `ZddCollectedException` になる（マネージャの世代番号を
+  `Zdd` ハンドルに焼き込んで検出——黙って壊れた結果を返さない）。mark は明示スタックによる反復実装
+  （再帰しない）なので、変数 10 万本の深い ZDD でもスタックオーバーフローしない。コンパクション後は
+  一意化表を再構築し、演算キャッシュは無効化、`2^U`（`PowerSetRoot`）のキャッシュは生存していれば
+  リマップ、生存していなければ次回遅延再計算する。GC の統計（回収ノード数・削減率・所要時間）は
+  `ZddStatistics` に追加した
 - `ZDD.Net.Io.DotOptions`: DOT 出力の拡張——状態ラベル・レベルラベル・部分表示・スタイル
   （M5-4、issue #56）。`Zdd.ToDot(DotOptions?)` / `Zdd.WriteDot(TextWriter, DotOptions?)` の
   引数として渡す。既定（`null` または新規インスタンス）は今までの `ToDot()` と完全に同じ出力
@@ -47,6 +57,12 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
   （`FrontierBuilderTests.RecordingStatesDoesNotChangeTheBuiltFamily` /
   `TopDownExpanderTests.RecordingStatesDoesNotChangeTheExpandedTable`）。並列展開でも記録は
   マージスレッド上の `AddState` だけを通るため決定的（`ParallelFrontierTests.RecordedStateLabelsAreTheSameRegardlessOfDegreeOfParallelism`）
+
+### Changed
+
+- `Zdd` ハンドルにマネージャの世代番号を追加した（引き続き 16 バイト固定）。同じ ID でも世代が
+  違えば別の族として扱う（`Equals`/`GetHashCode` が世代も見る）ので、GC で ID が再利用されても
+  古いハンドルが偶然一致してしまうことがない
 
 ## [0.4.0] - 2026-09-03
 
