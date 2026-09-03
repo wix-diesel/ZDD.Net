@@ -107,24 +107,37 @@ namespace ZDD.Net.Core
         /// <remarks>The cache is direct-mapped and overwrites unconditionally on collision; a high value relative to <see cref="CacheLookups"/> means the table is too small.</remarks>
         public long CacheOverwrites { get; }
 
-        /// <summary>Total number of completed <see cref="ZddManager.Collect()"/> calls; 0 if never collected.</summary>
+        /// <summary>Total number of completed <see cref="ZddManager.Collect()"/> calls. 0 means <see cref="ZddManager.Collect()"/> has never run.</summary>
         public long CollectionCount { get; }
 
-        /// <summary>Nodes reclaimed by the most recent <see cref="ZddManager.Collect()"/> call; 0 if never collected.</summary>
+        /// <summary>
+        /// Nodes reclaimed by the most recent <see cref="ZddManager.Collect()"/> call.
+        /// </summary>
+        /// <remarks>
+        /// 0 either means <see cref="ZddManager.Collect()"/> has never run, or it has and simply
+        /// reclaimed nothing (e.g. every node was still reachable from <see cref="ZddManager.RootSet"/>);
+        /// check <see cref="CollectionCount"/> to tell those two apart.
+        /// </remarks>
         public long LastCollectionRemovedNodeCount { get; }
 
         /// <summary>
         /// Fraction of nodes the most recent <see cref="ZddManager.Collect()"/> call reclaimed,
-        /// relative to the node count right before that call ran (0.0-1.0); 0 if never collected.
+        /// relative to the node count right before that call ran (0.0-1.0).
         /// </summary>
         /// <remarks>
         /// Fixed at the moment of collection, unlike <see cref="LastCollectionRemovedNodeCount"/>
         /// combined with the current <see cref="NodeCount"/> — nodes built after that collection
-        /// would otherwise skew a ratio computed from today's count.
+        /// would otherwise skew a ratio computed from today's count. Like
+        /// <see cref="LastCollectionRemovedNodeCount"/>, 0 can mean either "never collected" or "the
+        /// last collection reclaimed nothing (or ran on an empty table)"; check
+        /// <see cref="CollectionCount"/> to tell those apart.
         /// </remarks>
         public double LastCollectionReductionRatio { get; }
 
-        /// <summary>Wall-clock time the most recent <see cref="ZddManager.Collect()"/> call took; <see cref="TimeSpan.Zero"/> if never collected.</summary>
+        /// <summary>
+        /// Wall-clock time the most recent <see cref="ZddManager.Collect()"/> call took;
+        /// <see cref="TimeSpan.Zero"/> before the first collection.
+        /// </summary>
         public TimeSpan LastCollectionDuration { get; }
 
         /// <inheritdoc/>

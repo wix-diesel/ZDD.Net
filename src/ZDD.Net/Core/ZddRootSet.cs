@@ -37,15 +37,26 @@ namespace ZDD.Net.Core
         }
 
         /// <summary>Number of registered roots (terminals are never counted, since they're never registered).</summary>
-        public int Count => _ids.Count;
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
+        public int Count
+        {
+            get
+            {
+                EnsureNotDisposed();
+                return _ids.Count;
+            }
+        }
 
         /// <summary>The root registered at <paramref name="index"/>, in registration order.</summary>
         /// <param name="index">Position, 0 .. <see cref="Count"/> - 1.</param>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is out of range.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public Zdd this[int index]
         {
             get
             {
+                EnsureNotDisposed();
+
                 if ((uint)index >= (uint)_ids.Count)
                 {
                     ThrowHelper.ThrowArgumentOutOfRangeException(
@@ -62,8 +73,10 @@ namespace ZDD.Net.Core
         /// <remarks>A no-op if <paramref name="zdd"/> is already registered, or is a terminal (&#8709; or <c>{&#8709;}</c>), which is always valid regardless of collection.</remarks>
         /// <exception cref="ArgumentException"><paramref name="zdd"/> belongs to a different manager, or is <c>default(Zdd)</c>.</exception>
         /// <exception cref="ZddCollectedException"><paramref name="zdd"/> predates an earlier <see cref="ZddManager.Collect()"/> call and was not kept alive.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public void Add(Zdd zdd)
         {
+            EnsureNotDisposed();
             _manager.EnsureOwns(zdd, nameof(zdd));
 
             if (NodeTable.IsTerminal(zdd.Id) || _ids.Contains(zdd.Id))
@@ -79,29 +92,48 @@ namespace ZDD.Net.Core
         /// <returns><see langword="true"/> if it was registered and is now removed.</returns>
         /// <exception cref="ArgumentException"><paramref name="zdd"/> belongs to a different manager, or is <c>default(Zdd)</c>.</exception>
         /// <exception cref="ZddCollectedException"><paramref name="zdd"/> predates an earlier <see cref="ZddManager.Collect()"/> call and was not kept alive.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public bool Remove(Zdd zdd)
         {
+            EnsureNotDisposed();
             _manager.EnsureOwns(zdd, nameof(zdd));
 
             return _ids.Remove(zdd.Id);
         }
 
         /// <summary>Unregisters every root. The next <see cref="ZddManager.Collect()"/> then keeps nothing alive.</summary>
-        public void Clear() => _ids.Clear();
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
+        public void Clear()
+        {
+            EnsureNotDisposed();
+            _ids.Clear();
+        }
 
         /// <summary>Whether <paramref name="zdd"/> is currently registered (always <see langword="true"/> for a terminal belonging to this manager).</summary>
         /// <param name="zdd">The family to check; must belong to the owning manager.</param>
         /// <exception cref="ArgumentException"><paramref name="zdd"/> belongs to a different manager, or is <c>default(Zdd)</c>.</exception>
         /// <exception cref="ZddCollectedException"><paramref name="zdd"/> predates an earlier <see cref="ZddManager.Collect()"/> call and was not kept alive.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public bool Contains(Zdd zdd)
         {
+            EnsureNotDisposed();
             _manager.EnsureOwns(zdd, nameof(zdd));
 
             return NodeTable.IsTerminal(zdd.Id) || _ids.Contains(zdd.Id);
         }
 
         /// <summary>Enumerates the registered roots in registration order, as fresh (current-generation) handles.</summary>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public IEnumerator<Zdd> GetEnumerator()
+        {
+            // Checked eagerly here rather than lazily, since an iterator block's body (below)
+            // only starts running on the first MoveNext — a disposed manager should fail the call
+            // to GetEnumerator() itself, not silently produce an enumerator that fails only once iterated.
+            EnsureNotDisposed();
+            return Iterate();
+        }
+
+        private IEnumerator<Zdd> Iterate()
         {
             foreach (int id in _ids)
             {
@@ -110,6 +142,14 @@ namespace ZDD.Net.Core
         }
 
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+        private void EnsureNotDisposed()
+        {
+            if (_manager.IsDisposed)
+            {
+                ThrowHelper.ThrowObjectDisposedException(nameof(ZddManager));
+            }
+        }
 
         /// <summary>The registered ids, for <see cref="NodeGarbageCollector"/> to mark and remap. Order matches this set's enumeration order.</summary>
         internal List<int> Ids => _ids;

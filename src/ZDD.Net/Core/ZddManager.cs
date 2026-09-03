@@ -235,7 +235,9 @@ namespace ZDD.Net.Core
             _powerSetRoot = NodeTable.Bottom;
             _workspaces = Array.Empty<OperationWorkspace?>();
             _workspaceDepth = 0;
-            _rootSet.Clear();
+            // Bypasses RootSet.Clear()'s own disposed check directly: _table is already null above,
+            // so IsDisposed is already true and the public Clear() would (rightly) reject the call.
+            _rootSet.Ids.Clear();
         }
 
         /// <summary>

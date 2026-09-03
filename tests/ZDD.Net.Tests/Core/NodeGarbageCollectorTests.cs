@@ -549,5 +549,28 @@ namespace ZDD.Net.Tests.Core
             Assert.Throws<ObjectDisposedException>(() => manager.RootSet);
             Assert.Throws<ObjectDisposedException>(() => manager.Collect());
         }
+
+        [Fact]
+        public void ACachedRootSetReferenceThrowsAfterItsManagerIsDisposed()
+        {
+            ZddManager manager = new ZddManager(4);
+
+            // 破棄前に RootSet への参照をキャッシュしておく手口。マネージャの他の操作と同じく、
+            // 破棄後はこの参照越しでも一切読み書きできてはならない。
+            ZddRootSet rootSet = manager.RootSet;
+            Zdd kept = manager.Singleton(0);
+            rootSet.Add(kept);
+
+            manager.Dispose();
+
+            Assert.Throws<ObjectDisposedException>(() => rootSet.Count);
+            Assert.Throws<ObjectDisposedException>(() => rootSet[0]);
+            Assert.Throws<ObjectDisposedException>(() => rootSet.Add(kept));
+            Assert.Throws<ObjectDisposedException>(() => rootSet.Remove(kept));
+            Assert.Throws<ObjectDisposedException>(() => rootSet.Contains(kept));
+            Assert.Throws<ObjectDisposedException>(() => rootSet.Clear());
+            Assert.Throws<ObjectDisposedException>(() => rootSet.GetEnumerator());
+            Assert.Throws<ObjectDisposedException>(() => rootSet.ToArray());
+        }
     }
 }
