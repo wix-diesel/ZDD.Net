@@ -282,6 +282,26 @@ Zdd result = FrontierBuilder.Build<PathSpec>(manager, spec, options);
 個数）が大きいグラフほど、ここで数える状態の種類数は指数的に増える——見積りが大きいときこそ
 `MaxFrontierSize` / `MaxNodeCount` に許容できる上限を入れておく、という使い方になる。
 
+「上限を決めて、超えたら別の辺順序を試す」という探索的な使い方では、この例外が制御フローに
+なってしまう。`FrontierBuilder.TryBuild` は同じ上限を例外ではなく戻り値で返す:
+
+```csharp
+var options = new BuildOptions { MaxFrontierSize = 100_000 };
+
+if (!FrontierBuilder.TryBuild<PathSpec>(manager, spec, options, out Zdd result))
+{
+    // MaxNodeCount / MaxFrontierSize のどちらかを超えた。manager は呼び出し前のまま
+    // （NodeCount も不変）なので、辺順序を変えて同じ manager で再挑戦してよい。
+    graph = graph.Optimize(EdgeOrderStrategy.Dfs);
+    // ...
+}
+```
+
+`false` になるのは `BuildLimit`（`MaxNodeCount` / `MaxFrontierSize`）超過のときだけ。
+`CancellationToken` によるキャンセルとスペック自身が投げた例外はどちらも飲み込まれず、
+`Build` と同じ例外のまま伝わる。`options` は必須引数（`null` 不可）——上限を 1 つも
+設定しない `TryBuild` は `false` を返しようがなく、意味が無いため。
+
 ## 6. 性能の勘所
 
 ### 6.1 辺順序でフロンティア幅が変わる

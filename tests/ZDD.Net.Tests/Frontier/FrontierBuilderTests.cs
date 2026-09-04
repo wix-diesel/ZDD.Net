@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Threading;
 using Xunit;
 using ZDD.Net.Core;
 using ZDD.Net.Frontier;
@@ -417,6 +418,174 @@ namespace ZDD.Net.Tests.Frontier
                 () => FrontierBuilder.Build(manager, new ZeroArrayLengthNonTerminalSpec()));
 
             Assert.Contains("ArrayLength", error.Message, StringComparison.Ordinal);
+        }
+
+        // ---- TryBuild (M6-3, issue #138) ----
+
+        /// <summary>A spec whose <c>GetChild</c> always throws, to prove <c>TryBuild</c> does not swallow it.</summary>
+        private sealed class SpecFailureException : Exception
+        {
+        }
+
+        private readonly struct ThrowingSpec : IDdSpec<int>
+        {
+            public int GetRoot(ref int state)
+            {
+                state = 0;
+                return 3;
+            }
+
+            public int GetChild(ref int state, int level, int value) => throw new SpecFailureException();
+
+            public bool StateEquals(in int left, in int right) => true;
+
+            public int StateHashCode(in int state) => 0;
+        }
+
+        /// <summary>
+        /// A spec whose <c>GetChild</c> throws <see cref="BuildLimitExceededException"/> itself
+        /// (through its public constructor, exactly as any external caller could) — as opposed to
+        /// the library's own limit check inside <see cref="TopDownExpander{TSpec, TState}"/>
+        /// raising it. <c>TryBuild</c> must not confuse the two (issue #138 review discussion):
+        /// only the limit check's own instance may become <see langword="false"/>.
+        /// </summary>
+        private readonly struct SpecThatThrowsTheLibrarysOwnExceptionTypeSpec : IDdSpec<int>
+        {
+            public int GetRoot(ref int state)
+            {
+                state = 0;
+                return 3;
+            }
+
+            public int GetChild(ref int state, int level, int value) =>
+                throw new BuildLimitExceededException(BuildLimit.NodeCount, 1, level, "thrown by the spec, not the build");
+
+            public bool StateEquals(in int left, in int right) => true;
+
+            public int StateHashCode(in int state) => 0;
+        }
+
+        [Fact]
+        public void TryBuildDoesNotSwallowABuildLimitExceededExceptionTheSpecThrowsItself()
+        {
+            using ZddManager manager = new ZddManager(3);
+            BuildOptions options = new BuildOptions { MaxNodeCount = 1_000 };
+
+            Assert.Throws<BuildLimitExceededException>(
+                () => FrontierBuilder.TryBuild<SpecThatThrowsTheLibrarysOwnExceptionTypeSpec, int>(
+                    manager, new SpecThatThrowsTheLibrarysOwnExceptionTypeSpec(), options, out Zdd _));
+        }
+
+        [Fact]
+        public void TryBuildReturnsTrueAndTheSameFamilyAsBuildWhenNoLimitIsPassed()
+        {
+            const int ItemCount = 6;
+            ExactlyKSpec spec = new ExactlyKSpec(ItemCount, 3);
+            BuildOptions options = new BuildOptions { MaxNodeCount = 1_000, MaxFrontierSize = 1_000 };
+
+            using ZddManager manager = new ZddManager(ItemCount);
+            Zdd expected = FrontierBuilder.Build<ExactlyKSpec, int>(manager, spec);
+
+            bool ok = FrontierBuilder.TryBuild<ExactlyKSpec, int>(manager, spec, options, out Zdd result);
+
+            Assert.True(ok);
+            Assert.Equal(expected, result);
+        }
+
+        [Fact]
+        public void TryBuildReturnsFalseAndLeavesTheManagerUnchangedWhenMaxNodeCountIsExceeded()
+        {
+            using ZddManager manager = new ZddManager(6);
+            ExactlyKSpec spec = new ExactlyKSpec(6, 3);
+            long before = manager.NodeCount;
+            BuildOptions options = new BuildOptions { MaxNodeCount = 1 };
+
+            bool ok = FrontierBuilder.TryBuild<ExactlyKSpec, int>(manager, spec, options, out Zdd result);
+
+            Assert.False(ok);
+            Assert.Equal(default, result);
+            Assert.Equal(before, manager.NodeCount);
+        }
+
+        [Fact]
+        public void TryBuildReturnsFalseAndLeavesTheManagerUnchangedWhenMaxFrontierSizeIsExceeded()
+        {
+            using ZddManager manager = new ZddManager(6);
+            ExactlyKSpec spec = new ExactlyKSpec(6, 3);
+            long before = manager.NodeCount;
+            BuildOptions options = new BuildOptions { MaxFrontierSize = 1 };
+
+            bool ok = FrontierBuilder.TryBuild<ExactlyKSpec, int>(manager, spec, options, out Zdd result);
+
+            Assert.False(ok);
+            Assert.Equal(default, result);
+            Assert.Equal(before, manager.NodeCount);
+        }
+
+        [Fact]
+        public void TryBuildDoesNotSwallowCancellation()
+        {
+            using ZddManager manager = new ZddManager(6);
+            ExactlyKSpec spec = new ExactlyKSpec(6, 3);
+            using CancellationTokenSource cts = new CancellationTokenSource();
+            cts.Cancel();
+            BuildOptions options = new BuildOptions { MaxNodeCount = 1_000, CancellationToken = cts.Token };
+
+            Assert.Throws<OperationCanceledException>(
+                () => FrontierBuilder.TryBuild<ExactlyKSpec, int>(manager, spec, options, out Zdd _));
+        }
+
+        [Fact]
+        public void TryBuildDoesNotSwallowAnExceptionTheSpecThrows()
+        {
+            using ZddManager manager = new ZddManager(3);
+            BuildOptions options = new BuildOptions { MaxNodeCount = 1_000 };
+
+            Assert.Throws<SpecFailureException>(
+                () => FrontierBuilder.TryBuild<ThrowingSpec, int>(manager, new ThrowingSpec(), options, out Zdd _));
+        }
+
+        [Fact]
+        public void TryBuildRejectsANullManager()
+        {
+            BuildOptions options = new BuildOptions { MaxNodeCount = 1_000 };
+
+            Assert.Throws<ArgumentNullException>(
+                () => FrontierBuilder.TryBuild<PowerSetSpec, int>(null!, new PowerSetSpec(3), options, out Zdd _));
+        }
+
+        [Fact]
+        public void TryBuildRejectsNullOptions()
+        {
+            using ZddManager manager = new ZddManager(3);
+
+            Assert.Throws<ArgumentNullException>(
+                () => FrontierBuilder.TryBuild<PowerSetSpec, int>(manager, new PowerSetSpec(3), null!, out Zdd _));
+        }
+
+        [Fact]
+        public void TheArraySpecTryBuildOverloadBehavesTheSameWayAsTheStructStateOne()
+        {
+            const int PairCount = 3;
+            const int ItemCount = 2 * PairCount;
+            AtMostOnePerPairSpec spec = new AtMostOnePerPairSpec(PairCount);
+
+            using ZddManager manager = new ZddManager(ItemCount);
+            Zdd expected = FrontierBuilder.Build(manager, spec);
+
+            bool ok = FrontierBuilder.TryBuild<AtMostOnePerPairSpec>(
+                manager, spec, new BuildOptions { MaxNodeCount = 1_000 }, out Zdd result);
+
+            Assert.True(ok);
+            Assert.Equal(expected, result);
+
+            long before = manager.NodeCount;
+            bool exceeded = FrontierBuilder.TryBuild<AtMostOnePerPairSpec>(
+                manager, spec, new BuildOptions { MaxNodeCount = 1 }, out Zdd failedResult);
+
+            Assert.False(exceeded);
+            Assert.Equal(default, failedResult);
+            Assert.Equal(before, manager.NodeCount);
         }
 
         // ---- State recording (M5-4, issue #56) ----
