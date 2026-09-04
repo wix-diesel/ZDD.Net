@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using Xunit;
 using ZDD.Net.Core;
 using ZDD.Net.Tests.Harness;
@@ -287,6 +288,145 @@ namespace ZDD.Net.Tests.Core
             Assert.Equal(3, ZddFamilies.ToBruteForce(~wide.Singleton(0)).Count);
         }
 
+        // ---- 部分ユニバースの補（ComplementWithin / PowerSetOf, M6-1） ----
+
+        [Fact]
+        public void PowerSetOfMatchesTheNaiveImplementation()
+        {
+            const int VariableCount = FamilyCases.ExhaustiveVariableLimit;
+
+            using ZddManager manager = new ZddManager(VariableCount);
+
+            foreach (int[] items in ItemSubsetCases(VariableCount, seed: 7001))
+            {
+                FamilyAssert.AssertSameFamily(
+                    $"manager.PowerSetOf({string.Join(", ", items)})",
+                    manager.PowerSetOf(items),
+                    BruteForceFamily.PowerSetOf(VariableCount, items));
+            }
+        }
+
+        [Fact]
+        public void ComplementWithinMatchesTheNaiveImplementation()
+        {
+            const int VariableCount = FamilyCases.ExhaustiveVariableLimit;
+
+            using ZddManager manager = new ZddManager(VariableCount);
+
+            foreach (BruteForceFamily family in FamilyCases.RandomFamilies(VariableCount, 6, seed: 7002))
+            {
+                Zdd zdd = ZddFamilies.Build(manager, family);
+
+                foreach (int[] items in ItemSubsetCases(VariableCount, seed: 7003))
+                {
+                    FamilyAssert.AssertSameFamily(
+                        $"f.ComplementWithin({string.Join(", ", items)})",
+                        zdd.ComplementWithin(items),
+                        family.ComplementWithin(items),
+                        family);
+                }
+            }
+        }
+
+        [Fact]
+        public void ComplementEqualsComplementWithinOverEveryVariable()
+        {
+            const int VariableCount = 8;
+
+            using ZddManager manager = new ZddManager(VariableCount);
+
+            int[] everyItem = Enumerable.Range(0, VariableCount).ToArray();
+
+            foreach (BruteForceFamily family in FamilyCases.RandomFamilies(VariableCount, 20, seed: 5011))
+            {
+                Zdd zdd = ZddFamilies.Build(manager, family);
+
+                // B8 の決定どおり、全変数を渡した ComplementWithin は Complement と一致する。
+                Assert.Equal(zdd.Complement(), zdd.ComplementWithin(everyItem));
+
+                // 順序や重複を混ぜても変わらない。
+                Assert.Equal(zdd.Complement(), zdd.ComplementWithin(everyItem.Reverse().ToArray()));
+                Assert.Equal(zdd.Complement(), zdd.ComplementWithin(everyItem.Concat(everyItem).ToArray()));
+            }
+        }
+
+        [Fact]
+        public void PowerSetOfCountsTwoToTheNumberOfDistinctItems()
+        {
+            const int VariableCount = 10;
+
+            using ZddManager manager = new ZddManager(VariableCount);
+
+            // items を渡さなければ 2^∅ = {∅} = Base。
+            Assert.Equal(manager.Base, manager.PowerSetOf());
+            Assert.Equal(manager.Base, manager.PowerSetOf([]));
+
+            for (int size = 1; size <= VariableCount; size++)
+            {
+                int[] items = Enumerable.Range(0, size).ToArray();
+
+                Zdd powerSet = manager.PowerSetOf(items);
+
+                Assert.Equal(BigInteger.Pow(2, size), powerSet.Count);
+                Assert.Equal(size, powerSet.NodeCount);
+            }
+        }
+
+        [Fact]
+        public void PowerSetOfIgnoresDuplicateItems()
+        {
+            using ZddManager manager = new ZddManager(5);
+
+            Zdd expected = manager.PowerSetOf(0, 2, 4);
+
+            Assert.Equal(expected, manager.PowerSetOf(0, 2, 4, 2, 0));
+            Assert.Equal(expected, manager.PowerSetOf(4, 2, 0));
+            Assert.Equal(expected, manager.PowerSetOf(2, 4, 0, 4, 2, 0));
+        }
+
+        [Fact]
+        public void ComplementWithinIgnoresSetsThatUseItemsOutsideTheSubUniverse()
+        {
+            using ZddManager manager = new ZddManager(4);
+
+            // f は item 3 を使うが、ComplementWithin(0, 1) の対象は 2^{0, 1} だけ。
+            // f のうち item 3 を使う集合は最初から 2^{0, 1} に無いので、無視されるだけで例外にはならない。
+            Zdd f = manager.Singleton(0) | manager.Singleton(3);
+
+            Zdd result = f.ComplementWithin(0, 1);
+
+            FamilyAssert.AssertSameFamily(
+                result,
+                BruteForceFamily.PowerSetOf(4, 0, 1).Difference(BruteForceFamily.FromSets(4, [0])));
+        }
+
+        [Fact]
+        public void ComplementWithinOfAnEmptySubUniverseIsTheBaseOrEmptyFamily()
+        {
+            using ZddManager manager = new ZddManager(3);
+
+            // 2^∅ = {∅}。∅ を含まない族なら、その {∅} 全部が残る。
+            Assert.Equal(manager.Base, manager.Singleton(0).ComplementWithin());
+
+            // ∅ を含む族なら、その唯一の要素が引かれて空になる。
+            Assert.Equal(manager.Empty, manager.Base.ComplementWithin());
+        }
+
+        [Theory]
+        [InlineData(-1)]
+        [InlineData(4)]
+        [InlineData(int.MaxValue)]
+        public void AnItemOutsideTheManagerIsRejectedByPowerSetOf(int item)
+        {
+            using ZddManager manager = new ZddManager(4);
+
+            Assert.Equal("item", Assert.Throws<ArgumentOutOfRangeException>(() => manager.PowerSetOf(item)).ParamName);
+            Assert.Equal("item", Assert.Throws<ArgumentOutOfRangeException>(() => manager.PowerSetOf(1, item)).ParamName);
+
+            Zdd zdd = manager.Singleton(0);
+            Assert.Equal("item", Assert.Throws<ArgumentOutOfRangeException>(() => zdd.ComplementWithin(item)).ParamName);
+        }
+
         // ---- Flip ----
 
         [Fact]
@@ -451,6 +591,19 @@ namespace ZDD.Net.Tests.Core
 
             // 一括反転も深いまま動く（item 0 と 1 を落とすと、残り全部の集合になる）。
             Assert.Equal(all.Change(0).Change(1), all.Flip(0, 1));
+
+            // PowerSetOf / ComplementWithin は渡した items の個数だけノードを積むので、
+            // 変数 10 万のマネージャでも一握りの item なら一瞬で終わる（O(items) であって O(VariableCount) ではない）。
+            Zdd fewItemsPowerSet = manager.PowerSetOf(0, 1, 2);
+            Assert.Equal(3, fewItemsPowerSet.NodeCount);
+            Assert.Equal(BigInteger.Pow(2, 3), fewItemsPowerSet.Count);
+
+            // all は item 0..99999 すべてを含む 1 個の集合なので、2^{0,1,2} には最初から入っていない。
+            // よって ComplementWithin(0, 1, 2) は何も除かず、そのまま 2^{0,1,2} になる。
+            Assert.Equal(fewItemsPowerSet, all.ComplementWithin(0, 1, 2));
+
+            // もう一度 ComplementWithin をかけると 2^{0,1,2} ∩ all になるが、all の要素はそこに無いので空になる。
+            Assert.True(all.ComplementWithin(0, 1, 2).ComplementWithin(0, 1, 2).IsEmpty);
         }
 
         // ---- アロケーション ----
@@ -495,6 +648,7 @@ namespace ZDD.Net.Tests.Core
             Assert.Equal("f", Assert.Throws<ArgumentException>(() => one.HittingSets(foreign)).ParamName);
             Assert.Equal("f", Assert.Throws<ArgumentException>(() => one.Complement(foreign)).ParamName);
             Assert.Equal("f", Assert.Throws<ArgumentException>(() => one.Flip(foreign, [1])).ParamName);
+            Assert.Equal("f", Assert.Throws<ArgumentException>(() => one.ComplementWithin(foreign, [1])).ParamName);
         }
 
         [Fact]
@@ -509,6 +663,7 @@ namespace ZDD.Net.Tests.Core
             Assert.Throws<InvalidOperationException>(() => none.Complement());
             Assert.Throws<InvalidOperationException>(() => ~none);
             Assert.Throws<InvalidOperationException>(() => none.Flip(0));
+            Assert.Throws<InvalidOperationException>(() => none.ComplementWithin(0));
         }
 
         [Theory]
@@ -540,6 +695,8 @@ namespace ZDD.Net.Tests.Core
             Assert.Throws<ObjectDisposedException>(() => zdd.Complement());
             Assert.Throws<ObjectDisposedException>(() => zdd.Flip(1));
             Assert.Throws<ObjectDisposedException>(() => zdd.Flip());
+            Assert.Throws<ObjectDisposedException>(() => zdd.ComplementWithin(1));
+            Assert.Throws<ObjectDisposedException>(() => manager.PowerSetOf(1));
         }
 
         // ---- 照合の本体 ----
@@ -582,6 +739,51 @@ namespace ZDD.Net.Tests.Core
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// <see cref="Zdd.ComplementWithin"/> / <see cref="ZddManager.PowerSetOf"/> の照合に使う
+        /// items の候補。空・単独・全部・逆順・重複あり・ランダムな部分集合を一通り混ぜる。
+        /// </summary>
+        private static IEnumerable<int[]> ItemSubsetCases(int variableCount, int seed)
+        {
+            yield return [];
+
+            if (variableCount == 0)
+            {
+                yield break;
+            }
+
+            int[] all = Enumerable.Range(0, variableCount).ToArray();
+
+            yield return [0];
+            yield return [variableCount - 1];
+            yield return all;
+
+            // 降順ソートを内部で正しくやり直せることの確認（渡す順序は結果に影響しない）。
+            yield return all.Reverse().ToArray();
+
+            if (variableCount >= 2)
+            {
+                // 同じ item を繰り返しても 1 個扱い。
+                yield return [0, 0, 0];
+
+                yield return all.Where(item => item % 2 == 0).ToArray();
+            }
+
+            Random random = new Random(seed);
+
+            for (int i = 0; i < 5; i++)
+            {
+                int size = random.Next(0, variableCount + 1);
+                int[] sample = Enumerable.Range(0, variableCount)
+                    .OrderBy(_ => random.Next())
+                    .Take(size)
+                    .ToArray();
+
+                // 重複させて、正規化がランダムな並びでも効くことを確かめる。
+                yield return sample.Concat(sample).ToArray();
+            }
         }
 
         /// <summary>性質の検証に使う族を返す。マネージャは呼び出しごとに使い捨てる。</summary>

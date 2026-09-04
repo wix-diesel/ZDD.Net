@@ -170,7 +170,7 @@ Core レイヤは下から積むため、序盤の PR は `internal` のコー�
 
 | 完了 | ID | タイトル | 内容 | 受け入れ条件 | 目安 | 依存 |
 |---|---|---|---|---|---|---|
-| [ ] | **M6-1** | `ComplementWithin` / `PowerSetOf` | 部分ユニバースでの補集合（B8 の未実装分）。`ZddManager.PowerSetOf(items)` を葉側から 1 パスで構築 | 総当たり照合（変数 ≤ 12）。`Complement()` == `ComplementWithin(全変数)` の回帰テスト | 〜150 | M5-7 |
+| [x] | **M6-1** | `ComplementWithin` / `PowerSetOf` | 部分ユニバースでの補集合（B8 の未実装分）。`ZddManager.PowerSetOf(items)` を葉側から 1 パスで構築 | 総当たり照合（変数 ≤ 12）。`Complement()` == `ComplementWithin(全変数)` の回帰テスト | 〜150 | M5-7 |
 | [ ] | **M6-2** | バッファ列挙 `EnumerateInto` | アロケーションなしの `ref struct` 列挙子（B9 の (b)）、`Zdd.MaxSetSize`（新 `IDdEval<int>`） | 変数 ≤ 16 全網羅で `Sets()` と要素・順序が一致。列挙ループが 0 アロケーション | 〜250 | M5-7 |
 | [ ] | **M6-3** | `TryBuild` | 上限超過を `false` で返す構築（B11 の未実装分）。キャンセルは例外のまま | 上限超過で `false` かつ**マネージャの `NodeCount` が不変**であること | 〜200 | M5-7 |
 | [ ] | **M6-4** | 項目写像（順序保存） | `Zdd.MapItems` / `MapItemsTo`。単調写像はボトムアップ 1 パス O(ノード数) | 総当たり照合。恒等写像は自分自身を返す | 〜300 | M6-1 |

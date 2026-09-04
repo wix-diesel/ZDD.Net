@@ -8,6 +8,18 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
 
 ## [Unreleased]
 
+### Added
+
+- `Zdd.ComplementWithin(items)` / `ZddManager.PowerSetOf(items)`: 部分ユニバースでの補集合
+  （M6-1、issue #136、`docs/OPEN-QUESTIONS.md` B8 で決めたまま未実装だった穴埋め）。
+  `Complement()` はマネージャの全変数に対する `2^U \ f` を返すが、`ComplementWithin(items)` は
+  注目している要素だけを動かした `2^items \ f` を返す。`PowerSetOf` は葉側から 1 パスで
+  `items` の個数だけノードを積むので、変数がどれだけ多いマネージャでも O(items) で終わる
+  （マネージャの `VariableCount` には依らない）。`items` の重複は正規化して無視し、空なら
+  `2^∅ = {∅}`（`Base`）を返す。`f` が `items` の外側の要素を含む集合を持っていても例外には
+  ならず、その集合はそもそも `2^items` に無いので単に無視される（support の検査はしない）。
+  `Complement()` は `ComplementWithin(全変数)` と一致することを回帰テストで確認済み。
+
 ## [0.5.0] - 2026-09-04
 
 M5「I/O・メモリ管理」マイルストーン（[docs/PLAN.md](docs/PLAN.md) §12）の完了リリース。独自
