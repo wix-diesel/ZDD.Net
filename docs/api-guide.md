@@ -196,7 +196,9 @@ foreach (ReadOnlySpan<int> set in powerSet.EnumerateInto(buffer))
 
 `Sets()` は集合 1 つごとに `new int[]` するので、数百万集合を舐める用途では GC 圧が支配的に
 なる。`EnumerateInto` は同じ深さ優先探索を、呼び出し側が渡したバッファへ書き込みながら回す
-`ref struct` 列挙子（`SetSpanEnumerator`）を返すので、列挙ループそのものはアロケーションしない。
+`ref struct` 列挙子（`SetSpanEnumerator`）を返すので、集合ごとの配列アロケーションはしない
+（内部の明示スタック/0-枝チェーンが伸びる場合は別で、そちらは `Array.Resize` による散発的な
+アロケーションが残る——集合数ではなく族の深さ・形状に応じて起きる、頻度も規模も違うもの）。
 `ref struct` にしてあるのは制約ではなく安全装置——`LINQ` に渡したり `List<T>` に溜め込んだりする
 と、使い回されるバッファを後から読んで壊れた結果を見ることになるため、そもそもできないように
 してある。`Sets()`（集合ごとに新しい配列）が既定のままなのはそのためで、`EnumerateInto` は

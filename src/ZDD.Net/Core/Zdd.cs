@@ -149,9 +149,12 @@ namespace ZDD.Net.Core
 
         /// <summary>The largest number of elements in any single set of this family. The buffer length <see cref="EnumerateInto"/> requires.</summary>
         /// <remarks>
-        /// Equivalent to <c>CountBySize().Length - 1</c>, but computed directly via <see cref="MaxSetSizeEval"/>
-        /// instead of building the whole size distribution. 0 for both &#8709; and <c>{&#8709;}</c>
-        /// (a buffer of length 0 enumerates either correctly: zero sets, or one empty set).
+        /// For a non-empty family, equivalent to <c>CountBySize().Length - 1</c>, but computed
+        /// directly via <see cref="MaxSetSizeEval"/> instead of building the whole size
+        /// distribution. &#8709; is the one exception to that equivalence: <c>CountBySize()</c>
+        /// returns an empty array there (so <c>Length - 1</c> would be -1), while this returns 0,
+        /// same as <c>{&#8709;}</c> — for both, a buffer of length 0 enumerates correctly (zero
+        /// sets, or one empty set, respectively).
         /// </remarks>
         /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
         /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
