@@ -48,6 +48,24 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
     描き分けのカスタマイズ
   - ラベル文字列中の `"` `\` 改行は正しくエスケープされる（`DotWriterTests.StateAndLevelLabelsEscapeQuotesBackslashesAndNewlines`）。生成した DOT が実際に Graphviz
     (`dot -Tsvg`) に通ることをローカルで確認済み
+- `ZDD.Net.Io.GraphillionTextFormat`: Python Graphillion の `setset.dump`/`dumps`/`load`/`loads`
+  互換のテキスト形式による ZDD のシリアライズ（M5-2、issue #54）。`Write(Zdd, TextWriter)` /
+  `Write(Zdd)`（`dumps` 相当）/ `Read(TextReader, int?, ZddManagerOptions?)` / `Read(string, ...)`。
+  公式仕様が存在しないため、`pip install graphillion`（2.1）で実際にインストールして生成した
+  出力を観察し、Graphillion 自身のソース（SAPPOROBDD 由来の `zdd.cc`）と突き合わせて形式を確定
+  させた（推測で実装していない）。**レベルの向きの対応**（issue が最重要視した「読めるが中身が
+  上下逆」バグの回避）は、Graphillion の 1 始まり根側基準の `elem` が本ライブラリの 0 始まり
+  `item` インデックスと同じ向きであることに気づいたことで、単純なオフセット
+  （`elem = item + 1`）に単純化できた。上下非対称な族（非正方格子の s–t パス族など、対称な族
+  では検出できない）でテスト済み。ファイルには universe のサイズが記録されないため、`Read` の
+  `variableCount` 引数で明示的に指定可能（省略時はファイルが実際に使っている最大の `elem` から
+  推定）。壊れた入力（フィールド数不正・前方参照・`hi` が ⊥ 終端・レベル順序違反・
+  `variableCount` を超える `elem` など）はすべて `ZddFormatException` になる。実際に
+  Graphillion 2.1 で生成したダンプを読み込んで本ライブラリ側の独立構築（`Count`・列挙した族の
+  両方）と一致することを確認し、逆方向（本ライブラリの出力を Graphillion 側の `load()` で
+  読めること）も手動確認済み——テストデータ・検証用 Python スクリプト・向きの対応・手動確認の
+  手順はすべて [docs/graphillion-io.md](docs/graphillion-io.md) と
+  `tests/ZDD.Net.Tests/TestData/Graphillion/` に記録した。本体 `PackageReference` は引き続き 0
 - `ZDD.Net.Frontier.BuildOptions.RecordStates`: フロンティア構築時に「一時ノード → 状態」の対応を
   保持するオプション（M5-4、issue #56）。既定は無効で、無効時は `AddState` の `null` 判定 1 回以外
   オーバーヘッドが無い（`TopDownExpanderTests.DescribingStatesOnlyAllocatesWhenRequested`）。
