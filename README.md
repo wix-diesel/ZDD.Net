@@ -11,7 +11,7 @@ C# ネイティブ実装の ZDD（Zero-suppressed Decision Diagram）／フロ�
 比例する手間で行える。.NET にはこれのネイティブ実装が事実上存在しない（CUDD の P/Invoke ラッパ
 しか選択肢がない）ことが、このライブラリの動機になっている。
 
-## 到達点（v0.4 = v0.3 + 性能改善 + 残りのグラフ系スペック）
+## 到達点（v0.5 = v0.4 + I/O・メモリ管理）
 
 - **Core レイヤ（ZDD エンジン）**: `ZddManager` / `Zdd` によるノード表・一意化表・演算キャッシュと、
   家族代数の全演算（和・積・差・対称差・積(`*`)・商・剰余・Meet・`SupersetsOf`/`SubsetsOf` などの
@@ -50,6 +50,17 @@ C# ネイティブ実装の ZDD（Zero-suppressed Decision Diagram）／フロ�
   [docs/PLAN.md](docs/PLAN.md) §10 の性能目標（9×9 格子 1 秒以内・11×11 格子 60 秒以内/8 GB 以内・
   Graphillion 比 3 倍以内）を全て達成——測定した全ケースで Graphillion を上回った
   （[docs/benchmarks.md](docs/benchmarks.md) の M4-1〜M4-3・M4-8 節）
+- **シリアライズ（v0.5）**: `ZDD.Net.Io.ZddBinaryFormat`（独自バイナリ形式、構築より 1〜2 桁速い
+  保存・復元）と `ZDD.Net.Io.GraphillionTextFormat`（Python Graphillion の
+  `setset.dump`/`dumps`/`load`/`loads` 互換のテキスト形式、実際に Graphillion 2.1 の出力で
+  相互運用を確認済み）。どちらもフレッシュなマネージャへ読み込めばノード ID まで含めて元の族と
+  一致し、壊れた入力は `ZddFormatException` になる
+- **ノード GC（v0.5）**: `ZddManager.Collect()` / `RootSet` による mark & sweep + コンパクション
+  + ID リマップ。参照カウントではなく明示 GC 方式で、GC を生き延びさせたい族だけ `RootSet` に
+  登録する。登録していない古いハンドルを GC 後に使うと `ZddCollectedException` になり、黙って
+  壊れた結果を返さない
+- **DOT 出力の拡張（v0.5）**: `DotOptions` で状態ラベル・レベルラベル・部分表示（`MaxLevels` /
+  `MaxNodes` / `FocusNodeId`）・スタイルを指定できる。既定は今までの `ToDot()` と完全に同じ出力
 
 `GraphSet` を使った 5 行サンプル（5×5 格子の対角 s–t 単純パスを 1 本も展開せずに数える）:
 
@@ -69,7 +80,7 @@ Console.WriteLine(paths.Count); // 8512（OEIS A007764）
 
 ## インストール
 
-NuGet パッケージは `v0.4.0-preview.1` のようなプレリリースタグから生成される
+NuGet パッケージは `v0.5.0-preview.1` のようなプレリリースタグから生成される
 （v1.0 に達するまではプレリリース版として `--prerelease` が要る）。
 
 ```sh
@@ -124,6 +135,8 @@ push ごとに再公開する。M5-6、issue #58）。以下は同じ内容を�
 - **[docs/PLAN.md](docs/PLAN.md)** — 機能・仕様・アーキテクチャ
 - **[docs/ROADMAP.md](docs/ROADMAP.md)** — マイルストーン別の PR 単位タスク分割
 - **[docs/OPEN-QUESTIONS.md](docs/OPEN-QUESTIONS.md)** — 未確定事項
+- **[docs/api-review-notes.md](docs/api-review-notes.md)** — v1.0 に向けた public API レビューメモ
+  （M5-7 が棚卸しし、M6-1 で凍結・命名変更する）
 - **[CHANGELOG.md](CHANGELOG.md)** — 変更履歴
 
 ## ライセンス
