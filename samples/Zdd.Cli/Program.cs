@@ -1,13 +1,13 @@
 using System;
-using System.Globalization;
 using System.IO;
-using ZDD.Net.Core;
+using ZDD.Net.Io;
 
 namespace ZDD.Net.Samples.Cli
 {
     /// <summary>
-    /// ZDD.Net を外から触ってみるための最小の CLI。族を 1 つ組み立て、その大きさと
-    /// マネージャの統計を表示し、必要なら Graphviz の DOT を書き出す。
+    /// ZDD.Net を外から触ってみるための CLI。<c>family</c>（最小の組合せ族デモ）に加えて、
+    /// グラフ問題の組み込みスペックをそのまま叩ける <c>grid-path</c> / <c>spanning-tree</c> /
+    /// <c>partition</c> / <c>matching</c> の各サブコマンドを持つ。
     /// </summary>
     /// <remarks>
     /// <para>
@@ -15,287 +15,127 @@ namespace ZDD.Net.Samples.Cli
     /// 同じ形になっているので、公開 API だけで一通りの用が足りるかどうかの確認も兼ねる。
     /// </para>
     /// <para>
-    /// 使い方:
-    /// <c>dotnet run --project samples/Zdd.Cli -- --family singletons --items 5 --stats --dot out.gv</c>
+    /// 使い方: <c>dotnet run --project samples/Zdd.Cli -- grid-path 7 7 --stats</c>
+    /// （<c>grid-path 7 7</c> は OEIS A007764 の <c>575780564</c> を出す）。
+    /// サブコマンド一覧は <c>--help</c>、各サブコマンドの詳細は
+    /// <c>&lt;command&gt; --help</c> を付けて実行する。
     /// </para>
     /// </remarks>
     internal static class Program
     {
         /// <summary>正常終了。</summary>
-        private const int ExitSuccess = 0;
+        internal const int ExitSuccess = 0;
 
         /// <summary>引数が解釈できなかった。</summary>
-        private const int ExitUsage = 2;
+        internal const int ExitUsage = 2;
+
+        /// <summary>引数は解釈できたが、実行時にエラーが起きた（ファイルが読めない、形式が壊れているなど）。</summary>
+        internal const int ExitError = 1;
+
+        private const string TopLevelUsage =
+            "usage: zdd-cli <command> [options]\n" +
+            "\n" +
+            "commands:\n" +
+            "  family         powerset / singletons / full family over N items (original demo)\n" +
+            "  grid-path      count s-t simple paths on a grid graph (OEIS A007764)\n" +
+            "  spanning-tree  count spanning trees of a graph read from a file\n" +
+            "  partition      count balanced k-way partitions of a graph read from a file\n" +
+            "  matching       count matchings of a graph read from a file\n" +
+            "\n" +
+            "run '<command> --help' for command-specific options.\n";
 
         private static int Main(string[] args)
         {
-            if (!Options.TryParse(args, out Options options, out string? error))
+            try
             {
-                Console.Error.WriteLine(error);
-                Console.Error.WriteLine();
-                Console.Error.Write(Options.Usage);
+                return Run(args);
+            }
+            catch (Exception ex) when (ex is FormatException or ArgumentException or IOException or InvalidOperationException)
+            {
+                // Known, expected failure modes (bad arguments, bad files, spec/manager mismatches):
+                // report the message only, never a stack trace. Anything else is a real bug and should
+                // surface with its full trace instead of being swallowed here.
+                Console.Error.WriteLine($"error: {ex.Message}");
+                return ExitError;
+            }
+        }
+
+        private static int Run(string[] args)
+        {
+            if (args.Length == 0)
+            {
+                Console.Error.Write(TopLevelUsage);
                 return ExitUsage;
             }
 
-            if (options.ShowHelp)
+            string command = args[0];
+            string[] rest = args[1..];
+
+            switch (command)
             {
-                Console.Out.Write(Options.Usage);
-                return ExitSuccess;
-            }
+                case "-h":
+                case "--help":
+                    Console.Out.Write(TopLevelUsage);
+                    return ExitSuccess;
 
-            using ZddManager manager = new ZddManager(options.Items);
-            Zdd family = Build(manager, options.Family, options.Items);
+                case "family":
+                    return FamilyCommand.Run(rest);
 
-            Report(family, options);
+                case "grid-path":
+                    return GridPathCommand.Run(rest);
 
-            if (options.DotPath is not null)
-            {
-                WriteDot(family, options.DotPath);
-            }
+                case "spanning-tree":
+                    return SpanningTreeCommand.Run(rest);
 
-            if (options.ShowStatistics)
-            {
-                Console.Out.WriteLine();
-                Console.Out.WriteLine(manager.GetStatistics().ToString());
-            }
+                case "partition":
+                    return PartitionCommand.Run(rest);
 
-            return ExitSuccess;
-        }
+                case "matching":
+                    return MatchingCommand.Run(rest);
 
-        /// <summary>お題の族を組み立てる。どれも公開 API の組み合わせだけで作れる。</summary>
-        private static Zdd Build(ZddManager manager, FamilyKind kind, int items)
-        {
-            switch (kind)
-            {
-                // 2^U。補の定義（2^U ∖ ∅）をそのまま使う。
-                case FamilyKind.PowerSet:
-                    return manager.Empty.Complement();
-
-                // {{0}, {1}, …}。1 要素集合を全部集めたもの。
-                case FamilyKind.Singletons:
-                    Zdd singletons = manager.Empty;
-                    for (int item = 0; item < items; item++)
-                    {
-                        singletons |= manager.Singleton(item);
-                    }
-
-                    return singletons;
-
-                // {{0, 1, …, n-1}}。全部入りの集合 1 つだけを持つ族。積で 1 要素ずつ足していく。
                 default:
-                    Zdd full = manager.Base;
-                    for (int item = 0; item < items; item++)
-                    {
-                        full *= manager.Singleton(item);
-                    }
-
-                    return full;
+                    Console.Error.WriteLine($"unknown command '{command}'.");
+                    Console.Error.WriteLine();
+                    Console.Error.Write(TopLevelUsage);
+                    return ExitUsage;
             }
-        }
-
-        private static void Report(in Zdd family, in Options options)
-        {
-            TextWriter output = Console.Out;
-
-            Write(output, "family", options.Family.ToString());
-            Write(output, "items", options.Items.ToString(CultureInfo.InvariantCulture));
-            Write(output, "sets", family.Count.ToString(CultureInfo.InvariantCulture));
-            Write(output, "nodes", family.NodeCount.ToString(CultureInfo.InvariantCulture));
-            Write(output, "support", string.Join(", ", family.Support()));
-        }
-
-        private static void Write(TextWriter output, string name, string value)
-        {
-            output.Write(name.PadRight(8));
-            output.Write(": ");
-            output.WriteLine(value);
         }
 
         /// <summary>
-        /// DOT を書き出す。<c>-</c> なら標準出力へ。ファイルへ書くときも
-        /// <see cref="Zdd.WriteDot"/> に直に流し、文字列に載せない。
+        /// Loads a graph from <paramref name="path"/>, picking the text format by extension
+        /// (<c>.dimacs</c>/<c>.gr</c>/<c>.col</c> → DIMACS, <c>.edges</c>/<c>.el</c> → plain edge list,
+        /// anything else → ZDD.Net's own simple text format), or <paramref name="format"/> when given.
         /// </summary>
-        private static void WriteDot(in Zdd family, string path)
+        /// <exception cref="FileNotFoundException"><paramref name="path"/> does not exist.</exception>
+        /// <exception cref="GraphFormatException">The file's contents do not parse as the chosen format.</exception>
+        internal static Graphs.Graph LoadGraph(string path, string? format)
         {
-            if (path == "-")
+            if (!File.Exists(path))
             {
-                Console.Out.WriteLine();
-                family.WriteDot(Console.Out);
-                return;
+                throw new FileNotFoundException($"graph file '{path}' was not found.", path);
             }
 
-            using StreamWriter file = new StreamWriter(path);
-            family.WriteDot(file);
+            string kind = format ?? DetectFormat(path);
+            using StreamReader reader = new StreamReader(path);
+
+            return kind switch
+            {
+                "dimacs" => DimacsGraph.Read(reader),
+                "edges" => EdgeListGraph.Read(reader),
+                "simple" => SimpleTextGraph.Read(reader).Graph,
+                _ => throw new FormatException($"unknown --format '{kind}'; expected dimacs, edges or simple."),
+            };
         }
 
-        /// <summary>組み立てられる族の種類。</summary>
-        private enum FamilyKind
+        private static string DetectFormat(string path)
         {
-            /// <summary>2^U（全部分集合）。</summary>
-            PowerSet,
-
-            /// <summary>1 要素集合をすべて集めた族。</summary>
-            Singletons,
-
-            /// <summary>全部入りの集合 1 つだけを持つ族。</summary>
-            Full,
-        }
-
-        /// <summary>コマンドラインの読み取り結果。</summary>
-        private readonly struct Options
-        {
-            /// <summary><c>--items</c> の既定値。DOT を目で追える大きさにしてある。</summary>
-            private const int DefaultItems = 4;
-
-            /// <summary><c>--items</c> の上限。サンプルなので、うっかり巨大な族を作らせない。</summary>
-            private const int MaxItems = 24;
-
-            private Options(int items, FamilyKind family, string? dotPath, bool showStatistics, bool showHelp)
+            string extension = Path.GetExtension(path).ToLowerInvariant();
+            return extension switch
             {
-                Items = items;
-                Family = family;
-                DotPath = dotPath;
-                ShowStatistics = showStatistics;
-                ShowHelp = showHelp;
-            }
-
-            public static string Usage =>
-                "usage: zdd-cli [options]\n" +
-                "\n" +
-                "  --family <kind>  powerset | singletons | full  (default: powerset)\n" +
-                "  --items <n>      number of variables, 0.." + MaxItems.ToString(CultureInfo.InvariantCulture) +
-                "  (default: " + DefaultItems.ToString(CultureInfo.InvariantCulture) + ")\n" +
-                "  --dot <path>     write Graphviz DOT to <path>, or to stdout when <path> is '-'\n" +
-                "  --stats          print the manager's table statistics\n" +
-                "  --help           print this text\n" +
-                "\n" +
-                "example: zdd-cli --family singletons --items 5 --dot - --stats\n";
-
-            public int Items { get; }
-
-            public FamilyKind Family { get; }
-
-            /// <summary>DOT の書き出し先。<see langword="null"/> なら書き出さない。</summary>
-            public string? DotPath { get; }
-
-            public bool ShowStatistics { get; }
-
-            public bool ShowHelp { get; }
-
-            public static bool TryParse(string[] args, out Options options, out string? error)
-            {
-                int items = DefaultItems;
-                FamilyKind family = FamilyKind.PowerSet;
-                string? dotPath = null;
-                bool showStatistics = false;
-
-                for (int index = 0; index < args.Length; index++)
-                {
-                    string argument = args[index];
-
-                    switch (argument)
-                    {
-                        case "--help":
-                        case "-h":
-                            options = new Options(items, family, dotPath, showStatistics, showHelp: true);
-                            error = null;
-                            return true;
-
-                        case "--stats":
-                            showStatistics = true;
-                            break;
-
-                        case "--items":
-                            if (!TryTakeValue(args, ref index, argument, out string? itemsText, out error))
-                            {
-                                options = default;
-                                return false;
-                            }
-
-                            if (!int.TryParse(itemsText, NumberStyles.None, CultureInfo.InvariantCulture, out items)
-                                || items > MaxItems)
-                            {
-                                options = default;
-                                error = $"--items must be a number between 0 and {MaxItems}, but was '{itemsText}'.";
-                                return false;
-                            }
-
-                            break;
-
-                        case "--family":
-                            if (!TryTakeValue(args, ref index, argument, out string? familyText, out error))
-                            {
-                                options = default;
-                                return false;
-                            }
-
-                            if (!TryParseFamily(familyText, out family))
-                            {
-                                options = default;
-                                error = $"unknown family '{familyText}'; expected powerset, singletons or full.";
-                                return false;
-                            }
-
-                            break;
-
-                        case "--dot":
-                            if (!TryTakeValue(args, ref index, argument, out dotPath, out error))
-                            {
-                                options = default;
-                                return false;
-                            }
-
-                            break;
-
-                        default:
-                            options = default;
-                            error = $"unknown option '{argument}'.";
-                            return false;
-                    }
-                }
-
-                options = new Options(items, family, dotPath, showStatistics, showHelp: false);
-                error = null;
-                return true;
-            }
-
-            private static bool TryTakeValue(
-                string[] args,
-                ref int index,
-                string option,
-                out string value,
-                out string? error)
-            {
-                if (index + 1 >= args.Length)
-                {
-                    value = string.Empty;
-                    error = $"{option} needs a value.";
-                    return false;
-                }
-
-                value = args[++index];
-                error = null;
-                return true;
-            }
-
-            private static bool TryParseFamily(string text, out FamilyKind family)
-            {
-                switch (text)
-                {
-                    case "powerset":
-                        family = FamilyKind.PowerSet;
-                        return true;
-                    case "singletons":
-                        family = FamilyKind.Singletons;
-                        return true;
-                    case "full":
-                        family = FamilyKind.Full;
-                        return true;
-                    default:
-                        family = FamilyKind.PowerSet;
-                        return false;
-                }
-            }
+                ".dimacs" or ".gr" or ".col" => "dimacs",
+                ".edges" or ".el" => "edges",
+                _ => "simple",
+            };
         }
     }
 }

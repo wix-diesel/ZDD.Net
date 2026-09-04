@@ -78,6 +78,19 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
   （`FrontierBuilderTests.RecordingStatesDoesNotChangeTheBuiltFamily` /
   `TopDownExpanderTests.RecordingStatesDoesNotChangeTheExpandedTable`）。並列展開でも記録は
   マージスレッド上の `AddState` だけを通るため決定的（`ParallelFrontierTests.RecordedStateLabelsAreTheSameRegardlessOfDegreeOfParallelism`）
+- `samples/Zdd.Cli` にサブコマンドを追加した（M5-5、issue #57）: `grid-path <rows> <cols>`
+  （`PathSpec`。既定の端点は対角なので OEIS A007764 が出る——`grid-path 7 7` は `575780564`）、
+  `spanning-tree <graph-file>`（`SpanningTreeSpec`）、`partition <graph-file> <k>`
+  （`GraphPartitionSpec`、`--min-block`/`--max-block`）、`matching <graph-file>`
+  （`MatchingSpec`、`--perfect`）。既存の `--family` デモは `family` サブコマンドに移した。
+  グラフ系サブコマンドは共通オプションを持つ: `--edge-order`（`bfs`/`dfs`/`grid`/`beam`）、
+  `--progress`（レベルごとのフロンティア幅を stderr へ）、`--dot`、`--estimate`
+  （構築せずに `Graph.EstimateMaxFrontierSize` だけを出す）、`--save`/`--load`
+  （`ZddBinaryFormat` のラウンドトリップ、M5-1）、`--sample n`、`--min-weight <path>`
+  （`Zdd.MinWeight` を叩く）。グラフファイルは拡張子から DIMACS / 素な辺リスト / 本ライブラリの
+  簡易テキスト形式を判別して読む。不正な引数・存在しないファイル・壊れた形式はすべて
+  `error: <message>` 1 行で終わり、スタックトレースを出さない。CI のスモークテストで
+  `grid-path 7 7 → 575780564` と `--save`/`--load` ラウンドトリップを検証している
 
 ### Changed
 
