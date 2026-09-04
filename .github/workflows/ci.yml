@@ -80,15 +80,23 @@ jobs:
 
       - name: サンプル CLI（grid-path）の実行と既知値の検証
         # M5-5 の完了条件: grid-path 7 7 が OEIS A007764 の値 575780564 を出すこと。
+        #
+        # 7x7 格子の ZDD は約 8,000 ノードあり、その DOT を dot -Tsvg でレイアウトしようとすると
+        # Graphviz 側の計算量の問題で終わらない（60 秒のタイムアウトでも完走しないことをローカルで
+        # 確認済み）。これが実際に CI をハングさせていた真の原因だった（dotnet 側は無関係で、
+        # 既知値の検証自体は一瞬で終わっている）。そのため 7x7 では --dot を渡さず、DOT/SVG の
+        # 検証は別途ずっと小さい格子（4x4、128 ノード）で行う。
         timeout-minutes: 2
         run: |
           set -euo pipefail
           output=$(dotnet "$ZDD_CLI_DLL" grid-path 7 7 --estimate)
           echo "$output"
-          output=$(dotnet "$ZDD_CLI_DLL" grid-path 7 7 --stats --dot "./dot/grid-path-7x7.gv" --sample 3)
+          output=$(dotnet "$ZDD_CLI_DLL" grid-path 7 7 --stats --sample 3)
           echo "$output"
           grep -q '^sets *: 575780564$' <<< "$output"
-          dot -Tsvg "./dot/grid-path-7x7.gv" -o "./dot/grid-path-7x7.svg"
+
+          dotnet "$ZDD_CLI_DLL" grid-path 4 4 --dot "./dot/grid-path-4x4.gv" > /dev/null
+          dot -Tsvg "./dot/grid-path-4x4.gv" -o "./dot/grid-path-4x4.svg"
 
       - name: サンプル CLI（spanning-tree / partition / matching）の実行と DOT の検証
         # --save/--load のラウンドトリップと --min-weight もここで確かめる。
