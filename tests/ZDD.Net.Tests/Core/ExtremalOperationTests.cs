@@ -745,6 +745,10 @@ namespace ZDD.Net.Tests.Core
         /// <see cref="Zdd.ComplementWithin"/> / <see cref="ZddManager.PowerSetOf"/> の照合に使う
         /// items の候補。空・単独・全部・逆順・重複あり・ランダムな部分集合を一通り混ぜる。
         /// </summary>
+        /// <remarks>
+        /// ランダムな部分集合は <see cref="Random"/> ではなく固定の線形合同法で作る
+        /// （<c>EdgeOrderTests.Shuffle</c> と同じ流儀）。ランタイムが変わっても同じ並びになる。
+        /// </remarks>
         private static IEnumerable<int[]> ItemSubsetCases(int variableCount, int seed)
         {
             yield return [];
@@ -771,15 +775,23 @@ namespace ZDD.Net.Tests.Core
                 yield return all.Where(item => item % 2 == 0).ToArray();
             }
 
-            Random random = new Random(seed);
+            uint state = (uint)seed + 0x9E3779B9u;
 
             for (int i = 0; i < 5; i++)
             {
-                int size = random.Next(0, variableCount + 1);
-                int[] sample = Enumerable.Range(0, variableCount)
-                    .OrderBy(_ => random.Next())
-                    .Take(size)
-                    .ToArray();
+                int[] order = (int[])all.Clone();
+
+                for (int j = order.Length - 1; j > 0; j--)
+                {
+                    state = (state * 1664525u) + 1013904223u;
+                    int k = (int)(state % (uint)(j + 1));
+                    (order[j], order[k]) = (order[k], order[j]);
+                }
+
+                state = (state * 1664525u) + 1013904223u;
+                int size = (int)(state % (uint)(variableCount + 1));
+
+                int[] sample = order[..size];
 
                 // 重複させて、正規化がランダムな並びでも効くことを確かめる。
                 yield return sample.Concat(sample).ToArray();

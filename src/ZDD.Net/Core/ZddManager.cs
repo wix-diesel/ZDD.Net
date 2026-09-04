@@ -216,9 +216,10 @@ namespace ZDD.Net.Core
         /// level), each step wrapping the previous result <c>n</c> in a node whose 0- and 1-branch
         /// both point at <c>n</c> &#8212; every item is optional, so the branches agree. That never
         /// triggers zero-suppression (the 1-branch is <c>n</c>, never bottom, since <c>n</c> starts
-        /// at <see cref="Base"/> and only grows), so <paramref name="items"/>.Length distinct items
-        /// give exactly that many nodes. This is the same shape <see cref="PowerSetRoot"/> builds
-        /// for the full variable set, just restricted to a chosen subset.
+        /// at <see cref="Base"/> and only grows), so the result has exactly one node per <b>distinct</b>
+        /// item in <paramref name="items"/> &#8212; <paramref name="items"/>.Length only if it has no
+        /// duplicates, fewer otherwise. This is the same shape <see cref="PowerSetRoot"/> builds for
+        /// the full variable set, just restricted to a chosen subset.
         /// </remarks>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="items"/> contains an out-of-range item.</exception>
         /// <exception cref="ObjectDisposedException">This manager has been disposed.</exception>
