@@ -90,6 +90,40 @@ namespace ZDD.Net.Tests.Harness
             return new BruteForceFamily(variableCount, new SortedSet<int>(AllMasks(variableCount)));
         }
 
+        /// <summary>指定した item だけからなる冪集合 2^items。</summary>
+        /// <remarks>
+        /// 部分集合の個数は <c>2^items.Length</c> で、変数の総数 <paramref name="variableCount"/>
+        /// には依らないので <see cref="EnsurePowerSetIsAffordable"/> の対象ではない
+        /// （呼び出し側が items を大きくしすぎない責任を持つ）。重複した item は無視される。
+        /// </remarks>
+        public static BruteForceFamily PowerSetOf(int variableCount, params ReadOnlySpan<int> items)
+        {
+            Validate(variableCount);
+
+            int mask = 0;
+
+            foreach (int item in items)
+            {
+                ValidateItem(variableCount, item);
+                mask |= 1 << item;
+            }
+
+            SortedSet<int> masks = new SortedSet<int>();
+
+            // 部分集合を列挙する定番のビットトリック（mask 自身と 0 も含む）。
+            for (int sub = mask; ; sub = (sub - 1) & mask)
+            {
+                masks.Add(sub);
+
+                if (sub == 0)
+                {
+                    break;
+                }
+            }
+
+            return new BruteForceFamily(variableCount, masks);
+        }
+
         /// <summary>集合をビットマスクで与えて族を作る。</summary>
         public static BruteForceFamily FromMasks(int variableCount, IEnumerable<int> masks)
         {
@@ -382,6 +416,13 @@ namespace ZDD.Net.Tests.Harness
             result.ExceptWith(_masks);
             return new BruteForceFamily(VariableCount, result);
         }
+
+        /// <summary>
+        /// 部分ユニバースでの補 <c>2^items &#8726; f</c>。<c>items</c> に無い要素を持つ集合は
+        /// そもそも <c>2^items</c> に無いので、結果にも現れない（support の検査はしない）。
+        /// </summary>
+        public BruteForceFamily ComplementWithin(params ReadOnlySpan<int> items) =>
+            PowerSetOf(VariableCount, items).Difference(this);
 
         // ---- 単項演算（M1-5）----
 

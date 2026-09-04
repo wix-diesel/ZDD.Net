@@ -390,6 +390,30 @@ namespace ZDD.Net.Core
         /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public Zdd Complement() => Manager.Complement(this);
 
+        /// <summary>
+        /// Complement <c>2^items &#8726; F</c> within a chosen sub-universe: sets built only from
+        /// <paramref name="items"/> that are not in this family.
+        /// </summary>
+        /// <param name="items">
+        /// The sub-universe's item indices, each between 0 and <see cref="ZddManager.VariableCount"/>
+        /// (exclusive). Duplicates are ignored; empty means the sub-universe <c>{&#8709;}</c>, so the
+        /// result is <c>&#8709;</c> if <c>F</c> contains &#8709; and <c>{&#8709;}</c> otherwise.
+        /// </param>
+        /// <returns>
+        /// <see cref="ZddManager.PowerSetOf"/> minus <c>F</c>. Sets of <c>F</c> that use an item
+        /// outside <paramref name="items"/> were never in <c>2^items</c> to begin with, so they're
+        /// silently ignored rather than rejected &#8212; <paramref name="items"/> is not checked
+        /// against <see cref="Support"/>.
+        /// </returns>
+        /// <remarks>
+        /// <see cref="Complement"/> is the special case where <paramref name="items"/> is every
+        /// variable of the manager: <c>F.Complement() == F.ComplementWithin(0, 1, ..., VariableCount - 1)</c>.
+        /// </remarks>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="items"/> contains an out-of-range item.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
+        public Zdd ComplementWithin(params ReadOnlySpan<int> items) => Manager.ComplementWithin(this, items);
+
         /// <summary>Starts a lazy enumeration of this family's sets in <see cref="ZddEnumerationOrder.Default"/> order.</summary>
         /// <returns>Enumerator yielding each set as an ascending <c>int[]</c> of item indices, a fresh array per set.</returns>
         /// <remarks>

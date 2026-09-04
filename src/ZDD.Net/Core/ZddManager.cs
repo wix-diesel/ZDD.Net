@@ -205,6 +205,64 @@ namespace ZDD.Net.Core
             return new Zdd(this, table.GetNode(level, NodeTable.Bottom, NodeTable.Top));
         }
 
+        /// <summary>Returns the power set <c>2^items</c>: every subset that can be built from <paramref name="items"/> alone.</summary>
+        /// <param name="items">
+        /// Item indices, each between 0 and <see cref="VariableCount"/> (exclusive). Duplicates are
+        /// ignored; empty returns <c>{&#8709;}</c> (<see cref="Base"/>), since <c>2^&#8709; = {&#8709;}</c>.
+        /// </param>
+        /// <returns><c>2^items</c>, with exactly one node per distinct item (never <c>2^n</c> nodes).</returns>
+        /// <remarks>
+        /// Built bottom-up in one pass over items sorted by descending item index (ascending
+        /// level), each step wrapping the previous result <c>n</c> in a node whose 0- and 1-branch
+        /// both point at <c>n</c> &#8212; every item is optional, so the branches agree. That never
+        /// triggers zero-suppression (the 1-branch is <c>n</c>, never bottom, since <c>n</c> starts
+        /// at <see cref="Base"/> and only grows), so the result has exactly one node per <b>distinct</b>
+        /// item in <paramref name="items"/> &#8212; <paramref name="items"/>.Length only if it has no
+        /// duplicates, fewer otherwise. This is the same shape <see cref="PowerSetRoot"/> builds for
+        /// the full variable set, just restricted to a chosen subset.
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="items"/> contains an out-of-range item.</exception>
+        /// <exception cref="ObjectDisposedException">This manager has been disposed.</exception>
+        public Zdd PowerSetOf(params ReadOnlySpan<int> items)
+        {
+            UniqueTable table = Table;
+
+            if (items.IsEmpty)
+            {
+                return new Zdd(this, NodeTable.Top);
+            }
+
+            // Sorted ascending so duplicates sit next to each other and the build below can walk
+            // it back-to-front (descending item / ascending level) in a single pass.
+            int[] sorted = items.ToArray();
+            Array.Sort(sorted);
+
+            // Validate the whole span before building anything, so an out-of-range item never
+            // leaves stray nodes behind in the unique table.
+            foreach (int item in sorted)
+            {
+                _ = LevelOf(item);
+            }
+
+            int n = NodeTable.Top;
+            int previousItem = -1;
+
+            for (int i = sorted.Length - 1; i >= 0; i--)
+            {
+                int item = sorted[i];
+
+                if (item == previousItem)
+                {
+                    continue;
+                }
+
+                previousItem = item;
+                n = table.GetNode(LevelOf(item), n, n);
+            }
+
+            return new Zdd(this, n);
+        }
+
         /// <summary>Snapshots the current state of the internal tables (see docs/PLAN.md &#167;4.6).</summary>
         /// <returns>A copy taken at call time; later manager changes don't affect it.</returns>
         /// <remarks>Reads the tables only, in constant time (unlike <see cref="Zdd.NodeCount"/>). Cache counters are cumulative since construction; call twice and diff for a windowed view.</remarks>
@@ -429,6 +487,22 @@ namespace ZDD.Net.Core
         /// <summary>Complement <c>2^U &#8726; f</c> (<c>U</c> is this manager's full variable set).</summary>
         /// <param name="f">The family; must belong to this manager.</param>
         internal Zdd Complement(in Zdd f) => ApplyExtremal(ZddOperation.Complement, f);
+
+        /// <summary>Complement <c>2^items &#8726; f</c> within a chosen sub-universe.</summary>
+        /// <param name="f">The family; must belong to this manager.</param>
+        /// <param name="items">The sub-universe's item indices; see <see cref="Zdd.ComplementWithin"/> for the semantics.</param>
+        internal Zdd ComplementWithin(in Zdd f, ReadOnlySpan<int> items)
+        {
+            EnsureOwns(f, nameof(f));
+
+            // Builds 2^items first (validates items and, like PowerSetOf, throws ObjectDisposedException if disposed).
+            Zdd powerSet = PowerSetOf(items);
+
+            // Throws ObjectDisposedException here if disposed (touches both table and cache).
+            TuneCache();
+
+            return new Zdd(this, BinaryOperations.Apply(this, ZddOperation.Difference, powerSet.Id, f.Id));
+        }
 
         /// <summary>Returns whether the set described by <paramref name="items"/> belongs to <paramref name="f"/>.</summary>
         /// <param name="f">The family; must belong to this manager.</param>
