@@ -8,6 +8,17 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-04
+
+M5「I/O・メモリ管理」マイルストーン（[docs/PLAN.md](docs/PLAN.md) §12）の完了リリース。独自
+バイナリ形式・Graphillion 互換テキスト形式によるシリアライズ、mark & sweep 方式のノード GC、
+DOT 出力の拡張（状態ラベル・レベルラベル・部分表示）、CLI サンプルの拡充、DocFX による API
+ドキュメントサイトの公開をもって、v1.0 直前の機能セットが出揃った。**v1.0 に持っていく前の
+最後の機能追加リリース**であり、次の M6 は API 凍結・AOT 検証・パッケージング・チュートリアル
+という「公開の準備」だけを残す。v1.0 に向けた API レビューの下準備（public API 一覧の棚卸しと
+命名・一貫性メモ）は [docs/api-review-notes.md](docs/api-review-notes.md) に記録し、M6-1
+（issue #60）に引き継ぐ。
+
 ### Added
 
 - `ZDD.Net.Io.ZddBinaryFormat`: 独自バイナリ形式による ZDD のシリアライズ（M5-1、issue #53）。
