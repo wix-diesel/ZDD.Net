@@ -14,6 +14,19 @@ namespace ZDD.Net.Core
     /// <see cref="ZddManager"/>, a node ID, and the manager generation it was stamped with
     /// (16 bytes total); the family itself lives in the manager's node table.
     /// </summary>
+    /// <example>
+    /// <code>
+    /// using ZddManager manager = new ZddManager(variableCount: 3);
+    ///
+    /// // 2^{0,1,2} = {&#8709;, {0}, {1}, {2}, {0,1}, {0,2}, {1,2}, {0,1,2}}
+    /// Zdd powerSet = manager.Empty.Complement();
+    /// Console.WriteLine(powerSet.Count); // 8
+    ///
+    /// // Sets that contain item 0.
+    /// Zdd containingItem0 = powerSet.OnSet(0);
+    /// Console.WriteLine(containingItem0.Count); // 4
+    /// </code>
+    /// </example>
     /// <remarks>
     /// Since ZDDs are canonical, two families are equal iff their node IDs are equal (within the
     /// same manager) — no traversal needed. <c>default(Zdd)</c> is an invalid handle belonging to
@@ -733,6 +746,7 @@ namespace ZDD.Net.Core
 
         /// <summary>Writes this family as Graphviz DOT source, ready for <c>dot -Tsvg</c>.</summary>
         /// <returns>DOT source, with <c>\n</c> line endings regardless of platform.</returns>
+        /// <example><code>File.WriteAllText("family.dot", family.ToDot());</code></example>
         /// <remarks>
         /// 0-branches are dashed, 1-branches solid; terminals ⊥/⊤ are drawn as boxes, and nodes for
         /// the same item share a rank. See <see cref="Io.DotWriter"/> for the full convention. For

@@ -4,7 +4,7 @@
 狙っている。仕様の全体像は [docs/PLAN.md](PLAN.md)、マイルストーンの分割は
 [docs/ROADMAP.md](ROADMAP.md) を参照。
 
-このガイドに載っているコード片は、すべて [`samples/Zdd.ApiGuide/Program.cs`](../samples/Zdd.ApiGuide/Program.cs)
+このガイドに載っているコード片は、すべて [`samples/Zdd.ApiGuide/Program.cs`](https://github.com/wix-diesel/ZDD.Net/blob/main/samples/Zdd.ApiGuide/Program.cs)
 にそのまま置いてあり、CI が毎回ビルドして実行している（`.github/workflows/ci.yml` の
 「api-guide サンプルの実行」）。手元で確かめたいときは:
 
@@ -235,7 +235,7 @@ Console.WriteLine(string.Join(",", best.Items)); // 0,2
 `Count` / `MaxWeight` などの内部実装は、いずれも「終端の値」と「ノードごとの合成」だけを
 差し替え可能にした共通の枠組みの上に乗っている:
 
-- ボトムアップの畳み込みは `IDdEval<TValue>`（[`ZddEvaluation.Evaluate<TEval, TValue>`](../src/ZDD.Net/Core/ZddEvaluation.cs)）
+- ボトムアップの畳み込みは `IDdEval<TValue>`（[`ZddEvaluation.Evaluate<TEval, TValue>`](https://github.com/wix-diesel/ZDD.Net/blob/main/src/ZDD.Net/Core/ZddEvaluation.cs)）
 - 重み最適化の「0」「足す」「比べる」は `IWeightOps<TWeight>`
 
 利用者が独自の評価器や重み型を書くときも、**必ず `struct` として実装**し、呼び出し側は
@@ -294,6 +294,8 @@ ZDD.Net は大量の小さな配列（ノード表・一意化表・演算キャ
 
 ## 6. さらに詳しく
 
+- 型・メンバ単位の詳しいリファレンス（全 public API の XML doc から自動生成）:
+  [wix-diesel.github.io/ZDD.Net](https://wix-diesel.github.io/ZDD.Net/)
 - 「格子グラフの s–t パスを数える」から「実グラフを読み込んで解く」までの一本道の入門:
   [docs/tutorial.md](tutorial.md)
 - フロンティア法フレームワーク・グラフ問題 API の使い方（`GraphSet`/`SetSet<T>`/グラフ入出力を含む）:
@@ -302,5 +304,5 @@ ZDD.Net は大量の小さな配列（ノード表・一意化表・演算キャ
 - 仕様・アーキテクチャの全体像: [docs/PLAN.md](PLAN.md)
 - マイルストーン別の実装計画: [docs/ROADMAP.md](ROADMAP.md)
 - 未確定事項: [docs/OPEN-QUESTIONS.md](OPEN-QUESTIONS.md)
-- 実行できるサンプル: [`samples/Zdd.Cli`](../samples/Zdd.Cli)（CLI）、
-  [`samples/Zdd.ApiGuide`](../samples/Zdd.ApiGuide)（このガイドのコード片）
+- 実行できるサンプル: [`samples/Zdd.Cli`](https://github.com/wix-diesel/ZDD.Net/tree/main/samples/Zdd.Cli)（CLI）、
+  [`samples/Zdd.ApiGuide`](https://github.com/wix-diesel/ZDD.Net/tree/main/samples/Zdd.ApiGuide)（このガイドのコード片）

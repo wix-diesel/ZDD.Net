@@ -1,6 +1,6 @@
 # ベンチ基準値 (M2-11)
 
-[bench/ZDD.Net.Benchmarks](../bench/ZDD.Net.Benchmarks) が測る代表 10 ケースの基準値。
+[bench/ZDD.Net.Benchmarks](https://github.com/wix-diesel/ZDD.Net/tree/main/bench/ZDD.Net.Benchmarks) が測る代表 10 ケースの基準値。
 本ドキュメントの最重要点は数値そのものより**再現可能な比較対象があること**: M3 以降の
 「辺順序最適化で 20% 改善」「bit-packing でメモリ 50% 削減」といった数値目標を持つ PR は、
 ここに記録された数値との相対比較で受け入れを判定する（issue #31）。
@@ -12,7 +12,7 @@
 | CPU | Intel Xeon Processor @ 2.80GHz, 4 論理コア（クラウドの共有仮想環境。専有ベアメタルではないため、絶対値は実行ごとに変動しうる） |
 | OS | Ubuntu 24.04.4 LTS (Linux 6.18, x86_64) |
 | .NET | SDK 10.0.111 / Runtime 10.0.11, RyuJIT x86-64-v4 |
-| GC 設定 | ServerGC + Concurrent GC + TieredPGO（[ZDD.Net.Benchmarks.csproj](../bench/ZDD.Net.Benchmarks/ZDD.Net.Benchmarks.csproj)、PLAN.md §10-7） |
+| GC 設定 | ServerGC + Concurrent GC + TieredPGO（[ZDD.Net.Benchmarks.csproj](https://github.com/wix-diesel/ZDD.Net/blob/main/bench/ZDD.Net.Benchmarks/ZDD.Net.Benchmarks.csproj)、PLAN.md §10-7） |
 | BenchmarkDotNet | v0.15.4、`RunStrategy=Monitoring`, `LaunchCount=1`, `WarmupCount=1`, `IterationCount=3` |
 | 測定日 | 2026-09-01 |
 
@@ -51,7 +51,7 @@ dotnet run -c Release --project bench/ZDD.Net.Benchmarks -- stats
 一時領域も含む）。「集合数 (Count)」は各ケースが表す族の要素数（`Zdd.Count`）で、桁数が大きいものは
 概数と桁数のみ記載する（生の `BigInteger` は `stats` の出力を参照）。「ピークフロンティア幅」は
 主となる `FrontierBuilder.Build` 呼び出し 1 回分（`Union` / `Product` ケースではその左オペランドの
-構築）を `BuildOptions.Progress` で記録した履歴の最大値（[bench/ZDD.Net.Benchmarks/Cases.cs](../bench/ZDD.Net.Benchmarks/Cases.cs) 参照）。
+構築）を `BuildOptions.Progress` で記録した履歴の最大値（[bench/ZDD.Net.Benchmarks/Cases.cs](https://github.com/wix-diesel/ZDD.Net/blob/main/bench/ZDD.Net.Benchmarks/Cases.cs) 参照）。
 「最終ノード数」は `ZddManager.NodeCount`（定数時間、ノード表の現在サイズ）で、ノードはまだ
 GC されないため、`Union` / `Product` ケースでは両オペランドの構築ぶんも含む——そのケースがマネージャに
 残す実際のノード総数であり、演算そのものの寄与も反映される。
@@ -737,17 +737,17 @@ issue 本文は「パーティション別状態表 → 結合」と「ロック
 
 PLAN.md §10 の 3 つの性能目標——9×9 格子 1 秒以内・11×11 格子 60 秒以内/メモリ 8 GB 以内・
 Graphillion（C++ コア）比 3 倍以内（最終的に 2 倍以内）——に実際の数値を付ける記録（issue #51）。
-比較コードは [bench/comparison](../bench/comparison) に置き、**git に残す**
+比較コードは [bench/comparison](https://github.com/wix-diesel/ZDD.Net/tree/main/bench/comparison) に置き、**git に残す**
 （このセッション以降、別のマシンで測り直せるように——issue の指示どおり）。
 
 ### 比較対象の入手・ビルド手順
 
 - **Graphillion**（Python + C++ コア）: `pip install graphillion` で導入（ソース配布、
   インストール時に同梱の SAPPOROBDD ベースの C++ コアをビルドする。g++/cmake が要る)。
-  手順は [bench/comparison/graphillion/README.md](../bench/comparison/graphillion/README.md)。
+  手順は [bench/comparison/graphillion/README.md](https://github.com/wix-diesel/ZDD.Net/blob/main/bench/comparison/graphillion/README.md)。
 - **TdZdd**（C++ ヘッダオンリー）: `git clone https://github.com/kunisura/TdZdd.git`。
   ビルド不要（ヘッダオンリー）、本比較のプログラムだけを `bench/comparison/tdzdd/Makefile` でコンパイルする。
-  手順は [bench/comparison/tdzdd/README.md](../bench/comparison/tdzdd/README.md)。
+  手順は [bench/comparison/tdzdd/README.md](https://github.com/wix-diesel/ZDD.Net/blob/main/bench/comparison/tdzdd/README.md)。
 
 **この実行環境の egress ポリシーでは両方とも取得できた**（issue の想定していた「取得できない場合」には
 該当しなかった）: `pip install graphillion` は `pypi.org` / `files.pythonhosted.org` 経由で成功し
@@ -771,7 +771,7 @@ Graphillion（C++ コア）比 3 倍以内（最終的に 2 倍以内）——�
 
 issue #51 が挙げる 5 種類のケース——PLAN §10 の目標ケース（格子 7×7/8×8/9×9/11×11 の s–t 単純パス、
 4 サイズ）、全域木・マッチング・独立集合の代表ケース、Core の家族代数演算の大規模ケース——を、
-既存の ZDD.Net ケースと**同じパラメータ**で 3 通りに実装した（[bench/comparison/README.md](../bench/comparison/README.md)
+既存の ZDD.Net ケースと**同じパラメータ**で 3 通りに実装した（[bench/comparison/README.md](https://github.com/wix-diesel/ZDD.Net/blob/main/bench/comparison/README.md)
 の対応表）。格子パスが 4 サイズあるぶん、実測エントリは合計 8 つになる。独立集合だけは
 ZDD.Net 側にも既存ケースが無かったので新規に追加した（`ComparisonReport.cs`、
 `IndependentSetSpec` を使う唯一のケース——他のケースは `bench/ZDD.Net.Benchmarks/Cases.cs` の
@@ -966,7 +966,7 @@ dotnet run -c Release --project bench/ZDD.Net.Benchmarks -- memory Path_Grid11x1
 
 ## M5-1: バイナリシリアライズ（`ZddBinaryFormat`）
 
-`ZddBinaryFormat.Write`/`Read`（[src/ZDD.Net/Io/ZddBinaryFormat.cs](../src/ZDD.Net/Io/ZddBinaryFormat.cs)）の
+`ZddBinaryFormat.Write`/`Read`（[src/ZDD.Net/Io/ZddBinaryFormat.cs](https://github.com/wix-diesel/ZDD.Net/blob/main/src/ZDD.Net/Io/ZddBinaryFormat.cs)）の
 書き込み・読み込み時間を、同じ族を構築する時間（`FrontierBuilder.Build`）と比較した記録（issue #53）。
 測定環境は本ドキュメント冒頭の「測定環境」節と同じ。実行方法:
 
@@ -978,7 +978,7 @@ dotnet run -c Release --project bench/ZDD.Net.Benchmarks -- serialize
 1 回ずつ行った時間、ファイルサイズ、ノードあたりのバイト数を記録する（測定日 2026-09-03）。
 `Read` 側は毎回「ラウンドトリップでノード ID・ノード数が完全に一致すること」を検証してから
 時間を記録している（`FormatWriter`/`Reader` 側の正しさそのものの検証は
-[tests/ZDD.Net.Tests/Io/ZddBinaryFormatTests.cs](../tests/ZDD.Net.Tests/Io/ZddBinaryFormatTests.cs)）。
+[tests/ZDD.Net.Tests/Io/ZddBinaryFormatTests.cs](https://github.com/wix-diesel/ZDD.Net/blob/main/tests/ZDD.Net.Tests/Io/ZddBinaryFormatTests.cs)）。
 
 | ケース | 構築 | `Write` | `Read` | ファイルサイズ | バイト/ノード | ノード数 |
 |---|---:|---:|---:|---:|---:|---:|

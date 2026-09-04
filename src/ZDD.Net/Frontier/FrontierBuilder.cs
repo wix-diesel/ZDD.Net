@@ -11,6 +11,15 @@ namespace ZDD.Net.Frontier
     /// expansion (<see cref="TopDownExpander{TSpec, TState}"/> / <see cref="ArrayTopDownExpander{TSpec}"/>)
     /// followed by the bottom-up reduction into the manager's Core tables (<see cref="BottomUpReducer"/>).
     /// </summary>
+    /// <example>
+    /// <code>
+    /// using ZddManager manager = new ZddManager(variableCount: 5);
+    ///
+    /// Zdd powerSet = FrontierBuilder.Build&lt;PowerSetSpec, byte&gt;(manager, new PowerSetSpec(itemCount: 5));
+    /// Zdd sizeTwoOrThree = FrontierBuilder.Build&lt;CardinalitySpec, int&gt;(
+    ///     manager, new CardinalitySpec(itemCount: 5, min: 2, max: 3));
+    /// </code>
+    /// </example>
     /// <remarks>
     /// This is the library's central entry point: write an <see cref="IDdSpec{TState}"/> (or
     /// <see cref="IArrayDdSpec"/> / <see cref="IHybridDdSpec{TScalar}"/>) and call one of the

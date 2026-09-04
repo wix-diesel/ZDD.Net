@@ -11,6 +11,16 @@ namespace ZDD.Net.Sets
     /// instances. Owns the <see cref="ZddManager"/> it hands out variable indices for.
     /// </summary>
     /// <typeparam name="T">The element type. Compared with <see cref="Comparer"/>.</typeparam>
+    /// <example>
+    /// <code>
+    /// SetUniverse&lt;string&gt; universe = new SetUniverse&lt;string&gt;(new[] { "a", "b", "c" });
+    ///
+    /// // Both families share `universe`, so they can be combined directly.
+    /// SetSet&lt;string&gt; f = SetSet&lt;string&gt;.FromSets(universe, new[] { new[] { "a" }, new[] { "a", "b" } });
+    /// SetSet&lt;string&gt; g = SetSet&lt;string&gt;.FromSets(universe, new[] { new[] { "a" }, new[] { "b", "c" } });
+    /// SetSet&lt;string&gt; union = f | g;
+    /// </code>
+    /// </example>
     /// <remarks>
     /// <para>
     /// Elements are indexed 0 .. <see cref="Count"/> - 1 in first-seen order from the constructor's

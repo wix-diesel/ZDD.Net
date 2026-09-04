@@ -109,6 +109,10 @@ CLI から触ってみたい場合は [`samples/Zdd.Cli`](samples/Zdd.Cli)（`do
 
 ## ドキュメント
 
+**[wix-diesel.github.io/ZDD.Net](https://wix-diesel.github.io/ZDD.Net/)** — 手書きガイドと全 public
+API の XML doc から生成した、検索可能な公開サイト（DocFX、`.github/workflows/docs.yml` が main への
+push ごとに再公開する。M5-6、issue #58）。以下は同じ内容をリポジトリ内で読む場合のリンク:
+
 - **[docs/tutorial.md](docs/tutorial.md)** — チュートリアル（格子グラフの s–t パスを数える →
   フィルタ・サンプリング → 実グラフ（DIMACS）を読み込んで解くまでの一本道）
 - **[docs/api-guide.md](docs/api-guide.md)** — API ガイド（`ZddManager`/`Zdd` の使い方、演算一覧、性能上の注意）

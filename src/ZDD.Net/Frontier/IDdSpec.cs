@@ -8,6 +8,49 @@ namespace ZDD.Net.Frontier
     /// The state carried between levels. Use a <c>struct</c>: it is stored inline and each branch gets its
     /// own copy. A reference type works, but only the reference is copied, so it must not be mutated in place.
     /// </typeparam>
+    /// <example>
+    /// A spec accepting exactly the sets with no three consecutively selected items, whose state
+    /// is the current run length (docs/frontier-spec-guide.md walks through this build-up):
+    /// <code>
+    /// public readonly struct NoThreeConsecutiveSpec : IDdSpec&lt;int&gt;
+    /// {
+    ///     private readonly int _itemCount;
+    ///
+    ///     public NoThreeConsecutiveSpec(int itemCount) =&gt; _itemCount = itemCount;
+    ///
+    ///     public int GetRoot(ref int run)
+    ///     {
+    ///         run = 0;
+    ///         return _itemCount;
+    ///     }
+    ///
+    ///     public int GetChild(ref int run, int level, int value)
+    ///     {
+    ///         if (value == 0)
+    ///         {
+    ///             run = 0;
+    ///         }
+    ///         else
+    ///         {
+    ///             run++;
+    ///             if (run &gt;= 3)
+    ///             {
+    ///                 return DdResult.False; // pruned: three in a row is already invalid
+    ///             }
+    ///         }
+    ///
+    ///         int remaining = level - 1;
+    ///         return remaining == 0 ? DdResult.True : remaining;
+    ///     }
+    ///
+    ///     public bool StateEquals(in int left, in int right) =&gt; left == right;
+    ///     public int StateHashCode(in int state) =&gt; state;
+    /// }
+    ///
+    /// using ZddManager manager = new ZddManager(variableCount: 8);
+    /// Zdd family = FrontierBuilder.Build&lt;NoThreeConsecutiveSpec, int&gt;(manager, new NoThreeConsecutiveSpec(8));
+    /// </code>
+    /// </example>
     /// <remarks>
     /// A state must hold only what still affects later transitions, in canonical form; anything else splits
     /// the level's state set and the width explodes. Full contract: <c>docs/frontier-spec-guide.md</c>.

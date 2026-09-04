@@ -16,6 +16,19 @@ namespace ZDD.Net.Sets
     /// the ZDD's <c>int</c> item indices via a shared <see cref="SetUniverse{T}"/>.
     /// </summary>
     /// <typeparam name="T">The element type; compared with <see cref="SetUniverse{T}.Comparer"/>.</typeparam>
+    /// <example>
+    /// <code>
+    /// SetSet&lt;string&gt; family = SetSet&lt;string&gt;.FromSets(new[]
+    /// {
+    ///     new[] { "a" },
+    ///     new[] { "a", "b" },
+    ///     new[] { "b", "c" },
+    /// });
+    ///
+    /// Console.WriteLine(family.Count);                 // 3
+    /// Console.WriteLine(family.Contains(new[] { "a" })); // true
+    /// </code>
+    /// </example>
     /// <remarks>
     /// <para>
     /// Two <see cref="SetSet{T}"/> instances can only be combined (<see cref="Union"/>, <see cref="Product"/>, ...)
