@@ -442,6 +442,40 @@ namespace ZDD.Net.Tests.Frontier
             public int StateHashCode(in int state) => 0;
         }
 
+        /// <summary>
+        /// A spec whose <c>GetChild</c> throws <see cref="BuildLimitExceededException"/> itself
+        /// (through its public constructor, exactly as any external caller could) — as opposed to
+        /// the library's own limit check inside <see cref="TopDownExpander{TSpec, TState}"/>
+        /// raising it. <c>TryBuild</c> must not confuse the two (issue #138 review discussion):
+        /// only the limit check's own instance may become <see langword="false"/>.
+        /// </summary>
+        private readonly struct SpecThatThrowsTheLibrarysOwnExceptionTypeSpec : IDdSpec<int>
+        {
+            public int GetRoot(ref int state)
+            {
+                state = 0;
+                return 3;
+            }
+
+            public int GetChild(ref int state, int level, int value) =>
+                throw new BuildLimitExceededException(BuildLimit.NodeCount, 1, level, "thrown by the spec, not the build");
+
+            public bool StateEquals(in int left, in int right) => true;
+
+            public int StateHashCode(in int state) => 0;
+        }
+
+        [Fact]
+        public void TryBuildDoesNotSwallowABuildLimitExceededExceptionTheSpecThrowsItself()
+        {
+            using ZddManager manager = new ZddManager(3);
+            BuildOptions options = new BuildOptions { MaxNodeCount = 1_000 };
+
+            Assert.Throws<BuildLimitExceededException>(
+                () => FrontierBuilder.TryBuild<SpecThatThrowsTheLibrarysOwnExceptionTypeSpec, int>(
+                    manager, new SpecThatThrowsTheLibrarysOwnExceptionTypeSpec(), options, out Zdd _));
+        }
+
         [Fact]
         public void TryBuildReturnsTrueAndTheSameFamilyAsBuildWhenNoLimitIsPassed()
         {

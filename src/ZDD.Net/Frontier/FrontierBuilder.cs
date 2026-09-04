@@ -211,12 +211,15 @@ namespace ZDD.Net.Frontier
         /// <exception cref="System.OperationCanceledException">The options' token was cancelled.</exception>
         /// <exception cref="System.ObjectDisposedException"><paramref name="manager"/> has been disposed.</exception>
         /// <remarks>
-        /// A limit is the only failure the top-down pass (<see cref="TopDownExpander{TSpec, TState}"/>)
-        /// can throw, and it throws before the bottom-up reduction (<see cref="BottomUpReducer"/>)
-        /// ever writes to <paramref name="manager"/>'s tables — the top-down pass only ever writes to
-        /// its own temporary node table. So a caller that gets <see langword="false"/> back is
-        /// guaranteed <paramref name="manager"/> is exactly as it was before the call, its
-        /// <see cref="ZddManager.NodeCount"/> included: there is nothing to undo.
+        /// Limit exceeded is the only failure this converts into <see langword="false"/>; every other
+        /// failure the top-down pass (<see cref="TopDownExpander{TSpec, TState}"/>) can raise — an
+        /// invalid root level, cancellation, or an exception the spec itself throws — propagates
+        /// exactly as it would from <see cref="Build{TSpec, TState}(ZddManager, TSpec, BuildOptions)"/>.
+        /// A limit hit is also the only one of those that can happen before the bottom-up reduction
+        /// (<see cref="BottomUpReducer"/>) ever writes to <paramref name="manager"/>'s tables — the
+        /// top-down pass only ever writes to its own temporary node table. So a caller that gets
+        /// <see langword="false"/> back is guaranteed <paramref name="manager"/> is exactly as it was
+        /// before the call, its <see cref="ZddManager.NodeCount"/> included: there is nothing to undo.
         /// </remarks>
         public static bool TryBuild<TSpec, TState>(ZddManager manager, TSpec spec, BuildOptions options, out Zdd result)
             where TSpec : struct, IDdSpec<TState>
@@ -230,7 +233,7 @@ namespace ZDD.Net.Frontier
             {
                 table = TopDownExpander<TSpec, TState>.Expand(spec, options);
             }
-            catch (BuildLimitExceededException)
+            catch (BuildLimitExceededException ex) when (ex.ThrownByExpander)
             {
                 result = default;
                 return false;
@@ -277,7 +280,7 @@ namespace ZDD.Net.Frontier
             {
                 table = ArrayTopDownExpander<TSpec>.Expand(spec, options);
             }
-            catch (BuildLimitExceededException)
+            catch (BuildLimitExceededException ex) when (ex.ThrownByExpander)
             {
                 result = default;
                 return false;
