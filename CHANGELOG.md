@@ -8,6 +8,16 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
 
 ## [Unreleased]
 
+### Added
+
+- `FrontierBuilder.TryBuild`: 上限超過を例外にしない構築（M6-3、issue #138）。
+  `BuildOptions.MaxNodeCount` / `MaxFrontierSize` を超えたときだけ `false` を返し、
+  `CancellationToken` によるキャンセルとスペック自身が投げた例外は `Build` と同じく
+  例外のまま伝わる。`false` のとき `result` は `default(Zdd)` で、トップダウン展開は
+  一時ノード表にしか書かないため `ZddManager` の状態（`NodeCount` を含む）は呼び出し前と
+  不変。`options` は必須引数（`null` 不可）。固定 `struct` 状態スペック（`IDdSpec<TState>`）と
+  配列状態スペック（`IArrayDdSpec`）の両方にオーバーロードを用意。
+
 ## [0.5.0] - 2026-09-04
 
 M5「I/O・メモリ管理」マイルストーン（[docs/PLAN.md](docs/PLAN.md) §12）の完了リリース。独自

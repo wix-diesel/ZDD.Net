@@ -177,6 +177,118 @@ namespace ZDD.Net.Frontier
         }
 
         /// <summary>
+        /// Builds a <see cref="Zdd"/> from a fixed-<c>struct</c>-state spec exactly as
+        /// <see cref="Build{TSpec, TState}(ZddManager, TSpec, BuildOptions)"/> does, except that
+        /// passing one of <paramref name="options"/>' limits returns <see langword="false"/>
+        /// instead of throwing (issue #138) — for the "pick a limit, and if it doesn't fit try a
+        /// different edge order" style of exploration, where an exception would otherwise become
+        /// the control flow.
+        /// </summary>
+        /// <typeparam name="TSpec">The spec type; a <c>struct</c>, so calls devirtualize and inline.</typeparam>
+        /// <typeparam name="TState">The state carried between levels.</typeparam>
+        /// <param name="manager">The manager the resulting family, and every node it needs, belongs to.</param>
+        /// <param name="spec">The specification to unroll.</param>
+        /// <param name="options">
+        /// Limits, cancellation and progress for the top-down pass. Required — not optional and not
+        /// nullable, since a <see cref="TryBuild{TSpec, TState}"/> that sets no limit could never
+        /// return <see langword="false"/>, which would make the call pointless.
+        /// </param>
+        /// <param name="result">
+        /// The built family when this returns <see langword="true"/>; <see langword="default"/>
+        /// when it returns <see langword="false"/>.
+        /// </param>
+        /// <returns>
+        /// <see langword="false"/> when the build passed <see cref="BuildOptions.MaxNodeCount"/> or
+        /// <see cref="BuildOptions.MaxFrontierSize"/>; <see langword="true"/> otherwise. Cancellation
+        /// and an exception the spec itself throws are never turned into <see langword="false"/> —
+        /// they propagate exactly as <see cref="Build{TSpec, TState}(ZddManager, TSpec, BuildOptions)"/>
+        /// would.
+        /// </returns>
+        /// <exception cref="System.ArgumentNullException"><paramref name="manager"/> or <paramref name="options"/> is null.</exception>
+        /// <exception cref="System.InvalidOperationException">
+        /// The spec's root level exceeds <paramref name="manager"/>'s <see cref="ZddManager.VariableCount"/>.
+        /// </exception>
+        /// <exception cref="System.OperationCanceledException">The options' token was cancelled.</exception>
+        /// <exception cref="System.ObjectDisposedException"><paramref name="manager"/> has been disposed.</exception>
+        /// <remarks>
+        /// A limit is the only failure the top-down pass (<see cref="TopDownExpander{TSpec, TState}"/>)
+        /// can throw, and it throws before the bottom-up reduction (<see cref="BottomUpReducer"/>)
+        /// ever writes to <paramref name="manager"/>'s tables — the top-down pass only ever writes to
+        /// its own temporary node table. So a caller that gets <see langword="false"/> back is
+        /// guaranteed <paramref name="manager"/> is exactly as it was before the call, its
+        /// <see cref="ZddManager.NodeCount"/> included: there is nothing to undo.
+        /// </remarks>
+        public static bool TryBuild<TSpec, TState>(ZddManager manager, TSpec spec, BuildOptions options, out Zdd result)
+            where TSpec : struct, IDdSpec<TState>
+        {
+            ThrowHelper.ThrowIfNull(manager, nameof(manager));
+            ThrowHelper.ThrowIfNull(options, nameof(options));
+
+            TemporaryNodeTable table;
+
+            try
+            {
+                table = TopDownExpander<TSpec, TState>.Expand(spec, options);
+            }
+            catch (BuildLimitExceededException)
+            {
+                result = default;
+                return false;
+            }
+
+            EnsureFitsManager(manager, table);
+            result = BottomUpReducer.Reduce(manager, table);
+            return true;
+        }
+
+        /// <summary>
+        /// Builds a <see cref="Zdd"/> from a variable-length array-state spec exactly as
+        /// <see cref="TryBuild{TSpec, TState}"/> does for a fixed-state one — see its remarks for
+        /// the semantics <paramref name="options"/>' limits get here.
+        /// </summary>
+        /// <typeparam name="TSpec">The spec type; a <c>struct</c>, so calls devirtualize and inline.</typeparam>
+        /// <param name="manager">The manager the resulting family, and every node it needs, belongs to.</param>
+        /// <param name="spec">The specification to unroll.</param>
+        /// <param name="options">Limits, cancellation and progress for the top-down pass. Required.</param>
+        /// <param name="result">
+        /// The built family when this returns <see langword="true"/>; <see langword="default"/>
+        /// when it returns <see langword="false"/>.
+        /// </param>
+        /// <returns>
+        /// <see langword="false"/> when the build passed <see cref="BuildOptions.MaxNodeCount"/> or
+        /// <see cref="BuildOptions.MaxFrontierSize"/>; <see langword="true"/> otherwise.
+        /// </returns>
+        /// <exception cref="System.ArgumentNullException"><paramref name="manager"/> or <paramref name="options"/> is null.</exception>
+        /// <exception cref="System.InvalidOperationException">
+        /// The spec's <see cref="IArrayDdSpec.ArrayLength"/> is negative, or its root level exceeds
+        /// <paramref name="manager"/>'s <see cref="ZddManager.VariableCount"/>.
+        /// </exception>
+        /// <exception cref="System.OperationCanceledException">The options' token was cancelled.</exception>
+        /// <exception cref="System.ObjectDisposedException"><paramref name="manager"/> has been disposed.</exception>
+        public static bool TryBuild<TSpec>(ZddManager manager, TSpec spec, BuildOptions options, out Zdd result)
+            where TSpec : struct, IArrayDdSpec
+        {
+            ThrowHelper.ThrowIfNull(manager, nameof(manager));
+            ThrowHelper.ThrowIfNull(options, nameof(options));
+
+            TemporaryNodeTable table;
+
+            try
+            {
+                table = ArrayTopDownExpander<TSpec>.Expand(spec, options);
+            }
+            catch (BuildLimitExceededException)
+            {
+                result = default;
+                return false;
+            }
+
+            EnsureFitsManager(manager, table);
+            result = BottomUpReducer.Reduce(manager, table);
+            return true;
+        }
+
+        /// <summary>
         /// Rejects a table whose root level does not fit <paramref name="manager"/>: a family built
         /// from it would hold nodes at levels <see cref="ZddManager.ItemOf"/> cannot convert back to
         /// an item, which later operations would surface as a confusing failure deep inside Core.
