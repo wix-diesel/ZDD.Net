@@ -8,6 +8,24 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
 
 ## [Unreleased]
 
+### Added
+
+- `Zdd.EnumerateInto(Span<int>, ZddEnumerationOrder)` / `Zdd.MaxSetSize`: アロケーションなしの
+  集合列挙(M6-2、issue #137)。既存の `Sets()` は 1 集合ごとに `new int[]` するため、
+  数百万集合を舐める用途では GC 圧が支配的になる(B9 で暫定案のまま残っていた (b))。
+  `EnumerateInto` は呼び出し側が渡したバッファへ書き込みながら使い回す `ref struct` 列挙子
+  (`SetSpanEnumerator`)を返すので、`MoveNext` のループそのものはアロケーションしない。
+  `IEnumerable<T>` を実装しない `ref struct` にしてあるのは制約ではなく安全装置——使い回される
+  バッファが LINQ に渡ったり 1 反復を超えて保持されたりするのを型で防いでいる(これこそが
+  `Sets()` を配列アロケーションする既定のままにした理由そのもの)。必要なバッファ長は新しい
+  `IDdEval<int>`(`MaxSetSizeEval`)で求める `MaxSetSize`——この族に含まれる集合の最大要素数で、
+  ∅ と `{∅}` はどちらも 0 になる(B20: `MaxSetSize` 未満のバッファは切り詰めて黙って壊れる代わりに、
+  列挙を始める前に `ArgumentException` になる)。走査本体は既存 `SetEnumeration` の深さ優先探索を
+  明示スタックの手書き状態機械に書き直したもの(`ref struct` はイテレータのローカル変数になれない
+  ため `yield return` 版をそのまま再利用できない)。`Sets()` 側は変更しておらず、スタック/パスの
+  ヘルパーを両者で共有する。変数 16 以下の全網羅・ランダム生成の両方で `Sets()` と要素・順序が
+  完全一致すること、変数 10 万本の深い ZDD でスタックオーバーフローしないことを確認済み。
+
 ## [0.5.0] - 2026-09-04
 
 M5「I/O・メモリ管理」マイルストーン（[docs/PLAN.md](docs/PLAN.md) §12）の完了リリース。独自

@@ -14,17 +14,24 @@ namespace ZDD.Net.Core
     /// traversal is iterative (explicit stack), and does not rent a workspace from the manager
     /// since <c>yield return</c> can suspend across other operations. Each returned array is a
     /// fresh copy (docs/ROADMAP.md M1-13) to avoid callers observing a shared, mutated buffer.
+    /// <para>
+    /// <see cref="SetSpanEnumerator"/> (M6-2, backing <see cref="Zdd.EnumerateInto"/>) is the same
+    /// depth-first traversal rewritten as a hand-driven state machine — a <c>ref struct</c> cannot
+    /// be an iterator's local, so it cannot reuse <see cref="Traverse"/> directly — sharing the
+    /// stack/path constants and the <see cref="Push"/>/<see cref="Append"/> helpers here. This type
+    /// is left untouched so <see cref="Sets"/> keeps its exact existing behavior.
+    /// </para>
     /// </remarks>
     internal static class SetEnumeration
     {
-        /// <summary>Initial depth of the explicit stack; doubles on demand.</summary>
-        private const int InitialStackCapacity = 32;
+        /// <summary>Initial depth of the explicit stack; doubles on demand. Shared with <see cref="SetSpanEnumerator"/>.</summary>
+        internal const int InitialStackCapacity = 32;
 
-        /// <summary>Initial size of the working buffers that accumulate the path and 0-edge chain.</summary>
-        private const int InitialPathCapacity = 16;
+        /// <summary>Initial size of the working buffers that accumulate the path and 0-edge chain. Shared with <see cref="SetSpanEnumerator"/>.</summary>
+        internal const int InitialPathCapacity = 16;
 
-        /// <summary>Marker meaning "pop the last item off the path". Node ids are non-negative, so no collision.</summary>
-        private const int PopItem = -1;
+        /// <summary>Marker meaning "pop the last item off the path". Node ids are non-negative, so no collision. Shared with <see cref="SetSpanEnumerator"/>.</summary>
+        internal const int PopItem = -1;
 
         /// <summary>Creates a lazy enumeration of the sets in a family, in <paramref name="order"/>.</summary>
         /// <param name="manager">Manager owning the family.</param>
@@ -149,7 +156,8 @@ namespace ZDD.Net.Core
             }
         }
 
-        private static void Push(ref int[] stack, ref int top, int entry)
+        /// <summary>Pushes onto an explicit stack, doubling it on demand. Shared with <see cref="SetSpanEnumerator"/>.</summary>
+        internal static void Push(ref int[] stack, ref int top, int entry)
         {
             if (top == stack.Length)
             {
@@ -159,7 +167,8 @@ namespace ZDD.Net.Core
             stack[top++] = entry;
         }
 
-        private static void Append(ref int[] buffer, ref int length, int value)
+        /// <summary>Appends to a growable buffer (the path or the 0-edge chain), doubling it on demand. Shared with <see cref="SetSpanEnumerator"/>.</summary>
+        internal static void Append(ref int[] buffer, ref int length, int value)
         {
             if (length == buffer.Length)
             {
