@@ -71,9 +71,14 @@ jobs:
           output=$(dotnet run --project samples/Zdd.Cli --no-restore --no-build --configuration Release \
             -- grid-path 7 7 --estimate)
           echo "$output"
-          dotnet run --project samples/Zdd.Cli --no-restore --no-build --configuration Release \
-            -- grid-path 7 7 --stats --dot "./dot/grid-path-7x7.gv" --sample 3 \
-            | tee /dev/stderr | grep -q '^sets *: 575780564$'
+          # コマンドの生きたプロセスを直接 grep -q に流すと、grep が最初のマッチで
+          # 早期終了して下流を閉じ、書き込み側が壊れたパイプで詰まることがある
+          # （実際に CI がハングした原因）。全出力をいったん変数に受けてから
+          # grep する形にして、生きたパイプの早期終了を避ける。
+          output=$(dotnet run --project samples/Zdd.Cli --no-restore --no-build --configuration Release \
+            -- grid-path 7 7 --stats --dot "./dot/grid-path-7x7.gv" --sample 3)
+          echo "$output"
+          grep -q '^sets *: 575780564$' <<< "$output"
           dot -Tsvg "./dot/grid-path-7x7.gv" -o "./dot/grid-path-7x7.svg"
 
       - name: サンプル CLI（spanning-tree / partition / matching）の実行と DOT の検証
@@ -95,27 +100,37 @@ jobs:
           e 4 5
           GRAPH
 
-          dotnet run --project samples/Zdd.Cli --no-restore --no-build --configuration Release \
+          # ここでも生きたプロセスを grep -q に直接流さず、全出力を変数に受けてから
+          # grep する（grid-path のステップと同じ理由）。
+          output=$(dotnet run --project samples/Zdd.Cli --no-restore --no-build --configuration Release \
             -- spanning-tree ./dot/k5.dimacs --stats --dot ./dot/spanning-tree-k5.gv \
-               --save ./dot/spanning-tree-k5.zdd \
-            | grep -q '^sets *: 125$' # K5 のラベル付き全域木数（Cayley の公式: 5^3）
-          dotnet run --project samples/Zdd.Cli --no-restore --no-build --configuration Release \
-            -- spanning-tree ./dot/k5.dimacs --load ./dot/spanning-tree-k5.zdd \
-            | grep -q '^sets *: 125$' # 保存したファイルを読み込んでも同じ結果になること
+               --save ./dot/spanning-tree-k5.zdd)
+          echo "$output"
+          grep -q '^sets *: 125$' <<< "$output" # K5 のラベル付き全域木数（Cayley の公式: 5^3）
+
+          output=$(dotnet run --project samples/Zdd.Cli --no-restore --no-build --configuration Release \
+            -- spanning-tree ./dot/k5.dimacs --load ./dot/spanning-tree-k5.zdd)
+          echo "$output"
+          grep -q '^sets *: 125$' <<< "$output" # 保存したファイルを読み込んでも同じ結果になること
 
           printf '1\n1\n1\n1\n1\n1\n1\n1\n1\n1\n' > ./dot/k5-weights.txt
-          dotnet run --project samples/Zdd.Cli --no-restore --no-build --configuration Release \
-            -- spanning-tree ./dot/k5.dimacs --min-weight ./dot/k5-weights.txt \
-            | grep -q '^min-weight: .* (weight 4)$' # K5 の全域木はどれも辺 4 本
+          output=$(dotnet run --project samples/Zdd.Cli --no-restore --no-build --configuration Release \
+            -- spanning-tree ./dot/k5.dimacs --min-weight ./dot/k5-weights.txt)
+          echo "$output"
+          grep -q '^min-weight: .* (weight 4)$' <<< "$output" # K5 の全域木はどれも辺 4 本
+
+          output=$(dotnet run --project samples/Zdd.Cli --no-restore --no-build --configuration Release \
+            -- partition ./dot/k5.dimacs 2 --min-block 2 --max-block 3 --dot ./dot/partition-k5.gv)
+          echo "$output"
+          grep -q '^sets *: 40$' <<< "$output"
 
           dotnet run --project samples/Zdd.Cli --no-restore --no-build --configuration Release \
-            -- partition ./dot/k5.dimacs 2 --min-block 2 --max-block 3 --dot ./dot/partition-k5.gv \
-            | grep -q '^sets *: 40$'
-          dotnet run --project samples/Zdd.Cli --no-restore --no-build --configuration Release \
             -- matching ./dot/k5.dimacs --perfect # 5 頂点は奇数なので完全マッチングは 0 件（クラッシュしないことだけ見る）
-          dotnet run --project samples/Zdd.Cli --no-restore --no-build --configuration Release \
-            -- matching ./dot/k5.dimacs --stats --dot ./dot/matching-k5.gv \
-            | grep -q '^sets *: 26$' # involution number a(5) = K5 のマッチング総数（空集合込み）
+
+          output=$(dotnet run --project samples/Zdd.Cli --no-restore --no-build --configuration Release \
+            -- matching ./dot/k5.dimacs --stats --dot ./dot/matching-k5.gv)
+          echo "$output"
+          grep -q '^sets *: 26$' <<< "$output" # involution number a(5) = K5 のマッチング総数（空集合込み）
 
           dot -Tsvg ./dot/spanning-tree-k5.gv -o ./dot/spanning-tree-k5.svg
           dot -Tsvg ./dot/partition-k5.gv -o ./dot/partition-k5.svg
