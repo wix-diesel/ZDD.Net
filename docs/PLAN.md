@@ -120,7 +120,7 @@ C# ネイティブ実装による ZDD（Zero-suppressed Decision Diagram）＋�
 | `api.nuget.org` / `www.nuget.org` | OK | NuGet 復元は問題なく動作 |
 
 → `dotnet-sdk-10.0` に加えて `dotnet-sdk-aot-10.0`（NativeAOT コンポーネント）も導入でき、
-**M6-2 の NativeAOT 検証もこの環境で実施できる**。
+**M8-2 の NativeAOT 検証もこの環境で実施できる**。
 `scripts/setup-dev-env.sh` と SessionStart フックで自動化する。
 
 ## 3. リポジトリ構成
@@ -404,6 +404,24 @@ public readonly struct Zdd : IEquatable<Zdd>, IEnumerable<int[]>
 個数は `BigInteger` で厳密に数え、`double` にするのは最後の割り算だけにする
 （10^308 を超える濃度で `inf / inf` にしないため）。
 
+### 5.4 v0.6 で追加する演算
+
+他ライブラリとの比較で見つかった欠落。詳細は
+[docs/design/m6-api-expansion.md](design/m6-api-expansion.md) §1〜§3。
+
+| API | 由来 | 実装方針 |
+|---|---|---|
+| `ComplementWithin(items)` / `ZddManager.PowerSetOf(items)` | B8 で「別途用意」と決めたまま未実装だったもの | `2^items` を葉側から 1 パス O(k) で組み、`Difference` |
+| `EnumerateInto(buffer)` / `MaxSetSize` | B9 の (b)。`Sets()` は 1 集合ごとに `new int[]` する | `ref struct` 列挙子。`foreach` はパターンで通る。LINQ には**意図的に**乗せない |
+| `FrontierBuilder.TryBuild` | B11 で「`TryBuild` も提供」と決めたまま未実装だったもの | 上限超過のみ `false`。キャンセルは例外のまま |
+| `MapItems` / `MapItemsTo` / `TransferTo` | CUDD の `Cudd_bddPermute` / `Cudd_bddTransfer` | 順序保存ならボトムアップ 1 パス、一般の単射は `map(f) = map(f0) ∪ Change(map(f1), σ(v))` の反復＋メモ化。**B7（変数数固定）の実質的な回避策になる** |
+| `AddSomeItem` / `RemoveSomeItem` / `RemoveAddSomeItems` | Graphillion の `add_some_element` ほか | 既存の単項演算の合成（`⋃_e OnSet(f,e)` / `⋃_e Change(OffSet(f,e), e)`）。新しい演算は要らない |
+| `CostAtMost` / `CostAtLeast` / `CostEquals` | Graphillion の `cost_le` | `zdd.Subset(LinearConstraintSpec)`（M3-5）。**事後フィルタではなく走査中に効く** |
+
+写像は**単射のみ許可**する。非単射（2 要素を同一視する射影・存在量化）は集合の族としての
+意味が変わる（`{a},{b}` が `{x},{x}` に潰れて多重度が失われる）ので、必要になったら
+別 API として足す。
+
 ---
 
 ## 6. Frontier レイヤ: フロンティア法フレームワーク
@@ -585,6 +603,21 @@ public sealed class FrontierManager
 段階的に増やす。v0.2 で「s–t パス」「全域木」「マッチング」「基数制約」の 4 つが動けば
 フレームワークの妥当性は検証できる。
 
+**v0.5 時点の実績と、v0.6 / v0.7 での追加**（詳細は
+[docs/design/m6-api-expansion.md](design/m6-api-expansion.md) §5 と
+[docs/design/m7-directed-graphs.md](design/m7-directed-graphs.md) §3）:
+
+- 上表のうち `EdgeCoverSpec` は**専用スペックを作らない**ことにした。辺被覆は
+  「全頂点の次数 ≥ 1」であり `DegreeConstraintSpec(lo: 1, hi: 辺数)` そのものなので、
+  `GraphSet.EdgeCovers(graph)` という別名として v0.6 で露出する（M6-9）。
+- `LookaheadSpec` / `SequenceSpec` / `SortedSetsSpec` / `CombinationSpec` は未実装のまま。
+  `DfaSpec`（M4-7）と `CardinalitySpec` で実用上の需要は埋まっており、需要が出るまで作らない。
+- v0.6 で追加: `InducedSubgraphSpec`（頂点誘導部分グラフ）、`BicliqueSpec`、
+  `DegreeDistributionSpec`（次数分布指定）、`VertexGroupSpec`（頂点グループの連結指定）。
+  いずれも Graphillion にあって ZDD.Net に無かったもの。
+- v0.7 で追加: `DirectedPathSpec` / `DirectedCycleSpec` / `DirectedHamiltonian*Spec` /
+  `DirectedDegreeConstraintSpec` / `ArborescenceSpec`。
+
 ---
 
 ## 8. Graphs レイヤ（Graphillion 相当の高レベル API）
@@ -609,6 +642,31 @@ foreach (var p in filtered.Take(10)) { ... }
 - Graphillion の語彙（`paths` `cycles` `trees` `forests` `matchings` `cliques`
   `including` `excluding` `larger` `smaller` `rand_iter` `max_iter`）を
   .NET 命名規約に直して踏襲 → Python から移ってくる利用者の学習コストがゼロになる。
+
+### 統合ビルダと有向グラフ（v0.6 / v0.7）
+
+`GraphSet` の静的ファクトリは v0.5 時点で 9 個あるが、`Specs/` の 22 個のスペックのうち
+M4 で追加したもの（連結・シュタイナー・分割・カット・彩色・頂点被覆・支配集合）は
+高レベル API から一切触れない。v0.6 でこれを全て露出したうえで、Graphillion の
+`graphs(degree_constraints=, num_edges=, num_comps=, no_loop=, vertex_groups=, graphset=)`
+に相当する入口を 1 つ用意する。
+
+```csharp
+var gs = GraphSet.Graphs(graph, new GraphConstraints
+{
+    DegreeConstraints = new Dictionary<int, (int, int)> { [0] = (1, 1), [80] = (1, 1) },
+    EdgeCount = (1, 40),
+    ComponentCount = 1,
+    NoLoop = true,
+});
+```
+
+実装は `IErasedGraphSpec`（`Including` / `Excluding` が既に使っている型消去したスペックの連鎖）
+を `AndErasedSpec` で畳み込むだけで、新しい合成基盤は要らない。母集合を絞る `graphset=` は
+`zdd.Subset(合成スペック)`（M3-5）に落とす。
+
+v0.7 では `DirectedGraph` と `DirectedGraphSet` を同じ構造で追加する
+（`GraphSet` が `SetSet<Edge>` の上に載っているのと同様に、`SetSet<DirectedEdge>` の上に載せる）。
 
 ### 辺順序の最適化
 
@@ -724,9 +782,19 @@ graph.EstimateMaxFrontierSize();   // 実行前に見積り、大きすぎるな
 | **v0.3** | スペック群の拡充（連結・分割・シュタイナー・次数制約・独立集合ほか）＋ `Graph` / `GraphSet` / `SetSet<T>` 高レベル API | 3 週 |
 | **v0.4** | 性能: 辺順序最適化（ビームサーチ）・並列構築・キャッシュ調整・BenchmarkDotNet・Graphillion 比較レポート | 3 週 |
 | **v0.5** | I/O（DOT・バイナリ・Graphillion 互換）・ノード GC・サンプル CLI・DocFX ドキュメント | 2 週 |
+| **v0.6** | API 拡充と相互運用: 決定済み未実装 API の穴埋め（`ComplementWithin` / `EnumerateInto` / `TryBuild`）・項目写像とマネージャ間転送・ユニバースをまたぐ族の移送・実装済みスペックの `GraphSet` 露出・統合ビルダ `Graphs()`・頂点誘導/biclique/次数分布スペック | 3〜4 週 |
+| **v0.7** | 有向グラフ対応: `DirectedGraph`・フロンティア基盤の一般化・有向パス/閉路/ハミルトン/arborescence・`DirectedGraphSet`・有向 I/O | 2〜3 週 |
 | **v1.0** | API 凍結・NativeAOT 検証・NuGet 公開・README/チュートリアル整備 | 1〜2 週 |
 
 各版でリリースノートとベンチ結果を `docs/benchmarks.md` に追記する。
+
+v0.6 / v0.7 は当初の計画には無く、v0.5 到達後に他ライブラリ（Graphillion / TdZdd /
+SAPPOROBDD / CUDD+EXTRA）と突き合わせた結果として追加した。詳細な設計は
+[docs/design/m6-api-expansion.md](design/m6-api-expansion.md) と
+[docs/design/m7-directed-graphs.md](design/m7-directed-graphs.md)。
+どちらも **v1.0 の API 凍結より前に済ませる必要がある**もの（凍結後に入れると破壊的変更になる）
+を選んで前倒ししており、性能改善や新しい出力形式のような「後からでも足せるもの」は
+意図的に外している。
 
 ---
 

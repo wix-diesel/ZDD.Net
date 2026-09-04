@@ -25,6 +25,9 @@
         "files": ["*.md", "toc.yml"]
       },
       {
+        "files": ["design/**.md"]
+      },
+      {
         "files": ["release-notes/**.md", "release-notes/toc.yml"]
       }
     ],

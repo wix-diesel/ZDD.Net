@@ -1,15 +1,21 @@
-# API レビューメモ（M5-7 → M6-1 引き継ぎ）
+# API レビューメモ（M5-7 → M8-1 引き継ぎ）
+
+> **改番の注記 (2026-09-04)**: 本メモ作成時点で「公開 API の凍結」は M6-1 だったが、
+> その後 v0.6「API 拡充と相互運用」・v0.7「有向グラフ対応」を前に挟んだため、
+> **凍結は M8-1（issue #60）に繰り下がった**。本文中の参照は M8-1 に更新済み。
+> 凍結を後ろにずらした理由は [docs/ROADMAP.md](ROADMAP.md) 末尾の
+> 「M6 / M7 を差し込んだ理由」を参照。
 
 > M5-7（v0.5 リリース、issue #59）の完了条件「v1.0 に向けた API レビューの下準備」として、
 > public API の一覧を棚卸しし、命名・一貫性の気になる箇所をここに記録する。**実際の凍結・
-> 命名変更・`[Experimental]` の確定は M6-1（公開 API の凍結、issue #60）で行う**。このメモは
+> 命名変更・`[Experimental]` の確定は M8-1（公開 API の凍結、issue #60）で行う**。このメモは
 > 提案であって決定ではない。
 
 ## 棚卸しの方法
 
 `src/ZDD.Net` を `dotnet build -c Release` し、生成された `ZDD.Net.dll` に対して
 `Assembly.GetExportedTypes()` ＋ `Type.GetMembers(Public | Instance | Static | DeclaredOnly)` で
-全 public 型・メンバーを列挙する一回限りのスクリプトで棚卸しした（M6-1 で入る
+全 public 型・メンバーを列挙する一回限りのスクリプトで棚卸しした（M8-1 で入る
 `PublicApiGenerator` + `Verify` による恒久的な API 承認テストとは別物で、このメモを作るための
 使い捨てツール。リポジトリには含めていない）。
 
@@ -34,7 +40,7 @@
 **public API の表面積が実質 2 倍**になっている。`docs/frontier-guide.md` や XML doc では
 「`OnSet`/`OffSet`/`SupersetsOf`/`SubsetsOf` が主、`Subset1`/`Subset0`/`Restrict`/`Permit` は
 別名」という位置づけで書かれている箇所はあるが、**API 上はどちらが正でどちらが別名かを示す
-属性・doc 上の統一表記が無い**。M6-1 の issue 本文が挙げている論点そのものなので、ここでは
+属性・doc 上の統一表記が無い**。M8-1 の issue 本文が挙げている論点そのものなので、ここでは
 選択肢だけ提示する:
 
 - (a) 両方 public のまま残す。ただし XML doc で「推奨はこちら」を明記し、`<seealso>` で相互参照する
@@ -54,7 +60,7 @@
 `long`、範囲外は例外）・`CountApprox`（近似 `double`）」という 3 段構えを謳っているが、この
 3 段構えは `SetSet<T>` と `GraphSet` だけのもので、**土台となる `Zdd` 自身には無い**。
 「まず `Zdd` にあるべき機能が高レベルラッパーにだけ追加されている」逆転が起きている。
-M6-1 での論点: `Zdd.LongCount()` を追加して 3 層で揃えるか、`Zdd` は `BigInteger` のみを
+M8-1 での論点: `Zdd.LongCount()` を追加して 3 層で揃えるか、`Zdd` は `BigInteger` のみを
 正とする方針を明文化して `GraphSet`/`SetSet<T>` 側の `LongCount` を「利便のための例外」と
 doc で位置づけるか。
 
@@ -78,7 +84,7 @@ doc で位置づけるか。
 複数形/単数形の付け方**（`ForgottenVertices` は複数形でレベルに出入りする頂点集合、
 `ForgottenSlots` も複数形で同じ役割）は揃っている一方、**`IntroducedVertices` に対応するものが
 `VertexFrontierManager` に無い**（頂点スペック側は「導入」を明示的に問い合わせる必要が今の
-ところ無いため)。M6-1 での論点: 2 つのマネージャの API 表を並べて、意図的な差なのか埋め忘れなの
+ところ無いため)。M8-1 での論点: 2 つのマネージャの API 表を並べて、意図的な差なのか埋め忘れなの
 かを確定させる。
 
 ### 4. `IHybridDdSpec<TScalar>` は事実上使えない public 型
@@ -89,7 +95,7 @@ public だが、`FrontierBuilder.Build` にはこの契約を受けるオーバ�
 現状の public API だけでは ZDD を構築する手段が無い**。CHANGELOG の M0〜M4 の「Notes」節で
 毎回「未対応（vX.Y 以降）」と繰り返されてきた既知の制約で、v0.5 でも状況は変わっていない。
 
-現時点で `[Experimental]` を付与している public API は**0 件**。M6-1 の完了条件が「`[Experimental]`
+現時点で `[Experimental]` を付与している public API は**0 件**。M8-1 の完了条件が「`[Experimental]`
 の付け外しを確定させる」ことを求めているので、ここでの推奨は次のいずれか:
 
 - `FrontierBuilder.Build` にハイブリッド版オーバーロードを実装してから通常の public API として
