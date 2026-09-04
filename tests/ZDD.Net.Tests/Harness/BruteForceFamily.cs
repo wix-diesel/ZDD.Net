@@ -456,6 +456,45 @@ namespace ZDD.Net.Tests.Harness
                 new SortedSet<int>(_masks.Where(mask => (mask & bit) == 0)));
         }
 
+        /// <summary>
+        /// MapItems: すべての集合について、要素 item を itemMap[item] に張り替える。
+        /// </summary>
+        /// <remarks>
+        /// 定義をそのまま書いただけなので、単射でない itemMap を渡しても（ZDD 側の高速経路が
+        /// NotSupportedException で断る場合でも）ここでは普通に計算できる。ZDD 側と照合するのは
+        /// 単射かつ support 上で狭義単調増加な itemMap のときだけ。
+        /// </remarks>
+        public BruteForceFamily MapItems(int[] itemMap)
+        {
+            ArgumentNullException.ThrowIfNull(itemMap);
+
+            if (itemMap.Length != VariableCount)
+            {
+                throw new ArgumentException(
+                    $"'{nameof(itemMap)}' must have length {VariableCount}, but was {itemMap.Length}.",
+                    nameof(itemMap));
+            }
+
+            SortedSet<int> result = new SortedSet<int>();
+
+            foreach (int mask in _masks)
+            {
+                int mapped = 0;
+
+                for (int item = 0; item < VariableCount; item++)
+                {
+                    if ((mask & (1 << item)) != 0)
+                    {
+                        mapped |= 1 << itemMap[item];
+                    }
+                }
+
+                result.Add(mapped);
+            }
+
+            return new BruteForceFamily(VariableCount, result);
+        }
+
         // ---- 問い合わせ ----
 
         /// <summary>ビットマスクで与えた集合が族に属するか。</summary>

@@ -80,5 +80,11 @@ namespace ZDD.Net.Internal
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void ThrowObjectDisposedException(string objectName) =>
             throw new ObjectDisposedException(objectName);
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void ThrowNotSupportedException(string message) =>
+            throw new NotSupportedException(message);
     }
 }

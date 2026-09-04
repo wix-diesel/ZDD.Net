@@ -504,6 +504,116 @@ namespace ZDD.Net.Core
             return new Zdd(this, BinaryOperations.Apply(this, ZddOperation.Difference, powerSet.Id, f.Id));
         }
 
+        /// <summary>
+        /// Rebuilds <paramref name="f"/> within this manager, relabeling every item via
+        /// <paramref name="itemMap"/> (M6-4, issue #139); see <see cref="Zdd.MapItems"/> for the
+        /// full semantics (B17).
+        /// </summary>
+        /// <param name="f">The family; must belong to this manager.</param>
+        /// <param name="itemMap">Old-item-to-new-item map; length must equal <see cref="VariableCount"/>.</param>
+        internal Zdd MapItems(in Zdd f, ReadOnlySpan<int> itemMap)
+        {
+            EnsureOwns(f, nameof(f));
+
+            if (itemMap.Length != _variableCount)
+            {
+                ThrowHelper.ThrowArgumentException(
+                    nameof(itemMap),
+                    $"'{nameof(itemMap)}' must have length {nameof(VariableCount)} ({_variableCount}), but was {itemMap.Length}.");
+            }
+
+            ValidateItemMapIsAPermutation(itemMap);
+
+            if (IsIdentity(itemMap))
+            {
+                // No node is rebuilt, so the same handle is returned rather than a copy.
+                return f;
+            }
+
+            // Throws ObjectDisposedException here if disposed (touches both table and cache).
+            TuneCache();
+
+            // B17: only order-preserving maps on f's support get the fast path in this release;
+            // general permutation and cross-manager transfer arrive in M6-5.
+            EnsureMonotonicOnSupport(f.Id, itemMap);
+
+            return new Zdd(this, MapItemsOperation.Apply(this, f.Id, itemMap));
+        }
+
+        /// <summary>Validates that <paramref name="itemMap"/> is total and injective over 0..<see cref="VariableCount"/> - 1.</summary>
+        /// <exception cref="ArgumentOutOfRangeException">An entry is outside 0..<see cref="VariableCount"/> - 1.</exception>
+        /// <exception cref="ArgumentException">Two entries map to the same new item.</exception>
+        private void ValidateItemMapIsAPermutation(ReadOnlySpan<int> itemMap)
+        {
+            // Injective + same-size domain/codomain implies bijective, so range + no-duplicates is
+            // enough to guarantee a permutation; a bool per possible target catches duplicates in
+            // the same pass as the range check.
+            bool[] seenTargets = _variableCount == 0 ? Array.Empty<bool>() : new bool[_variableCount];
+
+            for (int oldItem = 0; oldItem < itemMap.Length; oldItem++)
+            {
+                int newItem = itemMap[oldItem];
+
+                if ((uint)newItem >= (uint)_variableCount)
+                {
+                    ThrowHelper.ThrowArgumentOutOfRangeException(
+                        nameof(itemMap),
+                        _variableCount == 0
+                            ? $"This manager has no variables, so there is no valid item index; '{nameof(itemMap)}[{oldItem}]' was {newItem}."
+                            : $"'{nameof(itemMap)}[{oldItem}]' must be in the range 0..{_variableCount - 1}, but was {newItem}.");
+                }
+
+                if (seenTargets[newItem])
+                {
+                    ThrowHelper.ThrowArgumentException(
+                        nameof(itemMap),
+                        $"'{nameof(itemMap)}' must be injective, but more than one old item maps to new item {newItem}.");
+                }
+
+                seenTargets[newItem] = true;
+            }
+        }
+
+        /// <summary>Whether <paramref name="itemMap"/> maps every item to itself.</summary>
+        private static bool IsIdentity(ReadOnlySpan<int> itemMap)
+        {
+            for (int item = 0; item < itemMap.Length; item++)
+            {
+                if (itemMap[item] != item)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Confirms <paramref name="itemMap"/> is strictly increasing across <paramref name="rootId"/>'s
+        /// support, which is exactly what preserves parent/child level ordering after relabeling
+        /// (B17's order-preserving fast path). Items outside the support are unconstrained.
+        /// </summary>
+        /// <exception cref="NotSupportedException"><paramref name="itemMap"/> is not order-preserving on the support.</exception>
+        private void EnsureMonotonicOnSupport(int rootId, ReadOnlySpan<int> itemMap)
+        {
+            int[] support = CollectSupport(rootId);
+
+            for (int i = 1; i < support.Length; i++)
+            {
+                int previousItem = support[i - 1];
+                int item = support[i];
+
+                if (itemMap[previousItem] >= itemMap[item])
+                {
+                    ThrowHelper.ThrowNotSupportedException(
+                        $"'{nameof(itemMap)}' must be strictly increasing on the family's support to use the " +
+                        $"fast path, but item {previousItem} (support-ordered before item {item}) maps to " +
+                        $"{itemMap[previousItem]}, which is not less than item {item}'s target {itemMap[item]}. " +
+                        "General (non-monotonic) permutation is not yet supported (planned for M6-5).");
+                }
+            }
+        }
+
         /// <summary>Returns whether the set described by <paramref name="items"/> belongs to <paramref name="f"/>.</summary>
         /// <param name="f">The family; must belong to this manager.</param>
         /// <param name="items">Item indices of the set to check; order and duplicates don't matter.</param>
