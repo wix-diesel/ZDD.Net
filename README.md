@@ -104,6 +104,8 @@ foreach (int[] set in containingItem0.Sets())
 `GraphSet` によるフィルタ・サンプリングから実グラフの読み込みまでの一本道は
 [docs/tutorial.md](docs/tutorial.md) と [`samples/Zdd.Tutorial`](samples/Zdd.Tutorial)。
 CLI から触ってみたい場合は [`samples/Zdd.Cli`](samples/Zdd.Cli)（`dotnet run --project samples/Zdd.Cli -- --help`）。
+`grid-path` / `spanning-tree` / `partition` / `matching` の各サブコマンドで組み込みスペックをそのまま
+叩ける（例: `dotnet run --project samples/Zdd.Cli -- grid-path 7 7` は OEIS A007764 の `575780564` を出す）。
 
 ## ドキュメント
 

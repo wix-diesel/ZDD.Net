@@ -12,6 +12,20 @@ permissions:
 jobs:
   build-test:
     runs-on: ubuntu-latest
+    # ジョブ全体の上限。通常はビルド + テスト一式 + サンプル実行で数分以内に終わる
+    # （このジョブがハングした実績があるため、想定外の再発でもここで必ず止める）。
+    timeout-minutes: 15
+    env:
+      # サンプルはビルド済みの DLL を "dotnet <dll>" で直接起動する（"dotnet run" は使わない）。
+      # "dotnet run" は --no-restore --no-build を付けても MSBuild でプロジェクトを評価するため、
+      # 裏で MSBuild/Roslyn のビルドサーバー（ノード再利用）を常駐プロセスとして起動することがある。
+      # このプロセスは親の標準出力の fd を継承したまま残るため、"$(...)" やパイプで出力を読もうと
+      # するシェルが EOF を待ち続けて（CLI 自体は正常終了していても）ハングする——実際に CI が
+      # 2 回ハングして原因になった。"dotnet <dll>" は MSBuild を経由しないのでこの問題が起きない。
+      ZDD_CLI_DLL: samples/Zdd.Cli/bin/Release/net10.0/zdd-cli.dll
+      ZDD_API_GUIDE_DLL: samples/Zdd.ApiGuide/bin/Release/net10.0/zdd-api-guide.dll
+      ZDD_FRONTIER_GUIDE_DLL: samples/Zdd.FrontierGuide/bin/Release/net10.0/zdd-frontier-guide.dll
+      ZDD_TUTORIAL_DLL: samples/Zdd.Tutorial/bin/Release/net10.0/zdd-tutorial.dll
     steps:
       - name: チェックアウト
         uses: actions/checkout@v7
@@ -54,33 +68,101 @@ jobs:
         # （tests/ZDD.Net.Tests/Harness/DotSyntax.cs）が見るのは構造だけで、文法そのものは見ない。
         run: sudo apt-get update && sudo apt-get install --no-install-recommends -y graphviz
 
-      - name: サンプル CLI の実行と DOT の検証
+      - name: サンプル CLI（family）の実行と DOT の検証
+        timeout-minutes: 2
         run: |
           set -euo pipefail
           mkdir -p ./dot
           for family in powerset singletons full; do
-            dotnet run --project samples/Zdd.Cli --no-restore --no-build --configuration Release \
-              -- --family "$family" --items 6 --stats --dot "./dot/$family.gv"
+            dotnet "$ZDD_CLI_DLL" family --family "$family" --items 6 --stats --dot "./dot/$family.gv"
             dot -Tsvg "./dot/$family.gv" -o "./dot/$family.svg"
           done
+
+      - name: サンプル CLI（grid-path）の実行と既知値の検証
+        # M5-5 の完了条件: grid-path 7 7 が OEIS A007764 の値 575780564 を出すこと。
+        #
+        # 7x7 格子の ZDD は約 8,000 ノードあり、その DOT を dot -Tsvg でレイアウトしようとすると
+        # Graphviz 側の計算量の問題で終わらない（60 秒のタイムアウトでも完走しないことをローカルで
+        # 確認済み）。これが実際に CI をハングさせていた真の原因だった（dotnet 側は無関係で、
+        # 既知値の検証自体は一瞬で終わっている）。そのため 7x7 では --dot を渡さず、DOT/SVG の
+        # 検証は別途ずっと小さい格子（4x4、128 ノード）で行う。
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          output=$(dotnet "$ZDD_CLI_DLL" grid-path 7 7 --estimate)
+          echo "$output"
+          output=$(dotnet "$ZDD_CLI_DLL" grid-path 7 7 --stats --sample 3)
+          echo "$output"
+          grep -q '^sets *: 575780564$' <<< "$output"
+
+          dotnet "$ZDD_CLI_DLL" grid-path 4 4 --dot "./dot/grid-path-4x4.gv" > /dev/null
+          dot -Tsvg "./dot/grid-path-4x4.gv" -o "./dot/grid-path-4x4.svg"
+
+      - name: サンプル CLI（spanning-tree / partition / matching）の実行と DOT の検証
+        # --save/--load のラウンドトリップと --min-weight もここで確かめる。
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          cat > ./dot/k5.dimacs <<'GRAPH'
+          c complete graph on 5 vertices
+          p edge 5 10
+          e 1 2
+          e 1 3
+          e 1 4
+          e 1 5
+          e 2 3
+          e 2 4
+          e 2 5
+          e 3 4
+          e 3 5
+          e 4 5
+          GRAPH
+
+          output=$(dotnet "$ZDD_CLI_DLL" spanning-tree ./dot/k5.dimacs --stats --dot ./dot/spanning-tree-k5.gv \
+            --save ./dot/spanning-tree-k5.zdd)
+          echo "$output"
+          grep -q '^sets *: 125$' <<< "$output" # K5 のラベル付き全域木数（Cayley の公式: 5^3）
+
+          output=$(dotnet "$ZDD_CLI_DLL" spanning-tree ./dot/k5.dimacs --load ./dot/spanning-tree-k5.zdd)
+          echo "$output"
+          grep -q '^sets *: 125$' <<< "$output" # 保存したファイルを読み込んでも同じ結果になること
+
+          printf '1\n1\n1\n1\n1\n1\n1\n1\n1\n1\n' > ./dot/k5-weights.txt
+          output=$(dotnet "$ZDD_CLI_DLL" spanning-tree ./dot/k5.dimacs --min-weight ./dot/k5-weights.txt)
+          echo "$output"
+          grep -q '^min-weight: .* (weight 4)$' <<< "$output" # K5 の全域木はどれも辺 4 本
+
+          output=$(dotnet "$ZDD_CLI_DLL" partition ./dot/k5.dimacs 2 --min-block 2 --max-block 3 --dot ./dot/partition-k5.gv)
+          echo "$output"
+          grep -q '^sets *: 40$' <<< "$output"
+
+          dotnet "$ZDD_CLI_DLL" matching ./dot/k5.dimacs --perfect # 5 頂点は奇数なので完全マッチングは 0 件（クラッシュしないことだけ見る）
+
+          output=$(dotnet "$ZDD_CLI_DLL" matching ./dot/k5.dimacs --stats --dot ./dot/matching-k5.gv)
+          echo "$output"
+          grep -q '^sets *: 26$' <<< "$output" # involution number a(5) = K5 のマッチング総数（空集合込み）
+
+          dot -Tsvg ./dot/spanning-tree-k5.gv -o ./dot/spanning-tree-k5.svg
+          dot -Tsvg ./dot/partition-k5.gv -o ./dot/partition-k5.svg
+          dot -Tsvg ./dot/matching-k5.gv -o ./dot/matching-k5.svg
 
       - name: api-guide サンプルの実行
         # docs/api-guide.md に載せているコード片(samples/Zdd.ApiGuide)を実際に動かし、
         # ガイドのサンプルが壊れていないことを確かめる。
-        run: >
-          dotnet run --project samples/Zdd.ApiGuide --no-restore --no-build --configuration Release
+        timeout-minutes: 1
+        run: dotnet "$ZDD_API_GUIDE_DLL"
 
       - name: frontier-guide サンプルの実行
         # docs/frontier-guide.md に載せているコード片(samples/Zdd.FrontierGuide)を実際に動かし、
         # ガイドのサンプルが壊れていないことを確かめる。
-        run: >
-          dotnet run --project samples/Zdd.FrontierGuide --no-restore --no-build --configuration Release
+        timeout-minutes: 1
+        run: dotnet "$ZDD_FRONTIER_GUIDE_DLL"
 
       - name: tutorial サンプルの実行
         # docs/tutorial.md に載せているコード片(samples/Zdd.Tutorial)を実際に動かし、
         # チュートリアルのサンプルが壊れていないことを確かめる。
-        run: >
-          dotnet run --project samples/Zdd.Tutorial --no-restore --no-build --configuration Release
+        timeout-minutes: 1
+        run: dotnet "$ZDD_TUTORIAL_DLL"
 
       - name: DOT のアップロード
         uses: actions/upload-artifact@v7
