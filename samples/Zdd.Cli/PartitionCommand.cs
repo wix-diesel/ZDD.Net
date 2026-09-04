@@ -78,9 +78,10 @@ namespace ZDD.Net.Samples.Cli
 
                     case "--min-block":
                         if (!CliOutput.TryTakeValue(flags, ref i, flag, out string? minText, out error)
-                            || !int.TryParse(minText, NumberStyles.None, CultureInfo.InvariantCulture, out int minValue))
+                            || !int.TryParse(minText, NumberStyles.None, CultureInfo.InvariantCulture, out int minValue)
+                            || minValue <= 0)
                         {
-                            return Fail(error ?? $"--min-block must be a non-negative integer, but was '{minText}'.");
+                            return Fail(error ?? $"--min-block must be a positive integer, but was '{minText}'.");
                         }
 
                         minBlock = minValue;
@@ -88,9 +89,10 @@ namespace ZDD.Net.Samples.Cli
 
                     case "--max-block":
                         if (!CliOutput.TryTakeValue(flags, ref i, flag, out string? maxText, out error)
-                            || !int.TryParse(maxText, NumberStyles.None, CultureInfo.InvariantCulture, out int maxValue))
+                            || !int.TryParse(maxText, NumberStyles.None, CultureInfo.InvariantCulture, out int maxValue)
+                            || maxValue <= 0)
                         {
-                            return Fail(error ?? $"--max-block must be a non-negative integer, but was '{maxText}'.");
+                            return Fail(error ?? $"--max-block must be a positive integer, but was '{maxText}'.");
                         }
 
                         maxBlock = maxValue;

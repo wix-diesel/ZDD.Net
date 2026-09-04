@@ -216,6 +216,24 @@ namespace ZDD.Net.Samples.Cli
             }
         }
 
+        /// <summary>The inverse of <see cref="TryParseEdgeOrder"/>: the CLI token for a strategy, so reported output uses the same vocabulary as <c>--edge-order</c> takes.</summary>
+        private static string EdgeOrderToken(EdgeOrderStrategy strategy)
+        {
+            switch (strategy)
+            {
+                case EdgeOrderStrategy.Bfs:
+                    return "bfs";
+                case EdgeOrderStrategy.Dfs:
+                    return "dfs";
+                case EdgeOrderStrategy.Grid:
+                    return "grid";
+                case EdgeOrderStrategy.BeamSearchPathWidth:
+                    return "beam";
+                default:
+                    return "as-given";
+            }
+        }
+
         /// <summary>
         /// Runs the shared pipeline: reorder edges (if asked), build (or load) the family, report it, and
         /// act on <c>--dot</c>/<c>--save</c>/<c>--sample</c>/<c>--min-weight</c>/<c>--stats</c>.
@@ -251,6 +269,16 @@ namespace ZDD.Net.Samples.Cli
                 using FileStream loadStream = File.OpenRead(options.LoadPath);
                 family = ZddBinaryFormat.Read(loadStream);
                 manager = family.Manager;
+
+                if (manager.VariableCount != built.EdgeCount)
+                {
+                    int loadedVariableCount = manager.VariableCount;
+                    manager.Dispose();
+                    throw new InvalidOperationException(
+                        $"'{options.LoadPath}' was saved with {loadedVariableCount} variable(s), but this graph "
+                        + $"(after --edge-order) has {built.EdgeCount} edge(s); --load only makes sense for a file "
+                        + "saved from the same graph and edge order used here.");
+                }
             }
             else
             {
@@ -312,7 +340,7 @@ namespace ZDD.Net.Samples.Cli
 
             CliOutput.WriteField(output, "vertices", graph.VertexCount.ToString(CultureInfo.InvariantCulture));
             CliOutput.WriteField(output, "edges", graph.EdgeCount.ToString(CultureInfo.InvariantCulture));
-            CliOutput.WriteField(output, "edge-order", options.EdgeOrder.ToString());
+            CliOutput.WriteField(output, "edge-order", EdgeOrderToken(options.EdgeOrder));
             CliOutput.WriteField(output, "sets", family.Count.ToString(CultureInfo.InvariantCulture));
             CliOutput.WriteField(output, "nodes", family.NodeCount.ToString(CultureInfo.InvariantCulture));
         }

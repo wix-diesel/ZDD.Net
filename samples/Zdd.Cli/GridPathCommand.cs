@@ -102,6 +102,19 @@ namespace ZDD.Net.Samples.Cli
             int resolvedS = s ?? 0;
             int resolvedT = t ?? graph.VertexCount - 1;
 
+            if (!anyEndpoints)
+            {
+                if ((uint)resolvedS >= (uint)graph.VertexCount)
+                {
+                    return Fail($"--s must be in 0 .. {graph.VertexCount - 1}, but was {resolvedS}.");
+                }
+
+                if ((uint)resolvedT >= (uint)graph.VertexCount)
+                {
+                    return Fail($"--t must be in 0 .. {graph.VertexCount - 1}, but was {resolvedT}.");
+                }
+            }
+
             List<(string, string)> extraFields = new List<(string, string)>
             {
                 ("rows", rows.ToString(CultureInfo.InvariantCulture)),
