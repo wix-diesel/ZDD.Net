@@ -181,7 +181,30 @@ foreach (int[] set in powerSet.Sets())
 「集合の個数 × 変数の個数」かかるので、大きな族を丸ごと `ToList()` するのは避け、
 個数だけが要るなら `Count` を使う。
 
-### 4.3 `ElementAt` / `IndexOf`: unranking / ranking
+### 4.3 `EnumerateInto`: アロケーションなしの列挙
+
+```csharp
+// MaxSetSize がバッファに必要な長さ（この族に含まれる集合の最大要素数）。
+int[] buffer = new int[powerSet.MaxSetSize];
+
+foreach (ReadOnlySpan<int> set in powerSet.EnumerateInto(buffer))
+{
+    // set はバッファそのものへのビュー。次の MoveNext で上書きされるので、
+    // 持ち越したいならここで ToArray() するなどコピーを取ること。
+}
+```
+
+`Sets()` は集合 1 つごとに `new int[]` するので、数百万集合を舐める用途では GC 圧が支配的に
+なる。`EnumerateInto` は同じ深さ優先探索を、呼び出し側が渡したバッファへ書き込みながら回す
+`ref struct` 列挙子（`SetSpanEnumerator`）を返すので、集合ごとの配列アロケーションはしない
+（内部の明示スタック/0-枝チェーンが伸びる場合は別で、そちらは `Array.Resize` による散発的な
+アロケーションが残る——集合数ではなく族の深さ・形状に応じて起きる、頻度も規模も違うもの）。
+`ref struct` にしてあるのは制約ではなく安全装置——`LINQ` に渡したり `List<T>` に溜め込んだりする
+と、使い回されるバッファを後から読んで壊れた結果を見ることになるため、そもそもできないように
+してある。`Sets()`（集合ごとに新しい配列）が既定のままなのはそのためで、`EnumerateInto` は
+アロケーションが実測のボトルネックになってから使う。
+
+### 4.4 `ElementAt` / `IndexOf`: unranking / ranking
 
 ```csharp
 using ZddManager manager = new ZddManager(variableCount: 40);
@@ -199,7 +222,7 @@ BigInteger rank = powerSet.IndexOf(last);               // ElementAt の逆（un
 「ノードごとの部分濃度を先に求め、根から 1 本の経路を降りるだけ」で答えを出す
 （手間は `Count` と同程度 ＋ O(変数の個数)）。
 
-### 4.4 `Sample`: 一様ランダム抽出
+### 4.5 `Sample`: 一様ランダム抽出
 
 ```csharp
 Random random = new Random(Seed: 42);
@@ -212,7 +235,7 @@ int[][] samples = powerSet.Sample(count: 10, random);
 「10^24 個の解から一様に 1 つ」が ZDD の目玉機能である。内部は `ElementAt` に一様乱数を
 食わせて実現しており、剰余を取る素朴な方法ではなく棄却法で偏りをなくしている。
 
-### 4.5 `MaxWeight` / `MinWeight` / `TopK`: 全解を並べない最適化
+### 4.6 `MaxWeight` / `MinWeight` / `TopK`: 全解を並べない最適化
 
 ```csharp
 // pairs: {0,1,2,3} の冪集合のうち、要素数がちょうど 2 の集合だけを残した族

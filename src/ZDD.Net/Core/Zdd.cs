@@ -147,6 +147,19 @@ namespace ZDD.Net.Core
         /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public BigInteger[] CountBySize() => this.Evaluate<SizeDistributionEval, BigInteger[]>(default);
 
+        /// <summary>The largest number of elements in any single set of this family. The buffer length <see cref="EnumerateInto"/> requires.</summary>
+        /// <remarks>
+        /// For a non-empty family, equivalent to <c>CountBySize().Length - 1</c>, but computed
+        /// directly via <see cref="MaxSetSizeEval"/> instead of building the whole size
+        /// distribution. &#8709; is the one exception to that equivalence: <c>CountBySize()</c>
+        /// returns an empty array there (so <c>Length - 1</c> would be -1), while this returns 0,
+        /// same as <c>{&#8709;}</c> — for both, a buffer of length 0 enumerates correctly (zero
+        /// sets, or one empty set, respectively).
+        /// </remarks>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
+        public int MaxSetSize => this.Evaluate<MaxSetSizeEval, int>(default);
+
         /// <summary>Union <c>F &#8746; G</c>: sets belonging to either family.</summary>
         /// <param name="g">The other family; must belong to the same manager.</param>
         /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
@@ -407,6 +420,46 @@ namespace ZDD.Net.Core
         /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public IEnumerable<int[]> Sets(ZddEnumerationOrder order = ZddEnumerationOrder.Default) =>
             SetEnumeration.Enumerate(Manager, _id, order);
+
+        /// <summary>Enumerates this family's sets into a caller-provided buffer, without allocating one array per set.</summary>
+        /// <param name="buffer">
+        /// Scratch space the enumerator writes each set's items into and reuses for the next one;
+        /// length must be at least <see cref="MaxSetSize"/>.
+        /// </param>
+        /// <param name="order">Order to yield sets in. Defaults to <see cref="ZddEnumerationOrder.Default"/>.</param>
+        /// <returns>
+        /// A <c>ref struct</c> enumerator: <see cref="SetSpanEnumerator.Current"/> is overwritten by
+        /// every <see cref="SetSpanEnumerator.MoveNext"/> call, so copy it (e.g. <c>ToArray()</c>) if you
+        /// need to keep it past the next iteration. Copy the sets you keep, not the enumerator itself.
+        /// </returns>
+        /// <remarks>
+        /// The <c>ref struct</c>-ness is deliberate, not an oversight: it is what stops the shared
+        /// buffer from being handed to LINQ or stored past one iteration, where a reused buffer
+        /// would silently corrupt already-yielded results. <see cref="Sets"/> (one fresh array per
+        /// set) remains the default for that reason; reach for this only once allocation is the
+        /// measured bottleneck. Same traversal, order, and set contents as <see cref="Sets"/> —
+        /// only the allocation strategy differs.
+        /// </remarks>
+        /// <exception cref="ArgumentException"><paramref name="buffer"/> is shorter than <see cref="MaxSetSize"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="order"/> is not a defined value.</exception>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
+        public SetSpanEnumerator EnumerateInto(Span<int> buffer, ZddEnumerationOrder order = ZddEnumerationOrder.Default)
+        {
+            SetEnumeration.EnsureDefinedOrder(order);
+
+            ZddManager manager = Manager;
+            int maxSetSize = MaxSetSize;
+
+            if (buffer.Length < maxSetSize)
+            {
+                ThrowHelper.ThrowArgumentException(
+                    nameof(buffer),
+                    $"'{nameof(buffer)}' must be at least {nameof(MaxSetSize)} ({maxSetSize}) long, but was {buffer.Length}.");
+            }
+
+            return new SetSpanEnumerator(manager, _id, buffer, order == ZddEnumerationOrder.Lexicographic);
+        }
 
         /// <summary>Returns whether the set represented by <paramref name="set"/> belongs to this family.</summary>
         /// <param name="set">Item indices of the set to check, any order, duplicates ignored. Empty asks whether the family contains the empty set.</param>
