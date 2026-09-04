@@ -91,6 +91,26 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
   簡易テキスト形式を判別して読む。不正な引数・存在しないファイル・壊れた形式はすべて
   `error: <message>` 1 行で終わり、スタックトレースを出さない。CI のスモークテストで
   `grid-path 7 7 → 575780564` と `--save`/`--load` ラウンドトリップを検証している
+- API ドキュメントサイト（M5-6、issue #58）: `docs/docfx.json` により、手書きガイド
+  （`api-guide.md`/`frontier-guide.md`/`tutorial.md`/`benchmarks.md` ほか docs/ 配下全体）と、
+  `src/ZDD.Net` の XML doc コメントから `docfx metadata` が起こす全 public API のリファレンスを
+  1 つのサイトにまとめた。`.github/workflows/docs.yml` が main への push ごとに再生成して
+  GitHub Pages（<https://wix-diesel.github.io/ZDD.Net/>）へ公開し、pull request ではビルドだけ
+  行う（公開はしない）。`docfx build --warningsAsErrors` により、手書きガイド・API リファレンス
+  のリンク切れ（DocFX の既定のリンク検証が拾う）はビルド自体を失敗させる。CS1591（XML doc
+  コメント欠落）は M0-1 から `GenerateDocumentationFile=true` と `TreatWarningsAsErrors=true` が
+  効いており、`.editorconfig` の抑制は `tests/**/*.cs` に限定されている（テスト以外に
+  suppress は無い）ため、全 public API に doc があることは棚卸しするまでもなく既にビルドで
+  強制されていた。今回の作業は主要な型・メソッド（`Zdd`/`ZddManager`/`SetSet<T>`/
+  `SetUniverse<T>`/`FrontierBuilder`/`IDdSpec<TState>`/`Graph`/`ZddBinaryFormat`/
+  `GraphillionTextFormat`、`GraphSet` は M3-8 で既に持っていた）に動作確認済みのコード片
+  （各ガイド・サンプルプロジェクトで CI が実行しているものと同じ内容）で `<example>` を追加した
+  こと。ドキュメント本文からソースへの相対リンク（`../samples/...`・`../src/...`・
+  `../bench/...`・`../tests/...`・`../../CHANGELOG.md`）は、DocFX が生成する別サイトの URL 構造
+  では解決できないため、GitHub の `blob`/`tree` の絶対 URL に置き換えた（GitHub 上でリポジトリを
+  直接読む場合も同じリンクがそのまま機能する）。本体 `PackageReference` は引き続き 0
+  （DocFX はドキュメント生成専用のビルドツールとしてグローバルにインストールするだけで、
+  どの `.csproj` からも参照しない）
 
 ### Changed
 

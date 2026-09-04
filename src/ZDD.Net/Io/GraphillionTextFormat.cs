@@ -15,6 +15,12 @@ namespace ZDD.Net.Io
     /// existing Graphillion assets, and for cross-checking this library's results against an
     /// independent implementation (docs/PLAN.md &#167;9).
     /// </summary>
+    /// <example>
+    /// <code>
+    /// string dump = GraphillionTextFormat.Write(family); // hand this string to Python's setset.loads()
+    /// Zdd reloaded = GraphillionTextFormat.Read(dump, variableCount: 5);
+    /// </code>
+    /// </example>
     /// <remarks>
     /// <para>
     /// <b>Format, reverse-engineered from real output.</b> No public specification of this format

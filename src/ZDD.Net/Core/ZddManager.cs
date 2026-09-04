@@ -12,6 +12,15 @@ namespace ZDD.Net.Core
     /// Owns ZDD creation: holds the node table and unique table that every <see cref="Zdd"/>
     /// handle from this instance belongs to.
     /// </summary>
+    /// <example>
+    /// <code>
+    /// using ZddManager manager = new ZddManager(variableCount: 4);
+    ///
+    /// Zdd a = manager.Singleton(0) | manager.Singleton(1); // {{0}, {1}}
+    /// Zdd b = manager.Singleton(1) | manager.Singleton(2); // {{1}, {2}}
+    /// Zdd union = a | b;                                   // {{0}, {1}, {2}}
+    /// </code>
+    /// </example>
     /// <remarks>
     /// <para>
     /// Callers use 0-based <i>item index</i> (0 .. <see cref="VariableCount"/> - 1); nodes

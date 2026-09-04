@@ -7,7 +7,7 @@ ZDD.Net を初めて触る読者が、「格子グラフの s–t パスを数�
 [docs/frontier-guide.md](frontier-guide.md) を参照。このチュートリアルはその上に立つ、
 「まず動かして感触を掴む」ための一本道である。
 
-このガイドに載っているコード片は [`samples/Zdd.Tutorial/Program.cs`](../samples/Zdd.Tutorial/Program.cs)
+このガイドに載っているコード片は [`samples/Zdd.Tutorial/Program.cs`](https://github.com/wix-diesel/ZDD.Net/blob/main/samples/Zdd.Tutorial/Program.cs)
 にそのまま置いてあり、CI が毎回ビルドして実行している（`.github/workflows/ci.yml` の
 「tutorial サンプルの実行」）。手元で確かめたいときは:
 
@@ -194,6 +194,8 @@ catch (BuildLimitExceededException)
 
 ## 5. さらに詳しく
 
+- 型・メンバ単位の詳しいリファレンス（全 public API の XML doc から自動生成）:
+  [wix-diesel.github.io/ZDD.Net](https://wix-diesel.github.io/ZDD.Net/)
 - フロンティア法フレームワークの詳しい説明（フロンティア法とは何か、組み込みスペック一覧、
   `BuildOptions`、独自スペックの書き方、スペックの合成）: [docs/frontier-guide.md](frontier-guide.md)
 - Core（`ZddManager`/`Zdd`）の使い方: [docs/api-guide.md](api-guide.md)
@@ -202,6 +204,6 @@ catch (BuildLimitExceededException)
 - グラフ入出力（DIMACS 以外にエッジリスト形式・本ライブラリ独自の簡易テキスト形式もある）:
   `ZDD.Net.Io`（`DimacsGraph` / `EdgeListGraph` / `SimpleTextGraph`）の XML ドキュメント
 - 任意の要素型の族を扱いたいとき（グラフの辺集合以外）: `ZDD.Net.Sets.SetSet<T>`
-- 実行できるサンプル: [`samples/Zdd.Tutorial`](../samples/Zdd.Tutorial)（このチュートリアルの
-  コード片）、[`samples/Zdd.FrontierGuide`](../samples/Zdd.FrontierGuide)、
-  [`samples/Zdd.ApiGuide`](../samples/Zdd.ApiGuide)、[`samples/Zdd.Cli`](../samples/Zdd.Cli)
+- 実行できるサンプル: [`samples/Zdd.Tutorial`](https://github.com/wix-diesel/ZDD.Net/tree/main/samples/Zdd.Tutorial)（このチュートリアルの
+  コード片）、[`samples/Zdd.FrontierGuide`](https://github.com/wix-diesel/ZDD.Net/tree/main/samples/Zdd.FrontierGuide)、
+  [`samples/Zdd.ApiGuide`](https://github.com/wix-diesel/ZDD.Net/tree/main/samples/Zdd.ApiGuide)、[`samples/Zdd.Cli`](https://github.com/wix-diesel/ZDD.Net/tree/main/samples/Zdd.Cli)

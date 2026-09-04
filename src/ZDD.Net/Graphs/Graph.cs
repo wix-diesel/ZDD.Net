@@ -8,6 +8,12 @@ namespace ZDD.Net.Graphs
     /// An undirected, simple graph, stored as an edge list. Edge order is preserved exactly as given and
     /// is significant: it is the frontier method's variable order, not an incidental detail.
     /// </summary>
+    /// <example>
+    /// <code>
+    /// Graph grid = Graph.Grid(9, 9);
+    /// GraphSet paths = GraphSet.Paths(grid, from: 0, to: 80);
+    /// </code>
+    /// </example>
     /// <remarks>
     /// <para>
     /// <b>Edge index ↔ variable index</b>: edge index <c>i</c> (the position of an edge in <see cref="Edges"/>)

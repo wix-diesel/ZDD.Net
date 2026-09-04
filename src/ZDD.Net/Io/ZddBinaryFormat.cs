@@ -11,6 +11,20 @@ namespace ZDD.Net.Io
     /// (<c>Level</c>/<c>Lo</c>/<c>Hi</c>), written out with almost no transformation, so it is far
     /// faster and more compact than a text format (docs/PLAN.md &#167;9).
     /// </summary>
+    /// <example>
+    /// <code>
+    /// using (FileStream stream = File.Create("family.zdd"))
+    /// {
+    ///     ZddBinaryFormat.Write(family, stream);
+    /// }
+    ///
+    /// using (FileStream stream = File.OpenRead("family.zdd"))
+    /// {
+    ///     Zdd reloaded = ZddBinaryFormat.Read(stream);
+    ///     Console.WriteLine(reloaded.Count == family.Count); // true
+    /// }
+    /// </code>
+    /// </example>
     /// <remarks>
     /// <para>
     /// <b>Layout.</b> A 21-byte fixed header, then one entry per node:

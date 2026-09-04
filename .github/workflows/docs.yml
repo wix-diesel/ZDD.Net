@@ -1,0 +1,74 @@
+name: Docs
+
+# docs/docfx.json から API ドキュメントサイトを生成し、GitHub Pages に公開する（M5-6、issue #58）。
+# 生成対象は 2 つ: docs/*.md（手書きガイド）と、src/ZDD.Net の XML doc コメントから
+# `docfx metadata` が起こす API リファレンス。main への push で公開まで行い、
+# pull request ではビルドの成功とリンク切れの有無だけを確認する（公開はしない）。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "src/ZDD.Net/**"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "src/ZDD.Net/**"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v7
+
+      - name: .NET セットアップ
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: DocFX のインストール
+        run: dotnet tool install --global docfx
+
+      - name: API メタデータの生成
+        # src/ZDD.Net の XML doc コメントから docs/api/*.yml を起こす。本体プロジェクトの
+        # csproj を読むだけで、PackageReference には一切影響しない（DocFX はビルドツール）。
+        run: docfx metadata docs/docfx.json
+
+      - name: サイトのビルド
+        # --warningsAsErrors により、DocFX 既定のリンク検証（手書きガイド・API リファレンスの
+        # 相互参照・相対リンク）で警告が 1 つでも出ると、このステップ自体が失敗する
+        # （= リンク切れが CI で機械的に検出される）。CS1591 を有効にした本体ビルド（ci.yml）が
+        # 全 public API に XML doc があることを別途保証しているので、生成される API リファレンス
+        # に doc の欠落は無いはず。
+        run: docfx build docs/docfx.json --warningsAsErrors
+
+      - name: サイトのアップロード
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: docs/_site
+
+  deploy:
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: GitHub Pages へのデプロイ
+        id: deployment
+        uses: actions/deploy-pages@v4

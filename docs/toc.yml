@@ -1,0 +1,27 @@
+- name: ホーム
+  href: index.md
+- name: チュートリアル
+  href: tutorial.md
+- name: API ガイド
+  href: api-guide.md
+- name: フロンティア法ガイド
+  href: frontier-guide.md
+- name: フロンティア仕様ガイド
+  href: frontier-spec-guide.md
+- name: Graphillion 互換 I/O
+  href: graphillion-io.md
+- name: ベンチマーク
+  href: benchmarks.md
+- name: 設計ドキュメント
+  items:
+    - name: 実装計画（PLAN）
+      href: PLAN.md
+    - name: タスク分割・ロードマップ
+      href: ROADMAP.md
+    - name: 未解決の論点
+      href: OPEN-QUESTIONS.md
+- name: リリースノート
+  href: release-notes/toc.yml
+- name: API リファレンス
+  href: api/
+  homepage: api/index.md

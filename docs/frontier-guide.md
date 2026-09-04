@@ -5,7 +5,7 @@
 ところまでを狙っている。Core（`ZddManager`/`Zdd`）の使い方は [docs/api-guide.md](api-guide.md) を参照。
 
 このガイドに載っている中心的なコード片（1 節・3〜7 節の実行例）は
-[`samples/Zdd.FrontierGuide/Program.cs`](../samples/Zdd.FrontierGuide/Program.cs) にそのまま置いてあり、
+[`samples/Zdd.FrontierGuide/Program.cs`](https://github.com/wix-diesel/ZDD.Net/blob/main/samples/Zdd.FrontierGuide/Program.cs) にそのまま置いてあり、
 CI が毎回ビルドして実行している（`.github/workflows/ci.yml` の「frontier-guide サンプルの実行」）。
 2 節（`Graph` の作り方）の一部の断片は、示し方の一例として載せているだけで、サンプルには含まれない。
 手元で確かめたいときは:
@@ -457,7 +457,7 @@ Zdd family = FrontierBuilder.Build<NoThreeConsecutiveSpec, int>(manager, new NoT
 ```
 
 このスペックはブルートフォース（8 要素すべての `2^8` 通りを 1 つずつ数える）と一致することを
-サンプル（[`samples/Zdd.FrontierGuide/Program.cs`](../samples/Zdd.FrontierGuide/Program.cs) の
+サンプル（[`samples/Zdd.FrontierGuide/Program.cs`](https://github.com/wix-diesel/ZDD.Net/blob/main/samples/Zdd.FrontierGuide/Program.cs) の
 `CustomSpecNoThreeConsecutive`）で確かめている——「チュートリアルどおりに書けば独自スペックが
 作れる」ことの実例である。
 
@@ -480,7 +480,7 @@ string dot = family.ToDot(new DotOptions { StateLabels = stateLabels });
 状態記録は既定で無効（`RecordStates = false`）なので、有効にしない限りメモリ・速度への影響は無い。
 記録の有無で `family` そのもの（できあがる ZDD）は完全に一致する。巨大な族には
 `DotOptions.MaxLevels` / `MaxNodes` / `FocusNodeId` で部分表示できる——打ち切られた枝は
-`truncated` という 1 個のマーカーへまとめて張り替わる。詳しくは [`ZDD.Net.Io.DotOptions`](../src/ZDD.Net/Io/DotOptions.cs) の XML doc を参照。
+`truncated` という 1 個のマーカーへまとめて張り替わる。詳しくは [`ZDD.Net.Io.DotOptions`](https://github.com/wix-diesel/ZDD.Net/blob/main/src/ZDD.Net/Io/DotOptions.cs) の XML doc を参照。
 
 ## 8. スペックの合成: `And` / `Or` / `Subset`
 
@@ -628,6 +628,8 @@ Core 単体より大きく出ることが多い。`bench/ZDD.Net.Benchmarks` は
 
 ## 11. さらに詳しく
 
+- 型・メンバ単位の詳しいリファレンス（全 public API の XML doc から自動生成）:
+  [wix-diesel.github.io/ZDD.Net](https://wix-diesel.github.io/ZDD.Net/)
 - 「格子グラフの s–t パスを数える」から「実グラフを読み込んで解く」までの一本道の入門:
   [docs/tutorial.md](tutorial.md)
 - スペックの規約の詳しい説明（`IDdSpec`/`IArrayDdSpec`/`IHybridDdSpec` の契約、状態の寿命、
@@ -637,7 +639,7 @@ Core 単体より大きく出ることが多い。`bench/ZDD.Net.Benchmarks` は
   [docs/benchmarks.md](benchmarks.md)
 - 仕様・アーキテクチャの全体像: [docs/PLAN.md](PLAN.md)
 - マイルストーン別の実装計画: [docs/ROADMAP.md](ROADMAP.md)
-- 実行できるサンプル: [`samples/Zdd.FrontierGuide`](../samples/Zdd.FrontierGuide)（このガイドの
-  コード片）、[`samples/Zdd.Tutorial`](../samples/Zdd.Tutorial)（チュートリアルのコード片）、
-  [`samples/Zdd.Cli`](../samples/Zdd.Cli)（CLI）、
-  [`samples/Zdd.ApiGuide`](../samples/Zdd.ApiGuide)（Core のコード片）
+- 実行できるサンプル: [`samples/Zdd.FrontierGuide`](https://github.com/wix-diesel/ZDD.Net/tree/main/samples/Zdd.FrontierGuide)（このガイドの
+  コード片）、[`samples/Zdd.Tutorial`](https://github.com/wix-diesel/ZDD.Net/tree/main/samples/Zdd.Tutorial)（チュートリアルのコード片）、
+  [`samples/Zdd.Cli`](https://github.com/wix-diesel/ZDD.Net/tree/main/samples/Zdd.Cli)（CLI）、
+  [`samples/Zdd.ApiGuide`](https://github.com/wix-diesel/ZDD.Net/tree/main/samples/Zdd.ApiGuide)（Core のコード片）
