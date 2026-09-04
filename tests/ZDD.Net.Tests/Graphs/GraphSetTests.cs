@@ -267,6 +267,77 @@ namespace ZDD.Net.Tests.Graphs
             Assert.Equal(expected, chained.Zdd);
         }
 
+        // ---- 1 要素変種（M6-7）----
+
+        [Fact]
+        public void SomeItemVariantsMatchTheUnderlyingZddOperations()
+        {
+            Graph grid = Graph.Grid(4, 4);
+            GraphSet basePaths = GraphSet.Paths(grid, 0, grid.VertexCount - 1);
+            Edge[] someEdges = [grid.GetEdge(0), grid.GetEdge(3), grid.GetEdge(5)];
+            int[] someIndices = [0, 3, 5];
+
+            Assert.Equal(basePaths.Zdd.RemoveSomeItem(), basePaths.RemoveSomeItem().Zdd);
+            Assert.Equal(basePaths.Zdd.AddSomeItem(), basePaths.AddSomeItem().Zdd);
+            Assert.Equal(basePaths.Zdd.RemoveAddSomeItems(), basePaths.RemoveAddSomeItems().Zdd);
+
+            Assert.Equal(basePaths.Zdd.RemoveSomeItem(someIndices), basePaths.RemoveSomeItem(someEdges).Zdd);
+            Assert.Equal(basePaths.Zdd.AddSomeItem(someIndices), basePaths.AddSomeItem(someEdges).Zdd);
+            Assert.Equal(basePaths.Zdd.RemoveAddSomeItems(someIndices), basePaths.RemoveAddSomeItems(someEdges).Zdd);
+
+            // The GraphSet's own Universe still decodes the wrapped Zdd's sets back into real edges.
+            GraphSet removed = basePaths.RemoveSomeItem(someEdges);
+            Assert.All(removed, set => Assert.True(set.Count >= 0));
+            Assert.Equal(removed.Count, removed.Count());
+        }
+
+        [Fact]
+        public void SomeItemVariantsRejectAnEdgeOutsideTheGraph()
+        {
+            Graph grid = Graph.Grid(4, 4);
+            GraphSet basePaths = GraphSet.Paths(grid, 0, grid.VertexCount - 1);
+            Edge foreign = new Edge(0, grid.VertexCount - 1);
+
+            Assert.Throws<ArgumentException>(() => basePaths.RemoveSomeItem(foreign));
+            Assert.Throws<ArgumentException>(() => basePaths.AddSomeItem(foreign));
+            Assert.Throws<ArgumentException>(() => basePaths.RemoveAddSomeItems(foreign));
+        }
+
+        [Fact]
+        public void SomeItemVariantsComposeCorrectlyWithFurtherFilters()
+        {
+            // A family built by direct Zdd algebra (not a frontier walk) still has to filter
+            // correctly afterward (PrecomputedZddSpec, M6-7): this is the regression test for that
+            // bridge, mirroring IncludingExcludingMatchPostHocFilteringExactly's post-hoc comparison.
+            Graph grid = Graph.Grid(4, 4);
+            GraphSet basePaths = GraphSet.Paths(grid, 0, grid.VertexCount - 1);
+            Edge include = grid.GetEdge(0);
+            Edge exclude = grid.GetEdge(1);
+
+            GraphSet removed = basePaths.RemoveSomeItem();
+
+            GraphSet including = removed.Including(include);
+            GraphSet excluding = removed.Excluding(exclude);
+            GraphSet smaller = removed.Smaller(6);
+
+            int includeItem = grid.EdgeIndexToVariableIndex(0);
+            int excludeItem = grid.EdgeIndexToVariableIndex(1);
+
+            Zdd postHocIncluding = removed.Zdd.SupersetsOf(removed.Zdd.Manager.Singleton(includeItem));
+            Zdd postHocExcluding = removed.Zdd.OffSet(excludeItem);
+
+            Assert.Equal(postHocIncluding, including.Zdd);
+            Assert.Equal(postHocExcluding, excluding.Zdd);
+            Assert.All(including, set => Assert.Contains(include, set));
+            Assert.All(excluding, set => Assert.DoesNotContain(exclude, set));
+            Assert.All(smaller, set => Assert.True(set.Count < 6));
+
+            // Chaining further still matches a post-hoc intersection of everything applied so far.
+            GraphSet chained = removed.Including(include).Excluding(exclude).Smaller(6);
+            Zdd expectedChained = postHocIncluding.OffSet(excludeItem).Intersect(smaller.Zdd);
+            Assert.Equal(expectedChained, chained.Zdd);
+        }
+
         [Fact]
         public void FiltersAreAppliedAtConstructionTimeNotAsAPostHocIntersection()
         {
