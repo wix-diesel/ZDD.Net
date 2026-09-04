@@ -551,7 +551,8 @@ namespace ZDD.Net.Frontier
                 level,
                 $"The build passed BuildOptions.MaxNodeCount ({_maxNodeCount}) while filling level {level}: " +
                 $"the diagram would hold {_nodeCount} temporary node(s). Raise the limit if the build nearly " +
-                "fits, or make the spec merge more states.");
+                "fits, or make the spec merge more states.",
+                thrownByExpander: true);
 
         private BuildLimitExceededException FrontierSizeExceeded(int level, int frontierSize) =>
             new BuildLimitExceededException(
@@ -560,6 +561,7 @@ namespace ZDD.Net.Frontier
                 level,
                 $"The build passed BuildOptions.MaxFrontierSize ({_maxFrontierSize}) while filling level {level}: " +
                 $"that level already holds {frontierSize} distinct state(s). Raise the limit if the build " +
-                "nearly fits, or reduce the width (a state that keeps less, or a better item order).");
+                "nearly fits, or reduce the width (a state that keeps less, or a better item order).",
+                thrownByExpander: true);
     }
 }
