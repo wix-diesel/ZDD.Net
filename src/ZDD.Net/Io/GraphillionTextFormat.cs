@@ -17,6 +17,9 @@ namespace ZDD.Net.Io
     /// </summary>
     /// <example>
     /// <code>
+    /// using ZddManager manager = new ZddManager(variableCount: 5);
+    /// Zdd family = manager.Singleton(0) | manager.Singleton(1); // {{0}, {1}}
+    ///
     /// string dump = GraphillionTextFormat.Write(family); // hand this string to Python's setset.loads()
     /// Zdd reloaded = GraphillionTextFormat.Read(dump, variableCount: 5);
     /// </code>

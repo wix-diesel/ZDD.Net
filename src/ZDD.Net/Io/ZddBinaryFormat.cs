@@ -13,6 +13,9 @@ namespace ZDD.Net.Io
     /// </summary>
     /// <example>
     /// <code>
+    /// using ZddManager manager = new ZddManager(variableCount: 5);
+    /// Zdd family = manager.Singleton(0) | manager.Singleton(1); // {{0}, {1}}
+    ///
     /// using (FileStream stream = File.Create("family.zdd"))
     /// {
     ///     ZddBinaryFormat.Write(family, stream);

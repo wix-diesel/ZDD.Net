@@ -37,7 +37,9 @@ jobs:
           global-json-file: global.json
 
       - name: DocFX のインストール
-        run: dotnet tool install --global docfx
+        # バージョン固定（レビュー指摘）: 未固定だと新しい DocFX が検証ルールや挙動を変えた
+        # ときに再現性なく壊れる。手元で動作確認済みのバージョンに揃える。
+        run: dotnet tool install --global docfx --version 2.78.5
 
       - name: API メタデータの生成
         # src/ZDD.Net の XML doc コメントから docs/api/*.yml を起こす。本体プロジェクトの
