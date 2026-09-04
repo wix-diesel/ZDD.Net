@@ -65,9 +65,15 @@
 したがって対応は単純な **0 始まり/1 始まりのオフセットだけ**:
 
 ```
-elem = item + 1        （Write: manager.ItemOf(level) + 1）
-item = elem - 1        （Read:  manager.LevelOf(elem - 1)）
+elem = item + 1
+item = elem - 1
 ```
+
+実装では `item` という値を経由せず、`ItemOf`/`LevelOf` にオフセット込みでそのまま渡している:
+
+- `Write`: `elem = manager.ItemOf(node.Level) + 1`（`ItemOf` がノードの `Level` を item に変換し、+1 する）
+- `Read`: `level = manager.LevelOf(elem - 1)`（`elem - 1` を item として `LevelOf` に渡し、対応する `Level` を得る——
+  戻り値は item ではなく **Level** であることに注意）
 
 **これは「対称な族では検出できない」**。上下を取り違えても、族がひっくり返した形とたまたま
 一致してしまう族があるため。`GraphillionTextFormatTests` の `RoundTripsAnAsymmetricHandBuiltFamily`

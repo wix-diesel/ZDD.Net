@@ -72,9 +72,12 @@ namespace ZDD.Net.Io
     /// values need.
     /// </para>
     /// <para>
-    /// <b>Corrupt input.</b> A missing/unterminated dump, a malformed node line, an <c>elem</c>
-    /// outside <c>1..variableCount</c> (including one that does not fit an explicitly supplied
-    /// <c>variableCount</c> &#8212; the "format cannot represent this" case), a
+    /// <b>Corrupt input.</b> A missing/unterminated dump, trailing content after the terminating
+    /// <c>.</c> line (including after a bare <c>B</c>/<c>T</c> dump, which this format always
+    /// still terminates with <c>.</c> even though Graphillion's own loader does not bother
+    /// checking for one there), a malformed node line, a node id defined more than once, an
+    /// <c>elem</c> outside <c>1..variableCount</c> (including one that does not fit an explicitly
+    /// supplied <c>variableCount</c> &#8212; the "format cannot represent this" case), a
     /// <c>lo</c>/<c>hi</c> reference to an id that was not defined by an earlier line, or a
     /// <c>hi</c> equal to the bottom terminal (impossible for any node a real node table ever
     /// held, per the zero-suppression rule) all throw <see cref="ZddFormatException"/> rather than
@@ -277,16 +280,12 @@ namespace ZDD.Net.Io
             }
 
             string trimmed = line.Trim();
-            if (trimmed == BottomToken)
+            if (trimmed == BottomToken || trimmed == TopToken)
             {
-                ZddManager bottomManager = new ZddManager(variableCount ?? 0, options ?? new ZddManagerOptions());
-                return bottomManager.Empty;
-            }
+                RequireTerminatorThenNoTrailingContent(reader, ref lineNumber, trimmed);
 
-            if (trimmed == TopToken)
-            {
-                ZddManager topManager = new ZddManager(variableCount ?? 0, options ?? new ZddManagerOptions());
-                return topManager.Base;
+                ZddManager trivialManager = new ZddManager(variableCount ?? 0, options ?? new ZddManagerOptions());
+                return trimmed == BottomToken ? trivialManager.Empty : trivialManager.Base;
             }
 
             List<(long RawId, int Elem, string Lo, string Hi)> entries = new List<(long, int, string, string)>();
@@ -317,6 +316,8 @@ namespace ZDD.Net.Io
             {
                 throw new ZddFormatException("Unexpected end of stream: the dump has no terminating '.' line.");
             }
+
+            RejectTrailingContent(reader, ref lineNumber);
 
             if (entries.Count == 0)
             {
@@ -350,6 +351,11 @@ namespace ZDD.Net.Io
             for (int i = 0; i < entries.Count; i++)
             {
                 (long rawId, int elem, string loToken, string hiToken) = entries[i];
+
+                if (idMap.ContainsKey(rawId))
+                {
+                    throw new ZddFormatException($"Node id {rawId} is defined more than once in the dump.");
+                }
 
                 // elem is already known to be within 1..maxElem <= effectiveVariableCount.
                 int level = manager.LevelOf(elem - 1);
@@ -425,6 +431,41 @@ namespace ZDD.Net.Io
             }
 
             return id;
+        }
+
+        /// <summary>
+        /// Consumes the mandatory <c>.</c> line right after a bare <c>B</c>/<c>T</c> dump, then
+        /// requires the stream to be exhausted. Unlike Graphillion's own loader (which stops
+        /// reading immediately after a bare <c>B</c>/<c>T</c> line and never even looks for a
+        /// terminator), this format's own documented shape always ends in <c>.</c> — enforcing it
+        /// here is what lets a concatenated or truncated file be rejected instead of silently
+        /// accepted.
+        /// </summary>
+        /// <exception cref="ZddFormatException">No terminator follows, or content follows the terminator.</exception>
+        private static void RequireTerminatorThenNoTrailingContent(TextReader reader, ref int lineNumber, string precedingToken)
+        {
+            string? next = ReadNonBlankLine(reader, ref lineNumber);
+            if (next is null || next.Trim() != TerminatorToken)
+            {
+                throw new ZddFormatException(
+                    next is null
+                        ? $"Unexpected end of stream: expected a terminating '.' line right after '{precedingToken}'."
+                        : $"Line {lineNumber}: expected a terminating '.' line right after '{precedingToken}', but found '{next.Trim()}'.");
+            }
+
+            RejectTrailingContent(reader, ref lineNumber);
+        }
+
+        /// <summary>Throws if the stream has any more non-blank content (used right after a dump's terminating <c>.</c> line).</summary>
+        /// <exception cref="ZddFormatException">The stream has more non-blank content.</exception>
+        private static void RejectTrailingContent(TextReader reader, ref int lineNumber)
+        {
+            string? trailing = ReadNonBlankLine(reader, ref lineNumber);
+            if (trailing is not null)
+            {
+                throw new ZddFormatException(
+                    $"Line {lineNumber}: unexpected content after the dump's terminating '.' line: '{trailing.Trim()}'.");
+            }
         }
 
         /// <summary>Reads lines, skipping blank/whitespace-only ones, tracking a 1-based line number for diagnostics.</summary>

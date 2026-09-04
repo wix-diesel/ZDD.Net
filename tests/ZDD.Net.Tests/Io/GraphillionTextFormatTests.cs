@@ -235,6 +235,26 @@ namespace ZDD.Net.Tests.Io
             AssertThrowsFormatException("2 1 B B\n.\n");
 
         [Fact]
+        public void ReadThrowsWhenABareTerminalDumpHasNoTerminator() =>
+            // Graphillion's own loader doesn't bother checking for '.' here, but this format's
+            // documented shape always has one, and requiring it is what catches a truncated file.
+            AssertThrowsFormatException("B\n");
+
+        [Fact]
+        public void ReadThrowsWhenContentFollowsABareTerminalDumpsTerminator() =>
+            AssertThrowsFormatException("T\n.\nextra\n");
+
+        [Fact]
+        public void ReadThrowsWhenContentFollowsANodeDumpsTerminator() =>
+            AssertThrowsFormatException("2 1 B T\n.\nextra\n");
+
+        [Fact]
+        public void ReadThrowsOnADuplicateNodeId() =>
+            // Both lines claim id 2; silently letting the second overwrite the first in the id
+            // map would resolve later references against the wrong node instead of erroring.
+            AssertThrowsFormatException("2 1 B T\n2 1 B T\n.\n");
+
+        [Fact]
         public void ReadThrowsWhenAChildIsNotStrictlyCloserToTheLeavesThanItsParent()
         {
             // Node 3 (elem 1, i.e. closest to the root) references node 2 (elem 1 too) as its hi
