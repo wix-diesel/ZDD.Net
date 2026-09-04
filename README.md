@@ -124,6 +124,10 @@ push ごとに再公開する。M5-6、issue #58）。以下は同じ内容を�
 - **[docs/PLAN.md](docs/PLAN.md)** — 機能・仕様・アーキテクチャ
 - **[docs/ROADMAP.md](docs/ROADMAP.md)** — マイルストーン別の PR 単位タスク分割
 - **[docs/OPEN-QUESTIONS.md](docs/OPEN-QUESTIONS.md)** — 未確定事項
+- **[docs/design/m6-api-expansion.md](docs/design/m6-api-expansion.md)** — v0.6 設計書（API 拡充と相互運用:
+  項目写像・マネージャ間転送・ユニバースをまたぐ族の移送・統合ビルダ `Graphs()`・追加スペック）
+- **[docs/design/m7-directed-graphs.md](docs/design/m7-directed-graphs.md)** — v0.7 設計書（有向グラフ対応:
+  `DirectedGraph`・有向パス/閉路/arborescence・`DirectedGraphSet`）
 - **[CHANGELOG.md](CHANGELOG.md)** — 変更履歴
 
 ## ライセンス

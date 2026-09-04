@@ -2,7 +2,8 @@
 
 [docs/PLAN.md](PLAN.md) の各マイルストーンを、**1 PR = 1 レビュー単位**に分解したもの。
 
-- ドキュメント版数: v1 (2026-08-29)
+- ドキュメント版数: v2 (2026-09-04) — M6「API 拡充と相互運用」・M7「有向グラフ対応」を追加し、
+  従来の M6「安定化と公開」を M8 に繰り下げた（末尾の「M6 / M7 を差し込んだ理由」を参照）
 
 各タスク表の ID 列頭のチェックボックスは完了状況を表す（`[x]` = 完了）。
 
@@ -157,15 +158,72 @@ Core レイヤは下から積むため、序盤の PR は `internal` のコー�
 
 ---
 
-## M6: 安定化と公開（v1.0）
+## M6: API 拡充と相互運用（v0.6）
+
+> **背景**: 他ライブラリ（Graphillion / TdZdd / SAPPOROBDD / CUDD+EXTRA）との比較で見つかった欠落のうち、
+> **v1.0 の API 凍結（M8-1）の後に足すと破壊的変更になるもの**を先に片付ける。
+> 設計の詳細は [docs/design/m6-api-expansion.md](design/m6-api-expansion.md)。
+>
+> 内訳は 4 系統。(a) `docs/OPEN-QUESTIONS.md` で「提供する」と決めたのに未実装だった API、
+> (b) 族をユニバース／マネージャをまたいで移す手段、(c) 実装済みスペックの高レベル API への露出、
+> (d) Graphillion にあって無いスペック。
 
 | 完了 | ID | タイトル | 内容 | 受け入れ条件 | 目安 | 依存 |
 |---|---|---|---|---|---|---|
-| [ ] | **M6-1** | 公開 API の凍結 | `PublicApiGenerator` + `Verify` による API 承認テスト、命名の最終レビュー | API 差分が意図せず入らない | 〜200 | M5-7 |
-| [ ] | **M6-2** | trim / NativeAOT 検証 | 警告ゼロ化、AOT サンプルの実行 | AOT で全サンプルが動く | 〜150 | M6-1 |
-| [ ] | **M6-3** | パッケージング | SourceLink、決定的ビルド、シンボルパッケージ、`README.md` の NuGet 表示 | `dotnet pack` の成果物を検証 | 設定のみ | M6-2 |
-| [ ] | **M6-4** | チュートリアル | Getting Started、Graphillion からの移行ガイド、性能チューニング指針 | — | ドキュメント | M6-3 |
-| [ ] | **M6-5** | v1.0 リリース | NuGet 公開、GitHub Release | — | — | M6-4 |
+| [ ] | **M6-1** | `ComplementWithin` / `PowerSetOf` | 部分ユニバースでの補集合（B8 の未実装分）。`ZddManager.PowerSetOf(items)` を葉側から 1 パスで構築 | 総当たり照合（変数 ≤ 12）。`Complement()` == `ComplementWithin(全変数)` の回帰テスト | 〜150 | M5-7 |
+| [ ] | **M6-2** | バッファ列挙 `EnumerateInto` | アロケーションなしの `ref struct` 列挙子（B9 の (b)）、`Zdd.MaxSetSize`（新 `IDdEval<int>`） | 変数 ≤ 16 全網羅で `Sets()` と要素・順序が一致。列挙ループが 0 アロケーション | 〜250 | M5-7 |
+| [ ] | **M6-3** | `TryBuild` | 上限超過を `false` で返す構築（B11 の未実装分）。キャンセルは例外のまま | 上限超過で `false` かつ**マネージャの `NodeCount` が不変**であること | 〜200 | M5-7 |
+| [ ] | **M6-4** | 項目写像（順序保存） | `Zdd.MapItems` / `MapItemsTo`。単調写像はボトムアップ 1 パス O(ノード数) | 総当たり照合。恒等写像は自分自身を返す | 〜300 | M6-1 |
+| [ ] | **M6-5** | 一般置換とマネージャ間転送 | 非単調な単射写像を `map(f) = map(f0) ∪ Change(map(f1), σ(v))` の反復＋メモ化で。`TransferTo(manager)` | ランダム置換の往復 `σ→σ⁻¹` で元に戻る。順序保存経路と結果が完全一致 | 〜300 | M6-4 |
+| [ ] | **M6-6** | ユニバース／辺順序をまたぐ移送 | `SetUniverse<T>.Extend`、`SetSet<T>.ToUniverse`、`GraphSet.ToEdgeOrder` | 別々に作った 2 つの `SetSet<T>` が `ToUniverse` 経由で合成できる。`Optimize()` 後の族を元の辺順序で解釈できる | 〜300 | M6-5 |
+| [ ] | **M6-7** | 1 要素変種 | `AddSomeItem` / `RemoveSomeItem` / `RemoveAddSomeItems`（既存単項演算の合成で実装、対象要素を絞る `items` 版つき） | 総当たり照合（変数 ≤ 12）。計算量を XML doc に明記 | 〜250 | M6-1 |
+| [ ] | **M6-8** | コストフィルタ | `CostAtMost` / `CostAtLeast` / `CostEquals`（`Subset` + `LinearConstraintSpec`）を `Zdd` / `GraphSet` / `SetSet<T>` に | 事後フィルタと結果一致。中間 ZDD が小さいこと | 〜200 | M5-7 |
+| [ ] | **M6-9** | `GraphSet` 露出①（辺の族） | `ConnectedSubgraphs` / `SteinerTrees` / `Cuts` / `DegreeConstrained` / `EdgeCovers` / `Knapsacks` | 対応するスペックを直接使った結果と一致。`EdgeCovers` は次数制約の別名（PLAN §7.2 の `EdgeCoverSpec` 相当） | 〜300 | M6-8 |
+| [ ] | **M6-10** | `GraphSet` 露出②（頂点の族・彩色） | `VertexCovers` / `DominatingSets` / `Partitions` / `BalancedPartitions` / `Colorings`（`SetSet<(int Vertex, int Color)>` で返す） | 同上。`BalancedPartitions` の境界計算の単体テスト | 〜300 | M6-9 |
+| [ ] | **M6-11** | 次数系スペックの拡充 | `GraphSet.RegularGraphs(k)`（次数制約の別名）、`DegreeDistributionSpec`（残ヒストグラムを状態に持つ新規スペック） | 素朴 DP と一致。3 正則グラフの既知値と照合 | 〜300 | M6-9 |
+| [ ] | **M6-12** | 頂点誘導部分グラフ | `InducedSubgraphSpec`。フロンティア頂点を 3 値（`Unknown`/`In`/`Out`）で持ち、判定を忘却時まで遅延させる | 頂点 ≤ 8 の総当たり（全頂点部分集合の誘導辺集合と一致） | 〜350 | M6-9 |
+| [ ] | **M6-13** | biclique | `BicliqueSpec`（`SideA`/`SideB`/`Unused` の 3 値状態）、サイズ固定オーバーロード | 完全二部グラフ `K_{a,b}` の既知値と照合。小グラフで総当たり | 〜300 | M6-12 |
+| [ ] | **M6-14** | 頂点グループ連結制約 | `VertexGroupSpec`（同グループは連結・別グループは非連結）。comp 配列に所属グループ（未定を含む）を持たせる | 小グラフで総当たり照合。Graphillion の `vertex_groups` と結果一致 | 〜300 | M6-9 |
+| [ ] | **M6-15** | 統合ビルダ `Graphs()` | `GraphConstraints` と `GraphSet.Graphs(graph, constraints)` / `gs.Where(constraints)`。`AndErasedSpec` で畳み込む | Graphillion の `graphs()` の代表シナリオが再現できる。個別スペックを `And` した結果と一致 | 〜350 | M6-14 |
+| [ ] | **M6-16** | v0.6 リリース | CHANGELOG / README / `docs/api-guide.md` / 移行対応表 | — | ドキュメント | M6-15 |
+
+**M6 の並行可能性**: M6-1 / M6-2 / M6-3 / M6-8 は互いに独立で、M5-7 の直後に並行して切れる。
+M6-4→M6-5→M6-6 は直列。M6-9 以降は M6-8 の後に一列。
+
+---
+
+## M7: 有向グラフ対応（v0.7）
+
+> **背景**: `Edge` は無向固定（ハッシュが `min`/`max`）、`Graph` は自己ループと多重辺を拒否しており、
+> 有向 s–t パス・有向閉路・有向全域木が**原理的に書けない**。D1（主用途 = 経路列挙）を踏まえると
+> 一方通行のある道路網や依存関係グラフが扱えないことになる。
+> 設計の詳細は [docs/design/m7-directed-graphs.md](design/m7-directed-graphs.md)。
+
+| 完了 | ID | タイトル | 内容 | 受け入れ条件 | 目安 | 依存 |
+|---|---|---|---|---|---|---|
+| [ ] | **M7-1** | `DirectedEdge` / `DirectedGraph` | 向きを区別する等値性、逆平行辺の許容（自己ループ・多重辺は拒否）、`ToUndirected` / `Bidirected`、`Grid`/`Complete`/`Cycle`/`Path` | 構造テスト。`Bidirected(g).ToUndirected()` が `g` と一致 | 〜350 | M6-16 |
+| [ ] | **M7-2** | フロンティア基盤の有向化 | 内部型 `EdgeTopology` を切り出し、`FrontierManager` / `EdgeOrdering` を付け替え。`DirectedGraph.Optimize` / `EstimateMaxFrontierSize` | **振る舞い不変のリファクタ**。既存テストが全て通ること | 〜400 | M7-1 |
+| [ ] | **M7-3** | 有向 s–t 単純パス | `DirectedPathSpec`。mate 配列＋向き 1 ビット／頂点。忘却時に (入次数, 出次数) を検査 | **`Bidirected(格子)` の有向パス数が OEIS A007764 と一致**（7×7 まで CI）。頂点 ≤ 8 の総当たり | 〜350 | M7-2 |
+| [ ] | **M7-4** | 有向閉路・有向ハミルトン | `DirectedCycleSpec` / `DirectedHamiltonianPathSpec` / `DirectedHamiltonianCycleSpec` | `Bidirected(g)` の有向単純閉路数が無向単純閉路数の**ちょうど 2 倍**。`K_n` の有向ハミルトン閉路が `(n-1)!` | 〜350 | M7-3 |
+| [ ] | **M7-5** | 有向次数制約・arborescence | `DirectedDegreeConstraintSpec`、`ArborescenceSpec`（根つき有向全域木） | **有向行列木定理**（有向ラプラシアンの余因子）で独立計算した値と一致 | 〜350 | M7-4 |
+| [ ] | **M7-6** | `DirectedGraphSet` | `SetSet<DirectedEdge>` の上に載せる薄いラッパ。`GraphSet` と同じフィルタ・列挙・重み API | `GraphSet` と同じシナリオが有向で再現できる | 〜350 | M7-5 |
+| [ ] | **M7-7** | 有向グラフ I/O | 有向エッジリスト、簡易テキストの `directed` ヘッダ（後方互換）、DIMACS の `p arc`、DOT の `digraph` 出力 | ラウンドトリップ。既存の無向ファイルがそのまま読めること | 〜250 | M7-6 |
+| [ ] | **M7-8** | 有向のベンチ基準値 | 双方向格子・一方通行混在格子・`K_n` ハミルトン・arborescence を `docs/benchmarks.md` に記録 | **性能目標は置かない**。無向比の倍率を測って記録することが目的 | 〜200 | M7-7 |
+| [ ] | **M7-9** | v0.7 リリース | CHANGELOG / README / チュートリアルへの有向の節 | — | ドキュメント | M7-8 |
+
+**M7 の並行可能性**: ほぼ直列。M7-2 のリファクタが全ての前提になる。
+
+---
+
+## M8: 安定化と公開（v1.0）
+
+| 完了 | ID | タイトル | 内容 | 受け入れ条件 | 目安 | 依存 |
+|---|---|---|---|---|---|---|
+| [ ] | **M8-1** | 公開 API の凍結 | `PublicApiGenerator` + `Verify` による API 承認テスト、命名の最終レビュー | API 差分が意図せず入らない | 〜200 | M7-9 |
+| [ ] | **M8-2** | trim / NativeAOT 検証 | 警告ゼロ化、AOT サンプルの実行 | AOT で全サンプルが動く | 〜150 | M8-1 |
+| [ ] | **M8-3** | パッケージング | SourceLink、決定的ビルド、シンボルパッケージ、`README.md` の NuGet 表示 | `dotnet pack` の成果物を検証 | 設定のみ | M8-2 |
+| [ ] | **M8-4** | チュートリアル | Getting Started、Graphillion からの移行ガイド、性能チューニング指針 | — | ドキュメント | M8-3 |
+| [ ] | **M8-5** | v1.0 リリース | NuGet 公開、GitHub Release | — | — | M8-4 |
 
 ---
 
@@ -179,7 +237,22 @@ Core レイヤは下から積むため、序盤の PR は `internal` のコー�
 | M3 (v0.3) | 11 | 3 週 |
 | M4 (v0.4) | 9 | 3 週 |
 | M5 (v0.5) | 7 | 2 週 |
-| M6 (v1.0) | 5 | 1〜2 週 |
-| **合計** | **65** | **13〜17 週** |
+| M6 (v0.6) | 16 | 3〜4 週 |
+| M7 (v0.7) | 9 | 2〜3 週 |
+| M8 (v1.0) | 5 | 1〜2 週 |
+| **合計** | **90** | **18〜24 週** |
 
 1 PR あたり平均 250〜300 行、レビュー時間 15〜30 分を想定。
+
+### M6 / M7 を差し込んだ理由（2026-09-04 の改訂）
+
+当初 M6 だった「安定化と公開（v1.0）」を M8 に繰り下げ、その前に 2 つのマイルストーンを挟んだ。
+
+- **M6 は API 凍結の前でなければならない**。ユニバースをまたぐ族の移送（M6-6）は
+  `SetSet<T>` / `GraphSet` の不変条件に手を入れるため、凍結後に足すと破壊的変更になる。
+  実装済みスペックの露出（M6-9〜M6-11）も、公開 API の面が確定してからでは追加のたびに
+  API 承認テストの差分が出る。
+- **M7 も凍結の前が望ましい**。`FrontierManager` を有向対応にするリファクタ（M7-2）が
+  公開コンストラクタの追加を伴うため。
+- v0.6 / v0.7 はいずれもプレリリース扱いなので、`docs/PLAN.md` §13 の
+  「API を早期に固めすぎて後で壊す」対策（v1.0 まではプレリリース版で明示）の枠内に収まる。

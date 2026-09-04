@@ -20,6 +20,10 @@
       href: ROADMAP.md
     - name: 未解決の論点
       href: OPEN-QUESTIONS.md
+    - name: API 拡充と相互運用（v0.6）
+      href: design/m6-api-expansion.md
+    - name: 有向グラフ対応（v0.7）
+      href: design/m7-directed-graphs.md
 - name: リリースノート
   href: release-notes/toc.yml
 - name: API リファレンス
