@@ -83,7 +83,8 @@ namespace ZDD.Net.Samples.ApiGuide
         }
 
         /// <summary>
-        /// <see cref="Zdd.Count"/> / <see cref="Zdd.CountApprox"/> / <see cref="Zdd.Sets"/> の実例。
+        /// <see cref="Zdd.Count"/> / <see cref="Zdd.CountApprox"/> / <see cref="Zdd.Sets"/> /
+        /// <see cref="Zdd.EnumerateInto"/> の実例。
         /// </summary>
         private static void EnumerationAndCounting()
         {
@@ -111,6 +112,23 @@ namespace ZDD.Net.Samples.ApiGuide
             }
 
             Assert(firstFive == 5, "Sets() can be short-circuited without walking the whole family");
+
+            // EnumerateInto: Sets() と違い、集合 1 つごとに new int[] しない。
+            // MaxSetSize がバッファに必要な長さ（この族に含まれる集合の最大要素数）。
+            int[] buffer = new int[powerSet.MaxSetSize];
+            int firstFiveViaSpan = 0;
+            SetSpanEnumerator enumerator = powerSet.EnumerateInto(buffer);
+            while (enumerator.MoveNext())
+            {
+                // enumerator.Current はバッファそのものへのビュー。次の MoveNext で上書きされる。
+                firstFiveViaSpan++;
+                if (firstFiveViaSpan == 5)
+                {
+                    break;
+                }
+            }
+
+            Assert(firstFiveViaSpan == 5, "EnumerateInto can also be short-circuited without walking the whole family");
         }
 
         /// <summary>
