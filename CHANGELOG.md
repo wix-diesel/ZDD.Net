@@ -65,6 +65,27 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
   `EdgeIndexToVariableIndex` / `VariableIndexToEdgeIndex` / `EdgeIndexToLevel` / `LevelToEdgeIndex`
   （`Graph` の同名メンバーと同じ恒等写像／レベル変換）をあわせて追加した——フロンティア方式のスペックが
   レベルと弧インデックスを相互変換するのに必要だが、M7-1/M7-2 の時点ではまだ無かったため。
+- `DirectedCycleSpec` / `DirectedHamiltonianPathSpec` / `DirectedHamiltonianCycleSpec`: 有向単純閉路・
+  有向ハミルトンパス・有向ハミルトン閉路の列挙（M7-4、issue #155、
+  [docs/design/m7-directed-graphs.md](docs/design/m7-directed-graphs.md) §3.3）。`DirectedCycleSpec` は
+  `CycleSpec` の mate 配列に `DirectedPathSpec` と同じ向き 1 ビットを足しただけでは済まなかった。
+  `Graph` と違い `DirectedGraph` は同じ 2 頂点間に逆平行辺 `u→v` / `v→u` の 2 本を許すため、
+  この 2 本を続けて採用すると `MateChainState.Splice` は 1 辺だけの鎖をその場で「閉じた」と報告して
+  しまう——2 頂点の "digon" であって閉路ではない。受け入れ条件の「`Bidirected(g)` の有向単純閉路数が
+  `g` の無向単純閉路数のちょうど 2 倍」は無向単純グラフに長さ 2 の閉路が存在しない以上、digon を除外
+  しないと成立しない（`K_3` で試算すると digon を数えれば 2 ではなく 5 になる）。そこでフロンティア
+  頂点ごとに向きビットとは別の「鎖がまだ元の 2 頂点のままか」を示す鮮度ビットを追加し、`Splice` の
+  各分岐（新規ペア／延伸／合流）に合わせて更新し、鎖が閉じる瞬間に両端がまだ鮮度ビット付きなら
+  不採用にする。`DirectedHamiltonianCycleSpec` は全頂点が入次数・出次数ともに 1 に達することを要求する
+  ため、この鮮度追跡は不要——`VertexCount < 3` の頂点数ガードさえあれば、途中で digon が閉じても
+  残りの頂点が入次数 0 のまま `MateChainState.ForgetRequireVisited` に弾かれる。`DirectedHamiltonianPathSpec`
+  は鎖を一切閉じない（`Splice` が `Closed` を返した時点で不採用、digon かどうかに関わらず）ため、
+  やはり鮮度追跡が要らない。受け入れ条件として、完全グラフ・5/6-閉路・格子・Petersen グラフでの
+  ×2 関係、`K_n`（n = 4..8）の有向ハミルトン閉路数が `(n-1)!` と一致すること、`Bidirected(Petersen)`
+  に有向ハミルトン閉路が存在しないこと、`DirectedGraph.Cycle(n)`（n ≥ 3）がちょうど 1 つの閉路を
+  返す一方 `Cycle(2)`（逆平行ペアそのもの）はどのモードでも空であることをテスト済み。加えて頂点数 8
+  以下の小規模・ランダム有向グラフでの総当たり照合、`DirectedCycleSpec.Single` が非 `Single` 族の
+  部分集合であることも検証した。
 
 ## [0.6.0] - 2026-09-05
 
