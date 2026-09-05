@@ -116,6 +116,22 @@ namespace ZDD.Net.Tests.Specs
                 $"({costFilterAloneNodeCount} nodes, over the full item universe).");
         }
 
+        [Theory]
+        [InlineData(3)] // shorter than the manager's variable count
+        [InlineData(5)] // longer than the manager's variable count
+        public void CostAtMostCostAtLeastCostEqualsThrowWhenCostsLengthDoesNotMatchVariableCount(int costsLength)
+        {
+            using ZddManager manager = new ZddManager(variableCount: 4);
+            Zdd everything = FrontierBuilder.Build<PowerSetSpec, byte>(manager, new PowerSetSpec(4));
+            long[] costs = new long[costsLength];
+
+            // A mismatched length must fail loudly rather than silently forbid every variable beyond
+            // costs.Length (AndSpec's implicit-exclusion rule for a sub-spec that finishes early).
+            Assert.Throws<ArgumentException>(() => everything.CostAtMost(costs, 0));
+            Assert.Throws<ArgumentException>(() => everything.CostAtLeast(costs, 0));
+            Assert.Throws<ArgumentException>(() => everything.CostEquals(costs, 0));
+        }
+
         [Fact]
         public void LongCoefficientConstructorAgreesWithTheIntCoefficientConstructor()
         {

@@ -56,8 +56,19 @@ namespace ZDD.Net.Specs
         /// <param name="op">The comparison to enforce.</param>
         /// <param name="bound">The bound <c>b</c>.</param>
         public LinearConstraintSpec(ReadOnlySpan<long> coefficients, LinearConstraintOperator op, long bound)
+            : this(coefficients.ToArray(), op, bound)
         {
-            _coefficients = coefficients.ToArray();
+        }
+
+        /// <summary>
+        /// Shared initialization for both public constructors, taking ownership of an already-copied
+        /// <paramref name="coefficients"/> array directly &#8212; neither public constructor's own copy
+        /// (<see cref="WidenToLong"/>'s widen, or <see cref="ReadOnlySpan{T}.ToArray"/>'s clone) is
+        /// copied a second time here.
+        /// </summary>
+        private LinearConstraintSpec(long[] coefficients, LinearConstraintOperator op, long bound)
+        {
+            _coefficients = coefficients;
             _op = op;
             _bound = bound;
 
