@@ -490,6 +490,12 @@ namespace ZDD.Net.Graphs
         public static GraphSet RegularGraphs(Graph graph, int k)
         {
             ArgumentNullException.ThrowIfNull(graph);
+
+            if (k < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(k), k, "Must not be negative.");
+            }
+
             return Generate(graph, new DegreeConstraintSpec(graph, lo: k, hi: k));
         }
 

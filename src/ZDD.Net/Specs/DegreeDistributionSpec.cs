@@ -96,7 +96,7 @@ namespace ZDD.Net.Specs
         /// <inheritdoc/>
         public int GetRoot(Span<int> state)
         {
-            int sum = 0;
+            long sum = 0;
             for (int d = 0; d < _counts.Length; d++)
             {
                 sum += _counts[d];

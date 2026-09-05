@@ -869,6 +869,15 @@ namespace ZDD.Net.Tests.Graphs
         }
 
         [Fact]
+        public void RegularGraphsRejectsNegativeKWithItsOwnParameterName()
+        {
+            Graph graph = Graph.Complete(4);
+
+            var ex = Assert.Throws<ArgumentOutOfRangeException>(() => GraphSet.RegularGraphs(graph, k: -1));
+            Assert.Equal("k", ex.ParamName);
+        }
+
+        [Fact]
         public void DegreeDistributionsMatchesDirectSpecBuild()
         {
             Graph graph = Graph.Complete(4);
