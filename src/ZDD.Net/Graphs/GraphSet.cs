@@ -297,10 +297,10 @@ namespace ZDD.Net.Graphs
         /// <summary>
         /// The family of edge covers of <paramref name="graph"/>: edge sets touching every vertex at
         /// least once. An alias for <see cref="DegreeConstrained(Graph, int, int)"/> with <c>lo: 1</c> and
-        /// <c>hi</c> effectively unbounded (no vertex's degree can ever reach <c>graph.EdgeCount</c>, so
-        /// it plays the role of &#8734;) &#8212; an edge cover is simply "every vertex has degree at least
-        /// one", the specific case of a degree constraint that needs no upper bound, so no separate spec
-        /// exists for it.
+        /// <c>hi</c> effectively unbounded (no vertex's degree can ever <i>exceed</i> <c>graph.EdgeCount</c>,
+        /// so that bound never actually constrains any vertex &#8212; it plays the role of &#8734;) &#8212;
+        /// an edge cover is simply "every vertex has degree at least one", the specific case of a degree
+        /// constraint that needs no upper bound, so no separate spec exists for it.
         /// </summary>
         /// <param name="graph">The graph to search.</param>
         /// <example><code>GraphSet covers = GraphSet.EdgeCovers(Graph.Complete(5));</code></example>

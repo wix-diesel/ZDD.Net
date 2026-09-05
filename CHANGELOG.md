@@ -114,9 +114,9 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
   `IDdSpec<long>` なので、`Filter` が使っている `StructSpecErased<TSpec, TState>` を生成側にも
   使う `Generate<TSpec, TState>` オーバーロードを新設した。`EdgeCovers` は専用スペックを新設せず
   `DegreeConstrained(graph, lo: 1, hi: graph.EdgeCount)` の別名にした——辺被覆は「全頂点の次数 ≥ 1」
-  であり次数制約の特殊形にすぎないため（`graph.EdgeCount` はどの頂点の次数もそこまで達しないので
-  実質的な無限大として使える）。いずれも `FrontierBuilder.Build` で対応するスペックを直接使った
-  結果と一致すること、`EdgeCovers` は小グラフでの総当たり照合（全辺部分集合のうち全頂点を被覆する
+  であり次数制約の特殊形にすぎないため（どの頂点の次数も `graph.EdgeCount` を超えることはないので、
+  この上限は実質的にどの頂点も制約しない——無限大として使える）。いずれも `FrontierBuilder.Build` で
+  対応するスペックを直接使った結果と一致すること、`EdgeCovers` は小グラフでの総当たり照合（全辺部分集合のうち全頂点を被覆する
   ものと一致）、`SteinerTrees` の `MinWeight` が M4-5 の既知の最小シュタイナー木と、`Cuts` の
   `MinWeight` が M4-6 の最大流最小カット定理による照合とそれぞれ一致すること、
   `Including` / `Excluding` / `Larger` / `Smaller` / `CostAtMost` と連鎖できることを確認済み。
