@@ -65,11 +65,13 @@ namespace ZDD.Net.Tests.Specs
         }
 
         // Vertex count kept to <= 8 per the completion criteria; arc counts kept low enough that the
-        // 2^EdgeCount brute-force scan (run once per ordered endpoint pair) stays fast.
+        // 2^EdgeCount brute-force scan — run once per ordered endpoint pair, so up to VertexCount *
+        // (VertexCount - 1) times per case — stays fast (matches DirectedPathSpecTests' random-graph scale).
         [Theory]
-        [InlineData(5, 12, 1)]
-        [InlineData(6, 16, 2)]
-        [InlineData(8, 24, 3)]
+        [InlineData(5, 8, 1)]
+        [InlineData(6, 10, 2)]
+        [InlineData(8, 14, 3)]
+        [InlineData(8, 16, 4)]
         public void MatchesBruteForceEnumerationOnRandomDirectedGraphs(int vertexCount, int arcCount, int seed)
         {
             DirectedGraph graph = RandomDirectedGraph(vertexCount, arcCount, seed);
