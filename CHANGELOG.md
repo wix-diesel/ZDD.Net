@@ -123,6 +123,20 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
   `SetSet<T>` が `Extend` + `ToUniverse` 経由で合成できること、`Extend` 後の族を `ToUniverse` で
   戻すと元と同じ集合を表すこと、`Optimize()` した族を `ToEdgeOrder` で元の辺順序に戻すと辺集合が
   完全に一致することを確認済み。
+- `GraphSet.ConnectedSubgraphs` / `SteinerTrees` / `Cuts` / `DegreeConstrained`（`int[]` 版と
+  一様な `int` 版）/ `EdgeCovers` / `Knapsacks`: `Specs/` の 22 スペックのうち高レベル API から
+  一切触れなかった辺の族を露出（M6-9、issue #144）。いずれも既存の `ConnectedSubgraphSpec` /
+  `SteinerTreeSpec` / `CutSpec` / `DegreeConstraintSpec` / `KnapsackSpec` を、既存の
+  `Generate<TSpec>`（`IArrayDdSpec` 用）にそのまま渡すだけの薄いラッパー。`KnapsackSpec` だけは
+  `IDdSpec<long>` なので、`Filter` が使っている `StructSpecErased<TSpec, TState>` を生成側にも
+  使う `Generate<TSpec, TState>` オーバーロードを新設した。`EdgeCovers` は専用スペックを新設せず
+  `DegreeConstrained(graph, lo: 1, hi: graph.EdgeCount)` の別名にした——辺被覆は「全頂点の次数 ≥ 1」
+  であり次数制約の特殊形にすぎないため（どの頂点の次数も `graph.EdgeCount` を超えることはないので、
+  この上限は実質的にどの頂点も制約しない——無限大として使える）。いずれも `FrontierBuilder.Build` で
+  対応するスペックを直接使った結果と一致すること、`EdgeCovers` は小グラフでの総当たり照合（全辺部分集合のうち全頂点を被覆する
+  ものと一致）、`SteinerTrees` の `MinWeight` が M4-5 の既知の最小シュタイナー木と、`Cuts` の
+  `MinWeight` が M4-6 の最大流最小カット定理による照合とそれぞれ一致すること、
+  `Including` / `Excluding` / `Larger` / `Smaller` / `CostAtMost` と連鎖できることを確認済み。
 
 ## [0.5.0] - 2026-09-04
 

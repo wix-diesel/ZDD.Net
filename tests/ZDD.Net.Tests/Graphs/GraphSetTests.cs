@@ -11,6 +11,7 @@ using ZDD.Net.Graphs;
 using ZDD.Net.Io;
 using ZDD.Net.Sets;
 using ZDD.Net.Tests.Harness;
+using ZDD.Net.Tests.Specs;
 using ZDD.Net.Specs;
 
 namespace ZDD.Net.Tests.Graphs
@@ -558,6 +559,289 @@ namespace ZDD.Net.Tests.Graphs
             {
                 AssertIsSimplePath(grid, 0, grid.VertexCount - 1, set);
             }
+        }
+
+        // ---- 辺の族ジェネレータ拡張（M6-9）----
+
+        [Fact]
+        public void ConnectedSubgraphsMatchesDirectSpecBuild()
+        {
+            Graph graph = Graph.Grid(3, 3);
+            int[] terminals = { 0, 4, 8 };
+            GraphSet actual = GraphSet.ConnectedSubgraphs(graph, terminals);
+
+            using ZddManager manager = new ZddManager(graph.EdgeCount);
+            Zdd expected = FrontierBuilder.Build<ConnectedSubgraphSpec>(manager, new ConnectedSubgraphSpec(graph, terminals));
+
+            AssertSameEdgeSets(graph, actual, expected);
+        }
+
+        [Fact]
+        public void SteinerTreesMatchesDirectSpecBuild()
+        {
+            Graph graph = Graph.Grid(3, 3);
+            int[] terminals = { 0, 4, 8 };
+            GraphSet actual = GraphSet.SteinerTrees(graph, terminals);
+
+            using ZddManager manager = new ZddManager(graph.EdgeCount);
+            Zdd expected = FrontierBuilder.Build<SteinerTreeSpec>(manager, new SteinerTreeSpec(graph, terminals));
+
+            AssertSameEdgeSets(graph, actual, expected);
+        }
+
+        [Fact]
+        public void SteinerTreesMinWeightMatchesTheKnownM45MinimumSteinerTree()
+        {
+            // Same graph/weights/terminals as SteinerTreeSpecTests.MinWeightMatchesBruteForceMinimumSteinerTree
+            // (M4-5, independently checked there against a brute-force minimum): the completion criterion
+            // this reproduces asks that GraphSet.SteinerTrees agree with that already-verified minimum.
+            Graph graph = Graph.Grid(2, 3);
+            int[] weights = { 4, 1, 2, 5, 3, 2, 1 };
+            Assert.Equal(graph.EdgeCount, weights.Length);
+            int[] terminals = { 0, 2, 5 };
+
+            var weightByEdge = new Dictionary<Edge, int>();
+            for (int i = 0; i < weights.Length; i++)
+            {
+                weightByEdge[graph.GetEdge(i)] = weights[i];
+            }
+
+            GraphSet trees = GraphSet.SteinerTrees(graph, terminals);
+            (IReadOnlySet<Edge> Set, int Weight) actual = trees.MinWeight(e => weightByEdge[e]);
+
+            using ZddManager manager = new ZddManager(graph.EdgeCount);
+            Zdd built = FrontierBuilder.Build<SteinerTreeSpec>(manager, new SteinerTreeSpec(graph, terminals));
+            int expectedWeight = built.MinWeight(weights).Weight;
+
+            Assert.Equal(expectedWeight, actual.Weight);
+        }
+
+        [Fact]
+        public void CutsMatchesDirectSpecBuild()
+        {
+            Graph graph = Graph.Grid(3, 3);
+            int s = 0;
+            int t = graph.VertexCount - 1;
+
+            foreach (bool minimalOnly in new[] { false, true })
+            {
+                GraphSet actual = GraphSet.Cuts(graph, s, t, minimalOnly);
+
+                using ZddManager manager = new ZddManager(graph.EdgeCount);
+                Zdd expected = FrontierBuilder.Build<CutSpec>(manager, new CutSpec(graph, s, t, minimalOnly));
+
+                AssertSameEdgeSets(graph, actual, expected);
+            }
+        }
+
+        [Theory]
+        [InlineData(1)]
+        [InlineData(2)]
+        [InlineData(3)]
+        public void CutsMinWeightMatchesMaxFlowMinCutTheorem(int seed)
+        {
+            Graph graph = SpanningTreeSpecTests.RandomConnectedGraph(vertexCount: 6, extraEdgeProbability: 0.4, seed);
+            var random = new Random(seed * 97 + 1);
+            var weightByEdge = new Dictionary<Edge, int>();
+            var weights = new int[graph.EdgeCount];
+            for (int i = 0; i < weights.Length; i++)
+            {
+                weights[i] = random.Next(1, 6);
+                weightByEdge[graph.GetEdge(i)] = weights[i];
+            }
+
+            int s = 0;
+            int t = graph.VertexCount - 1;
+
+            GraphSet cuts = GraphSet.Cuts(graph, s, t);
+            int minCutWeight = cuts.MinWeight(e => weightByEdge[e]).Weight;
+            int maxFlow = NaiveMaxFlow(graph, s, t, weights);
+
+            Assert.Equal(maxFlow, minCutWeight);
+        }
+
+        [Fact]
+        public void DegreeConstrainedMatchesDirectSpecBuild()
+        {
+            Graph graph = Graph.Complete(5);
+            int[] lo = { 1, 1, 1, 1, 1 };
+            int[] hi = { 2, 2, 2, 2, 2 };
+
+            GraphSet actualArray = GraphSet.DegreeConstrained(graph, lo, hi);
+            GraphSet actualUniform = GraphSet.DegreeConstrained(graph, lo: 1, hi: 2);
+
+            using ZddManager manager = new ZddManager(graph.EdgeCount);
+            Zdd expected = FrontierBuilder.Build<DegreeConstraintSpec>(manager, new DegreeConstraintSpec(graph, lo, hi));
+
+            AssertSameEdgeSets(graph, actualArray, expected);
+            AssertSameEdgeSets(graph, actualUniform, expected);
+        }
+
+        [Fact]
+        public void EdgeCoversMatchesDirectSpecBuild()
+        {
+            Graph graph = Graph.Grid(3, 3);
+            GraphSet actual = GraphSet.EdgeCovers(graph);
+
+            using ZddManager manager = new ZddManager(graph.EdgeCount);
+            Zdd expected = FrontierBuilder.Build<DegreeConstraintSpec>(manager, new DegreeConstraintSpec(graph, lo: 1, hi: graph.EdgeCount));
+
+            AssertSameEdgeSets(graph, actual, expected);
+        }
+
+        [Theory]
+        [InlineData("path4")]
+        [InlineData("cycle5")]
+        [InlineData("complete5")]
+        [InlineData("grid2x3")]
+        public void EdgeCoversMatchesBruteForceEdgeCoverEnumeration(string graphName)
+        {
+            Graph graph = SpanningTreeSpecTests.NamedGraph(graphName);
+            GraphSet actual = GraphSet.EdgeCovers(graph);
+
+            var expectedKeys = new HashSet<string>();
+            int bound = 1 << graph.EdgeCount;
+            for (int mask = 0; mask < bound; mask++)
+            {
+                var touched = new bool[graph.VertexCount];
+                var edges = new List<Edge>();
+                for (int i = 0; i < graph.EdgeCount; i++)
+                {
+                    if ((mask & (1 << i)) == 0)
+                    {
+                        continue;
+                    }
+
+                    Edge edge = graph.GetEdge(i);
+                    edges.Add(edge);
+                    touched[edge.U] = true;
+                    touched[edge.V] = true;
+                }
+
+                if (Array.TrueForAll(touched, t => t))
+                {
+                    expectedKeys.Add(EdgeSetKey(edges));
+                }
+            }
+
+            HashSet<string> actualKeys = actual.Select(EdgeSetKey).ToHashSet();
+            Assert.Equal(expectedKeys, actualKeys);
+        }
+
+        [Fact]
+        public void KnapsacksMatchesDirectSpecBuild()
+        {
+            Graph graph = Graph.Complete(5);
+            int[] weights = { 2, 3, 4, 5, 9, 1, 6, 7, 8, 2 };
+            Assert.Equal(graph.EdgeCount, weights.Length);
+            const long capacity = 10;
+
+            GraphSet actual = GraphSet.Knapsacks(graph, weights, capacity);
+
+            using ZddManager manager = new ZddManager(graph.EdgeCount);
+            Zdd expected = FrontierBuilder.Build<KnapsackSpec, long>(manager, new KnapsackSpec(weights, capacity));
+
+            AssertSameEdgeSets(graph, actual, expected);
+        }
+
+        [Fact]
+        public void KnapsacksRejectsAWeightArrayOfTheWrongLength()
+        {
+            Graph graph = Graph.Complete(5);
+            Assert.Throws<ArgumentException>(() => GraphSet.Knapsacks(graph, new[] { 1, 2, 3 }, capacity: 5));
+        }
+
+        [Fact]
+        public void EdgeFamilyGeneratorsChainWithIncludingExcludingLargerSmallerAndCostAtMost()
+        {
+            Graph graph = Graph.Grid(3, 3);
+            Edge include = graph.GetEdge(0);
+            Edge exclude = graph.GetEdge(1);
+
+            var generators = new (string Name, GraphSet Family)[]
+            {
+                ("ConnectedSubgraphs", GraphSet.ConnectedSubgraphs(graph, new[] { 0, 4, 8 })),
+                ("SteinerTrees", GraphSet.SteinerTrees(graph, new[] { 0, 4, 8 })),
+                ("Cuts", GraphSet.Cuts(graph, 0, graph.VertexCount - 1)),
+                ("DegreeConstrained", GraphSet.DegreeConstrained(graph, lo: 0, hi: 2)),
+                ("EdgeCovers", GraphSet.EdgeCovers(graph)),
+                ("Knapsacks", GraphSet.Knapsacks(graph, Enumerable.Repeat(1, graph.EdgeCount).ToArray(), capacity: graph.EdgeCount)),
+            };
+
+            foreach ((string name, GraphSet family) in generators)
+            {
+                GraphSet chained = family.Including(include).Excluding(exclude).Larger(0).Smaller(graph.EdgeCount + 1).CostAtMost(e => 1, graph.EdgeCount);
+
+                Zdd expected = family.Zdd
+                    .SupersetsOf(family.Zdd.Manager.Singleton(graph.EdgeIndexToVariableIndex(0)))
+                    .OffSet(graph.EdgeIndexToVariableIndex(1));
+
+                Assert.True(
+                    chained.Zdd.IsSubsetOf(expected),
+                    $"{name}: chained filters kept an edge set that violates Including/Excluding.");
+                Assert.All(chained, set =>
+                {
+                    Assert.Contains(include, set);
+                    Assert.DoesNotContain(exclude, set);
+                });
+            }
+        }
+
+        private static int NaiveMaxFlow(Graph graph, int s, int t, int[] capacities)
+        {
+            int n = graph.VertexCount;
+            var capacity = new int[n, n];
+
+            for (int i = 0; i < graph.EdgeCount; i++)
+            {
+                Edge edge = graph.GetEdge(i);
+                capacity[edge.U, edge.V] += capacities[i];
+                capacity[edge.V, edge.U] += capacities[i];
+            }
+
+            int totalFlow = 0;
+            while (true)
+            {
+                var parent = new int[n];
+                Array.Fill(parent, -1);
+                parent[s] = s;
+                var queue = new Queue<int>();
+                queue.Enqueue(s);
+
+                while (queue.Count > 0 && parent[t] == -1)
+                {
+                    int u = queue.Dequeue();
+                    for (int v = 0; v < n; v++)
+                    {
+                        if (parent[v] == -1 && capacity[u, v] > 0)
+                        {
+                            parent[v] = u;
+                            queue.Enqueue(v);
+                        }
+                    }
+                }
+
+                if (parent[t] == -1)
+                {
+                    break;
+                }
+
+                int bottleneck = int.MaxValue;
+                for (int v = t; v != s; v = parent[v])
+                {
+                    bottleneck = Math.Min(bottleneck, capacity[parent[v], v]);
+                }
+
+                for (int v = t; v != s; v = parent[v])
+                {
+                    capacity[parent[v], v] -= bottleneck;
+                    capacity[v, parent[v]] += bottleneck;
+                }
+
+                totalFlow += bottleneck;
+            }
+
+            return totalFlow;
         }
 
         // ---- ToEdgeOrder（M6-6, issue #141）----
