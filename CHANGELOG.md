@@ -43,6 +43,19 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
   一時ノード表にしか書かないため `ZddManager` の状態（`NodeCount` を含む）は呼び出し前と
   不変。`options` は必須引数（`null` 不可）。固定 `struct` 状態スペック（`IDdSpec<TState>`）と
   配列状態スペック（`IArrayDdSpec`）の両方にオーバーロードを用意。
+- `Zdd.MapItems(itemMap)`: 同じマネージャ内での項目写像、順序保存の高速経路（M6-4、issue #139、
+  `docs/OPEN-QUESTIONS.md` B17）。CUDD の `Cudd_bddPermute` に相当する「変数の張り替え」が無く、
+  辺順序を変えた `Graph` で組み直した族を元の順序で解釈する、といったことができなかった穴埋め
+  （一般の置換とマネージャ間転送は別 PR にする M6-5 で追加）。`level = VariableCount - item` なので
+  item の大小関係がそのまま level の順序を決める——`itemMap` が **support 上で狭義単調増加**なら
+  親子の level 順序が保たれるので、ボトムアップの明示スタックによる 1 パス再構築で済む
+  （`MapItemsOperation`、ノード id をキーにメモ化、O(ノード数)、非再帰）。`itemMap` は「旧 item →
+  新 item」の全域かつ単射な写像（長さ `Manager.VariableCount`）で、重複があれば `ArgumentException`、
+  範囲外なら `ArgumentOutOfRangeException`。support 外の要素の写像先は検査しない。単調でない
+  `itemMap` を渡すと `NotSupportedException`（一般経路は M6-5 で追加予定）。恒等写像は新しいノードを
+  作らずそのまま自分自身を返す。変数 12 以下の総当たり照合（写像後の族が「各集合の要素を写した族」と
+  一致すること）、`Count` が写像の前後で不変であること、変数 10 万の深い ZDD でスタックオーバー
+  フローしないことを確認済み。
 - `Zdd.AddSomeItem` / `RemoveSomeItem` / `RemoveAddSomeItems`（引数なし版と、対象を絞れる
   `items` 版）: Graphillion の `add_some_element` / `remove_some_element` /
   `remove_add_some_elements` 相当（M6-7、issue #142）。局所探索や「1 手違いの解」を数える

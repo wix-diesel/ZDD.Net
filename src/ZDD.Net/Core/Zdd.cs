@@ -415,6 +415,50 @@ namespace ZDD.Net.Core
         public Zdd ComplementWithin(params ReadOnlySpan<int> items) => Manager.ComplementWithin(this, items);
 
         /// <summary>
+        /// Rebuilds this family within the same manager, renaming every item via <paramref name="itemMap"/>
+        /// (Cudd_bddPermute's order-preserving fast path — M6-4, issue #139).
+        /// </summary>
+        /// <param name="itemMap">
+        /// Total, injective old-item-to-new-item map (so effectively a permutation, since domain and
+        /// codomain are both 0..<see cref="ZddManager.VariableCount"/> - 1); length must equal
+        /// <see cref="ZddManager.VariableCount"/>.
+        /// </param>
+        /// <returns>
+        /// <c>{ { itemMap[i] : i &#8712; s } : s &#8712; this }</c> — this family with every set's
+        /// items renamed. The identity map returns this same handle, without building anything.
+        /// </returns>
+        /// <remarks>
+        /// <para>
+        /// <b>Semantics (B17)</b>: only injective maps are accepted — a non-injective map would
+        /// identify two elements with each other (a projection / existential quantification), which
+        /// can collapse distinct sets and lose multiplicity; that is a different operation, not
+        /// offered here. <paramref name="itemMap"/>'s targets for items outside this family's
+        /// <see cref="Support"/> are never inspected, since they cannot affect the result.
+        /// </para>
+        /// <para>
+        /// <b>Fast path only</b>: since <c>level = VariableCount - item</c>, item order directly
+        /// determines level order. This release only implements the case where
+        /// <paramref name="itemMap"/> is strictly increasing across <see cref="Support"/> — that is
+        /// exactly what keeps parent/child level ordering intact after relabeling, so the result can
+        /// be rebuilt bottom-up in a single iterative pass, O(node count), with no recursion.
+        /// A non-order-preserving <paramref name="itemMap"/> throws <see cref="NotSupportedException"/>
+        /// in this release; the general case (and transferring a family to a different manager) is
+        /// planned for M6-5.
+        /// </para>
+        /// <para><see cref="Count"/> is unchanged, since the map is injective.</para>
+        /// </remarks>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="itemMap"/>'s length is not <see cref="ZddManager.VariableCount"/>, or it is not injective.
+        /// </exception>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// <paramref name="itemMap"/> contains a value outside 0..<see cref="ZddManager.VariableCount"/> - 1.
+        /// </exception>
+        /// <exception cref="NotSupportedException"><paramref name="itemMap"/> is not strictly increasing across <see cref="Support"/>.</exception>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
+        public Zdd MapItems(params ReadOnlySpan<int> itemMap) => Manager.MapItems(this, itemMap);
+
+        /// <summary>
         /// Removes one contained item from each set (Graphillion's <c>remove_some_element</c>):
         /// <c>&#8899;<sub>e &#8712; items</sub> OnSet(e)</c>, using every item of this manager.
         /// </summary>
