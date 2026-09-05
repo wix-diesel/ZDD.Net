@@ -273,7 +273,7 @@ namespace ZDD.Net.Graphs
         /// <example><code>GraphSet parts = GraphSet.BalancedPartitions(Graph.Grid(3, 3), k: 3, tolerance: 0.2);</code></example>
         /// <exception cref="ArgumentNullException"><paramref name="graph"/> is <see langword="null"/>.</exception>
         /// <exception cref="ArgumentOutOfRangeException">
-        /// <paramref name="k"/> is not positive, or <paramref name="tolerance"/> is negative.
+        /// <paramref name="k"/> is not positive, or <paramref name="tolerance"/> is negative, NaN, or infinite.
         /// </exception>
         public static GraphSet BalancedPartitions(Graph graph, int k, double tolerance = 0.0)
         {
@@ -284,9 +284,9 @@ namespace ZDD.Net.Graphs
                 throw new ArgumentOutOfRangeException(nameof(k), k, "Must be positive.");
             }
 
-            if (tolerance < 0.0)
+            if (!double.IsFinite(tolerance) || tolerance < 0.0)
             {
-                throw new ArgumentOutOfRangeException(nameof(tolerance), tolerance, "Must be non-negative.");
+                throw new ArgumentOutOfRangeException(nameof(tolerance), tolerance, "Must be non-negative and finite.");
             }
 
             double average = (double)graph.VertexCount / k;

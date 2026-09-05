@@ -244,6 +244,17 @@ namespace ZDD.Net.Tests.Graphs
         }
 
         [Theory]
+        [InlineData(double.NaN)]
+        [InlineData(double.PositiveInfinity)]
+        [InlineData(double.NegativeInfinity)]
+        [InlineData(-0.1)]
+        public void BalancedPartitionsRejectsNonFiniteOrNegativeTolerance(double tolerance)
+        {
+            Graph graph = Graph.Grid(2, 2);
+            Assert.Throws<ArgumentOutOfRangeException>(() => GraphSet.BalancedPartitions(graph, k: 2, tolerance: tolerance));
+        }
+
+        [Theory]
         [InlineData("path4", 2)]
         [InlineData("path4", 3)]
         [InlineData("cycle5", 3)]
