@@ -529,14 +529,18 @@ namespace ZDD.Net.Core
 
             ValidateItemMapIsInjective(itemMap, target.VariableCount);
 
+            bool sameManager = ReferenceEquals(this, target);
+
             // Throws ObjectDisposedException here if either manager is disposed (touches both
             // table and cache). Called unconditionally, before the identity short-circuit below, so
             // a disposed manager always throws regardless of itemMap's contents (matching
-            // Zdd.MapItemsTo's docs).
+            // Zdd.MapItemsTo's docs). Skip the redundant second call when target is this same
+            // manager — it would just tune the same cache against the same table a second time.
             TuneCache();
-            target.TuneCache();
-
-            bool sameManager = ReferenceEquals(this, target);
+            if (!sameManager)
+            {
+                target.TuneCache();
+            }
 
             if (sameManager && IsIdentity(itemMap))
             {
@@ -544,9 +548,10 @@ namespace ZDD.Net.Core
                 return f;
             }
 
-            // B17: order-preserving maps on f's support get the O(node count) fast path; a
-            // non-monotonic map (or a monotonic one crossing into a different manager) still needs
-            // the general path (M6-5), which is also how a cross-manager transfer is done.
+            // B17: order-preserving maps on f's support get the O(node count) fast path
+            // regardless of whether target is this manager or a different one (MapItemsOperation
+            // just points its GetNode calls at target); only a non-monotonic map needs the general
+            // path (M6-5), which also doubles as the cross-manager transfer path.
             int resultId = IsMonotonicOnSupport(f.Id, itemMap)
                 ? MapItemsOperation.Apply(this, target, f.Id, itemMap)
                 : GeneralMapItemsOperation.Apply(this, target, f.Id, itemMap);

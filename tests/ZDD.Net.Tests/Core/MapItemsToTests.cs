@@ -13,8 +13,11 @@ namespace ZDD.Net.Tests.Core
     /// </summary>
     /// <remarks>
     /// 照合相手は <see cref="BruteForceFamily.MapItemsTo"/>。写像先マネージャの変数の個数は
-    /// ソースと異なってよい（<see cref="TransferTo"/> は <c>target.VariableCount &gt;= source</c>
-    /// を要求するが、<see cref="Zdd.MapItemsTo"/> 自体はより小さくても構わない）。
+    /// ソースより多くてよい（このテストでは主に <c>+3</c> 変数の target で確かめる）。
+    /// <see cref="Zdd.MapItemsTo"/> 自体は <c>target.VariableCount &gt;= source</c> を明示的には
+    /// 要求しないが、単射写像である以上（鳩の巣原理により）実質的にそれを満たさなければ
+    /// 検証で必ず弾かれる——ソースの変数が 0 個の自明なケースを除く。<see cref="TransferTo"/> が
+    /// この不等号を明示的にチェックして分かりやすいエラーにしているのはそのため。
     /// </remarks>
     public class MapItemsToTests
     {

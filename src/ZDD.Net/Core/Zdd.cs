@@ -433,8 +433,12 @@ namespace ZDD.Net.Core
         /// <b>Semantics (B17)</b>: only injective maps are accepted — a non-injective map would
         /// identify two elements with each other (a projection / existential quantification), which
         /// can collapse distinct sets and lose multiplicity; that is a different operation, not
-        /// offered here. <paramref name="itemMap"/>'s targets for items outside this family's
-        /// <see cref="Support"/> are never inspected, since they cannot affect the result.
+        /// offered here. This injectivity (and the range) check runs over the whole of
+        /// <paramref name="itemMap"/>, not just this family's <see cref="Support"/> — so an
+        /// out-of-range or duplicate target outside the support is still rejected. What items
+        /// outside the support don't affect is the <i>result</i> (mapping them differently changes
+        /// nothing about the family produced) and whether the fast path applies (only their
+        /// ordering relative to each other, and to support items, is unconstrained).
         /// </para>
         /// <para>
         /// <b>Two paths, same result</b>: since <c>level = VariableCount - item</c>, item order
@@ -468,8 +472,9 @@ namespace ZDD.Net.Core
         /// <param name="itemMap">
         /// Total, injective old-item-to-new-item map: length must equal
         /// <see cref="ZddManager.VariableCount"/> of this family's manager, and every entry must be
-        /// in 0..<c>target.VariableCount</c> - 1. See <see cref="MapItems"/> for the semantics (B17):
-        /// injective-only, support-outside entries unchecked, <see cref="Count"/> unchanged.
+        /// in 0..<c>target.VariableCount</c> - 1 (validated over the whole map, not just this
+        /// family's <see cref="Support"/>). See <see cref="MapItems"/> for the semantics (B17):
+        /// injective-only, <see cref="Count"/> unchanged.
         /// </param>
         /// <returns>
         /// <c>{ { itemMap[i] : i &#8712; s } : s &#8712; this }</c>, built in <paramref name="target"/>.
