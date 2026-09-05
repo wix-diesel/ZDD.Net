@@ -136,6 +136,12 @@ namespace ZDD.Net.Tests.Sets
             var ex = Assert.Throws<ArgumentException>(() => f.Union(g));
             Assert.Equal("other", ex.ParamName);
             Assert.Contains("ToUniverse", ex.Message, StringComparison.Ordinal);
+
+            // The message must not suggest moving just one operand onto the other's universe: neither is
+            // a superset of the other in general (a primary M6-6 use case), so that advice would just
+            // throw again. It should point at Extend to build a universe covering both instead.
+            Assert.Contains("Extend", ex.Message, StringComparison.Ordinal);
+
             Assert.Throws<ArgumentException>(() => f.Product(g));
             Assert.Throws<ArgumentException>(() => f.SupersetsOf(g));
         }

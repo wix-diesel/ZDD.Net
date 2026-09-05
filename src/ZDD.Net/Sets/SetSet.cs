@@ -491,7 +491,9 @@ namespace ZDD.Net.Sets
                 ThrowHelper.ThrowArgumentException(
                     nameof(other),
                     "The two SetSet<T> instances do not share the same SetUniverse<T>; only families built over the same universe can be combined (B18: no implicit promotion). " +
-                    $"Move one onto the other's universe first, e.g. '{nameof(other)} = {nameof(other)}.{nameof(ToUniverse)}({nameof(Universe)})'.");
+                    $"Neither universe need be a superset of the other: build one that covers both with " +
+                    $"'{nameof(SetUniverse<object>.Extend)}' (e.g. 'combined = {nameof(Universe)}.{nameof(SetUniverse<object>.Extend)}({nameof(other)}.{nameof(Universe)}.{nameof(SetUniverse<object>.Elements)})'), " +
+                    $"then move each operand onto it with '{nameof(ToUniverse)}(combined)'.");
             }
 
             return new SetSet<T>(Universe, operation(Zdd, other.Zdd));

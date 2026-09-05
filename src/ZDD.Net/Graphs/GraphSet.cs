@@ -332,8 +332,8 @@ namespace ZDD.Net.Graphs
         /// recorded edge-order mapping for <see cref="ToEdgeOrder"/> to use.
         /// </exception>
         /// <exception cref="ArgumentException">
-        /// <paramref name="target"/>'s edge count or edges don't match what <see cref="Graph"/>'s
-        /// <see cref="Graphs.Graph.SourceOrder"/> expects (named in the message).
+        /// <paramref name="target"/>'s vertex count, edge count, or edges don't match what
+        /// <see cref="Graph"/>'s <see cref="Graphs.Graph.SourceOrder"/> expects (named in the message).
         /// </exception>
         public GraphSet ToEdgeOrder(Graph target)
         {
@@ -346,6 +346,14 @@ namespace ZDD.Net.Graphs
                     $"This family's graph has no {nameof(Graph.SourceOrder)}; it was not produced by " +
                     $"{nameof(Graph.WithEdgeOrder)} or {nameof(Graph.Optimize)}, so there is no recorded " +
                     $"edge-order mapping for {nameof(ToEdgeOrder)} to use.");
+            }
+
+            if (target.VertexCount != Graph.VertexCount)
+            {
+                throw new ArgumentException(
+                    $"'{nameof(target)}' has {target.VertexCount} vertices, but this family's graph has " +
+                    $"{Graph.VertexCount}; {nameof(ToEdgeOrder)} only moves a family between edge orderings of the same graph.",
+                    nameof(target));
             }
 
             if (target.EdgeCount != Graph.EdgeCount)

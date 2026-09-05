@@ -613,6 +613,23 @@ namespace ZDD.Net.Tests.Graphs
         }
 
         [Fact]
+        public void ToEdgeOrderThrowsWhenTargetHasADifferentVertexCountEvenIfEveryEdgeMatches()
+        {
+            // Same edges (so a per-edge comparison alone would let this through), but the vertex count
+            // itself differs — e.g. extra isolated vertices touched by no edge. Later GraphSet operations
+            // that rely on Graph.VertexCount (Including/Excluding by vertex, generators, ...) would then
+            // silently run against the wrong graph, so this must be rejected up front.
+            Graph graph = Graph.Grid(3, 3);
+            Graph optimized = graph.Optimize();
+            GraphSet paths = GraphSet.Paths(optimized, 0, graph.VertexCount - 1);
+
+            Graph extraIsolatedVertex = new Graph(graph.VertexCount + 1, graph.Edges);
+
+            ArgumentException ex = Assert.Throws<ArgumentException>(() => paths.ToEdgeOrder(extraIsolatedVertex));
+            Assert.Equal("target", ex.ParamName);
+        }
+
+        [Fact]
         public void ToEdgeOrderThrowsWhenTargetsEdgesDoNotMatchTheSourceOrderMapping()
         {
             Graph graph = Graph.Grid(3, 3);
