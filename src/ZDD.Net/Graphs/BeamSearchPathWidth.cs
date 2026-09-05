@@ -69,10 +69,10 @@ namespace ZDD.Net.Graphs
         /// </summary>
         internal const int DefaultStartVertexTrials = 3;
 
-        /// <summary>Returns the permutation this strategy produces: new edge index → <paramref name="graph"/>'s edge index.</summary>
-        internal static int[] Compute(Graph graph, EdgeOrderOptions options)
+        /// <summary>Returns the permutation this strategy produces: new edge index → <paramref name="topology"/>'s edge index.</summary>
+        internal static int[] Compute(EdgeTopology topology, EdgeOrderOptions options)
         {
-            int edgeCount = graph.EdgeCount;
+            int edgeCount = topology.EdgeCount;
             if (edgeCount == 0)
             {
                 return EdgeOrdering.Identity(edgeCount);
@@ -91,12 +91,12 @@ namespace ZDD.Net.Graphs
             int[]? bestOrder = null;
             int bestWidth = int.MaxValue;
 
-            foreach (int start in StartVertices(graph, options))
+            foreach (int start in StartVertices(topology, options))
             {
-                foreach (Node survivor in Search(graph, beamWidth, start, cancellationToken))
+                foreach (Node survivor in Search(topology, beamWidth, start, cancellationToken))
                 {
-                    int[] order = EdgeOrdering.EdgeOrderFromVertexOrder(graph, VertexOrder(survivor, graph.VertexCount));
-                    int width = EdgeOrdering.MaxFrontierSize(graph, order);
+                    int[] order = EdgeOrdering.EdgeOrderFromVertexOrder(topology, VertexOrder(survivor, topology.VertexCount));
+                    int width = EdgeOrdering.MaxFrontierSize(topology, order);
                     if (width < bestWidth)
                     {
                         bestWidth = width;
@@ -113,24 +113,24 @@ namespace ZDD.Net.Graphs
             return bestOrder!;
         }
 
-        private static IReadOnlyList<int> StartVertices(Graph graph, EdgeOrderOptions options)
+        private static IReadOnlyList<int> StartVertices(EdgeTopology topology, EdgeOrderOptions options)
         {
             if (options.Selection == StartVertexSelection.Specified)
             {
-                if ((uint)options.StartVertex >= (uint)graph.VertexCount)
+                if ((uint)options.StartVertex >= (uint)topology.VertexCount)
                 {
                     throw new ArgumentOutOfRangeException(
                         nameof(options),
                         options.StartVertex,
-                        $"The start vertex must be in 0 .. {graph.VertexCount - 1}.");
+                        $"The start vertex must be in 0 .. {topology.VertexCount - 1}.");
                 }
 
                 return new[] { options.StartVertex };
             }
 
-            // graph.EdgeCount > 0 here (Compute already returned for the empty-edge case), so there is at
+            // topology.EdgeCount > 0 here (Compute already returned for the empty-edge case), so there is at
             // least one vertex of positive degree to sort.
-            List<int> sorted = EdgeOrdering.DegreeSortedVertices(graph);
+            List<int> sorted = EdgeOrdering.DegreeSortedVertices(topology);
             int trials = options.Selection == StartVertexSelection.BestOfCandidates
                 ? (options.MaxCandidates > 0 ? Math.Min(options.MaxCandidates, sorted.Count) : sorted.Count)
                 : Math.Min(DefaultStartVertexTrials, sorted.Count);
@@ -199,13 +199,13 @@ namespace ZDD.Net.Graphs
         }
 
         /// <summary>Runs one trial from <paramref name="start"/> and returns its final beam (up to <paramref name="beamWidth"/> complete vertex orders).</summary>
-        private static List<Node> Search(Graph graph, int beamWidth, int start, CancellationToken cancellationToken)
+        private static List<Node> Search(EdgeTopology topology, int beamWidth, int start, CancellationToken cancellationToken)
         {
-            int vertexCount = graph.VertexCount;
+            int vertexCount = topology.VertexCount;
             var remaining = new int[vertexCount];
             for (int v = 0; v < vertexCount; v++)
             {
-                remaining[v] = graph.Degree(v);
+                remaining[v] = topology.Degree(v);
             }
 
             var root = new Node
@@ -215,10 +215,10 @@ namespace ZDD.Net.Graphs
                 Growable = new int[vertexCount],
             };
 
-            int[] distance = BfsDistance(graph, start);
-            int[] verticesByDegree = VerticesByDegreeAscending(graph);
+            int[] distance = BfsDistance(topology, start);
+            int[] verticesByDegree = VerticesByDegreeAscending(topology);
 
-            var beam = new List<Node> { Apply(graph, root, start, verticesByDegree) };
+            var beam = new List<Node> { Apply(topology, root, start, verticesByDegree) };
             var candidateStamp = new int[vertexCount];
             int stamp = 0;
 
@@ -227,7 +227,7 @@ namespace ZDD.Net.Graphs
                 // Cancellation does not stop the search outright: from here on the beam collapses to its
                 // single best survivor, which finishes the remaining vertices with no more branching.
                 int width = cancellationToken.IsCancellationRequested ? 1 : beamWidth;
-                beam = Advance(graph, beam, width, distance, verticesByDegree, candidateStamp, ref stamp);
+                beam = Advance(topology, beam, width, distance, verticesByDegree, candidateStamp, ref stamp);
             }
 
             return beam;
@@ -240,9 +240,9 @@ namespace ZDD.Net.Graphs
         /// <see cref="Node.RestartCursor"/> rather than rescanning <see cref="Graph.VertexCount"/> vertices
         /// from scratch every time a disconnected graph's next component needs a start.
         /// </remarks>
-        private static int[] VerticesByDegreeAscending(Graph graph)
+        private static int[] VerticesByDegreeAscending(EdgeTopology topology)
         {
-            var vertices = new int[graph.VertexCount];
+            var vertices = new int[topology.VertexCount];
             for (int v = 0; v < vertices.Length; v++)
             {
                 vertices[v] = v;
@@ -250,7 +250,7 @@ namespace ZDD.Net.Graphs
 
             Array.Sort(vertices, (a, b) =>
             {
-                int byDegree = graph.Degree(a).CompareTo(graph.Degree(b));
+                int byDegree = topology.Degree(a).CompareTo(topology.Degree(b));
                 return byDegree != 0 ? byDegree : a.CompareTo(b);
             });
 
@@ -258,9 +258,9 @@ namespace ZDD.Net.Graphs
         }
 
         /// <summary>Breadth-first distance from <paramref name="start"/> (unreached vertices get <see cref="int.MaxValue"/>).</summary>
-        private static int[] BfsDistance(Graph graph, int start)
+        private static int[] BfsDistance(EdgeTopology topology, int start)
         {
-            var distance = new int[graph.VertexCount];
+            var distance = new int[topology.VertexCount];
             Array.Fill(distance, int.MaxValue);
             distance[start] = 0;
 
@@ -269,9 +269,9 @@ namespace ZDD.Net.Graphs
             while (queue.Count > 0)
             {
                 int v = queue.Dequeue();
-                foreach (int edgeIndex in graph.IncidentEdges(v))
+                foreach (int edgeIndex in topology.IncidentEdges(v))
                 {
-                    int u = graph.GetEdge(edgeIndex).Other(v);
+                    int u = topology.Other(edgeIndex, v);
                     if (distance[u] == int.MaxValue)
                     {
                         distance[u] = distance[v] + 1;
@@ -284,7 +284,7 @@ namespace ZDD.Net.Graphs
         }
 
         private static List<Node> Advance(
-            Graph graph, List<Node> beam, int beamWidth, int[] distance, int[] verticesByDegree, int[] candidateStamp, ref int stamp)
+            EdgeTopology topology, List<Node> beam, int beamWidth, int[] distance, int[] verticesByDegree, int[] candidateStamp, ref int stamp)
         {
             // Order is the index a candidate was added at: two candidates can tie on every scored field
             // (same Vertex reached from two different Parent states with an identical Peak/distance/sum, or
@@ -295,9 +295,9 @@ namespace ZDD.Net.Graphs
             foreach (Node node in beam)
             {
                 stamp++;
-                foreach (int candidate in Candidates(graph, node, verticesByDegree, candidateStamp, stamp))
+                foreach (int candidate in Candidates(topology, node, verticesByDegree, candidateStamp, stamp))
                 {
-                    Predict(graph, node, candidate, out int newOpenCount, out int peak);
+                    Predict(topology, node, candidate, out int newOpenCount, out int peak);
                     scored.Add((node, candidate, peak, newOpenCount, scored.Count));
                 }
             }
@@ -337,7 +337,7 @@ namespace ZDD.Net.Graphs
             var next = new List<Node>(Math.Min(beamWidth, scored.Count));
             for (int i = 0; i < scored.Count && next.Count < beamWidth; i++)
             {
-                next.Add(Apply(graph, scored[i].Parent, scored[i].Vertex, verticesByDegree));
+                next.Add(Apply(topology, scored[i].Parent, scored[i].Vertex, verticesByDegree));
             }
 
             return next;
@@ -348,7 +348,7 @@ namespace ZDD.Net.Graphs
         /// its growable vertices, deduplicated with a shared stamped buffer rather than a fresh set per
         /// call. Once nothing is growable, the lowest-degree unvisited vertex restarts a new region.
         /// </summary>
-        private static IEnumerable<int> Candidates(Graph graph, Node node, int[] verticesByDegree, int[] candidateStamp, int mark)
+        private static IEnumerable<int> Candidates(EdgeTopology topology, Node node, int[] verticesByDegree, int[] candidateStamp, int mark)
         {
             if (node.GrowableCount == 0)
             {
@@ -358,9 +358,9 @@ namespace ZDD.Net.Graphs
 
             for (int i = 0; i < node.GrowableCount; i++)
             {
-                foreach (int edgeIndex in graph.IncidentEdges(node.Growable[i]))
+                foreach (int edgeIndex in topology.IncidentEdges(node.Growable[i]))
                 {
-                    int u = graph.GetEdge(edgeIndex).Other(node.Growable[i]);
+                    int u = topology.Other(edgeIndex, node.Growable[i]);
                     if (!node.Visited[u] && candidateStamp[u] != mark)
                     {
                         candidateStamp[u] = mark;
@@ -392,22 +392,22 @@ namespace ZDD.Net.Graphs
         /// (<paramref name="peak"/>), without mutating <paramref name="node"/> — this runs once per
         /// candidate considered, most of which are discarded, so it must not pay for a state copy.
         /// </summary>
-        private static void Predict(Graph graph, Node node, int v, out int newOpenCount, out int peak)
+        private static void Predict(EdgeTopology topology, Node node, int v, out int newOpenCount, out int peak)
         {
             int opened = 0;
             int closed = 0;
             int touched = 0;
 
-            foreach (int edgeIndex in graph.IncidentEdges(v))
+            foreach (int edgeIndex in topology.IncidentEdges(v))
             {
-                int u = graph.GetEdge(edgeIndex).Other(v);
+                int u = topology.Other(edgeIndex, v);
                 if (!node.Visited[u])
                 {
                     continue;
                 }
 
                 touched++;
-                if (node.Remaining[u] == graph.Degree(u))
+                if (node.Remaining[u] == topology.Degree(u))
                 {
                     opened++; // u's first edge to resolve is this one: it enters the frontier only now.
                 }
@@ -421,7 +421,7 @@ namespace ZDD.Net.Graphs
             if (touched > 0)
             {
                 opened++; // v's first resolved edge is one of the ones above: v enters the frontier too.
-                if (graph.Degree(v) - touched == 0)
+                if (topology.Degree(v) - touched == 0)
                 {
                     closed++; // every one of v's edges resolved at once: v leaves again immediately.
                 }
@@ -432,7 +432,7 @@ namespace ZDD.Net.Graphs
         }
 
         /// <summary>Returns a new state with <paramref name="v"/> visited, leaving <paramref name="parent"/> untouched.</summary>
-        private static Node Apply(Graph graph, Node parent, int v, int[] verticesByDegree)
+        private static Node Apply(EdgeTopology topology, Node parent, int v, int[] verticesByDegree)
         {
             var visited = (bool[])parent.Visited.Clone();
             var remaining = (int[])parent.Remaining.Clone();
@@ -445,16 +445,16 @@ namespace ZDD.Net.Graphs
             int closed = 0;
             int touched = 0;
 
-            foreach (int edgeIndex in graph.IncidentEdges(v))
+            foreach (int edgeIndex in topology.IncidentEdges(v))
             {
-                int u = graph.GetEdge(edgeIndex).Other(v);
+                int u = topology.Other(edgeIndex, v);
                 if (!visited[u])
                 {
                     continue;
                 }
 
                 touched++;
-                if (remaining[u] == graph.Degree(u))
+                if (remaining[u] == topology.Degree(u))
                 {
                     opened++;
                 }
@@ -467,7 +467,7 @@ namespace ZDD.Net.Graphs
                 }
             }
 
-            remaining[v] = graph.Degree(v) - touched;
+            remaining[v] = topology.Degree(v) - touched;
             if (touched > 0)
             {
                 opened++;
@@ -480,7 +480,7 @@ namespace ZDD.Net.Graphs
                     closed++;
                 }
             }
-            else if (graph.Degree(v) > 0)
+            else if (topology.Degree(v) > 0)
             {
                 growable[growableCount++] = v;
             }

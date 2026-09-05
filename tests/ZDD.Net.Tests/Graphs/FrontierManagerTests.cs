@@ -177,7 +177,13 @@ namespace ZDD.Net.Tests.Graphs
         [Fact]
         public void ConstructorRejectsNullGraph()
         {
-            Assert.Throws<ArgumentNullException>(() => new FrontierManager(null!));
+            Assert.Throws<ArgumentNullException>(() => new FrontierManager((Graph)null!));
+        }
+
+        [Fact]
+        public void ConstructorRejectsNullDirectedGraph()
+        {
+            Assert.Throws<ArgumentNullException>(() => new FrontierManager((DirectedGraph)null!));
         }
 
         [Fact]
@@ -208,6 +214,99 @@ namespace ZDD.Net.Tests.Graphs
         public void ConstructionSucceedsAndMaxFrontierSizeIsSaneForLargerGraphs(int rows, int cols)
         {
             var graph = Graph.Grid(rows, cols);
+
+            var manager = new FrontierManager(graph);
+
+            Assert.True(manager.MaxFrontierSize > 0);
+            Assert.True(manager.MaxFrontierSize <= graph.VertexCount);
+        }
+
+        // --- M7-2: FrontierManager(DirectedGraph), built on the shared EdgeTopology. ---
+
+        [Fact]
+        public void GraphConstructorSetsGraphAndLeavesDirectedGraphNull()
+        {
+            var manager = new FrontierManager(Graph.Path(4));
+
+            Assert.NotNull(manager.Graph);
+            Assert.Null(manager.DirectedGraph);
+        }
+
+        [Fact]
+        public void DirectedGraphConstructorSetsDirectedGraphAndLeavesGraphNull()
+        {
+            var manager = new FrontierManager(DirectedGraph.Path(4));
+
+            Assert.Null(manager.Graph);
+            Assert.NotNull(manager.DirectedGraph);
+        }
+
+        // Bidirected(Path(4)): arcs (0,1)(1,0)(1,2)(2,1)(2,3)(3,2). Each undirected edge becomes a
+        // consecutive anti-parallel pair, so the frontier bookkeeping is the undirected Path(4) case
+        // (see PathFourMatchesHandComputedFrontier) with every edge index doubled.
+        [Fact]
+        public void BidirectedPathFourMatchesHandComputedFrontier()
+        {
+            var manager = new FrontierManager(DirectedGraph.Bidirected(Graph.Path(4)));
+
+            Assert.Equal(new[] { 0, 1 }, manager.IntroducedVertices(0));
+            Assert.Equal(Array.Empty<int>(), manager.IntroducedVertices(1));
+            Assert.Equal(new[] { 2 }, manager.IntroducedVertices(2));
+            Assert.Equal(Array.Empty<int>(), manager.IntroducedVertices(3));
+            Assert.Equal(new[] { 3 }, manager.IntroducedVertices(4));
+            Assert.Equal(Array.Empty<int>(), manager.IntroducedVertices(5));
+
+            Assert.Equal(Array.Empty<int>(), manager.ForgottenVertices(0));
+            Assert.Equal(new[] { 0 }, manager.ForgottenVertices(1));
+            Assert.Equal(Array.Empty<int>(), manager.ForgottenVertices(2));
+            Assert.Equal(new[] { 1 }, manager.ForgottenVertices(3));
+            Assert.Equal(Array.Empty<int>(), manager.ForgottenVertices(4));
+            Assert.Equal(new[] { 2, 3 }, manager.ForgottenVertices(5));
+
+            Assert.Equal(new[] { 2, 2, 2, 2, 2, 2 }, Enumerable.Range(0, 6).Select(manager.FrontierSize).ToArray());
+            Assert.Equal(2, manager.MaxFrontierSize);
+
+            // Same slot-reuse shape as the undirected case, doubled: v0/v2 share a slot, as do v1/v3.
+            Assert.Equal(manager.MateIndex(0, 0), manager.MateIndex(2, 2));
+            Assert.Equal(manager.MateIndex(0, 1), manager.MateIndex(4, 3));
+        }
+
+        // Bidirected(Cycle(4)): same doubling argument as above, against CycleFourMatchesHandComputedFrontier.
+        [Fact]
+        public void BidirectedCycleFourMatchesHandComputedFrontier()
+        {
+            var manager = new FrontierManager(DirectedGraph.Bidirected(Graph.Cycle(4)));
+
+            Assert.Equal(new[] { 2, 2, 3, 3, 3, 3, 2, 2 }, Enumerable.Range(0, 8).Select(manager.FrontierSize).ToArray());
+            Assert.Equal(3, manager.MaxFrontierSize);
+        }
+
+        [Theory]
+        [InlineData(2, 2)]
+        [InlineData(3, 3)]
+        [InlineData(4, 5)]
+        public void BidirectedGraphMaxFrontierSizeMatchesTheUndirectedGraph(int rows, int cols)
+        {
+            // Doubling every edge into a consecutive anti-parallel pair never changes which vertices are
+            // in the frontier at any point, only how many edge-steps it takes to get there — so the peak
+            // frontier (in vertices, not edges) is exactly the undirected graph's.
+            Graph undirected = Graph.Grid(rows, cols);
+            DirectedGraph directed = DirectedGraph.Bidirected(undirected);
+
+            var undirectedManager = new FrontierManager(undirected);
+            var directedManager = new FrontierManager(directed);
+
+            Assert.Equal(undirectedManager.MaxFrontierSize, directedManager.MaxFrontierSize);
+        }
+
+        [Theory]
+        [InlineData(2, 2)]
+        [InlineData(3, 3)]
+        [InlineData(4, 4)]
+        [InlineData(50, 50)]
+        public void DirectedGraphConstructionSucceedsAndMaxFrontierSizeIsSaneForLargerGraphs(int rows, int cols)
+        {
+            var graph = DirectedGraph.Grid(rows, cols);
 
             var manager = new FrontierManager(graph);
 
