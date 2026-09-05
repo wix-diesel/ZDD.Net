@@ -285,9 +285,11 @@ namespace ZDD.Net.Tests.Graphs
             Assert.Equal(basePaths.Zdd.AddSomeItem(someIndices), basePaths.AddSomeItem(someEdges).Zdd);
             Assert.Equal(basePaths.Zdd.RemoveAddSomeItems(someIndices), basePaths.RemoveAddSomeItems(someEdges).Zdd);
 
-            // The GraphSet's own Universe still decodes the wrapped Zdd's sets back into real edges.
+            // The GraphSet's own Universe still decodes the wrapped Zdd's sets back into real edges
+            // of this graph (not just some default(Edge) or an index misread as an edge).
             GraphSet removed = basePaths.RemoveSomeItem(someEdges);
-            Assert.All(removed, set => Assert.True(set.Count >= 0));
+            Assert.NotEmpty(removed);
+            Assert.All(removed, set => Assert.All(set, edge => Assert.Contains(edge, grid.Edges)));
             Assert.Equal(removed.Count, removed.Count());
         }
 
