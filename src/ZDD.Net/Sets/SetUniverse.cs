@@ -119,9 +119,11 @@ namespace ZDD.Net.Sets
         /// <returns>
         /// A universe whose first <see cref="Count"/> elements are this universe's, in the same order
         /// (so they keep the same item index), followed by the newly seen elements of
-        /// <paramref name="additionalElements"/>. Because item indices are stable variable identities
-        /// (B7), this universe's <see cref="ZddManager"/> can't simply grow: the result gets a fresh,
-        /// bigger one instead (B19) &#8212; move a <see cref="SetSet{T}"/> onto it with
+        /// <paramref name="additionalElements"/> &#8212; which may add nothing new (an empty or
+        /// fully-duplicate <paramref name="additionalElements"/> still returns a same-size universe on a
+        /// fresh manager, not this one). Because item indices are stable variable identities (B7), this
+        /// universe's <see cref="ZddManager"/> can't simply grow in place: the result always gets a fresh
+        /// manager instead (B19) &#8212; move a <see cref="SetSet{T}"/> onto it with
         /// <see cref="SetSet{T}.ToUniverse"/>.
         /// </returns>
         /// <exception cref="ArgumentNullException"><paramref name="additionalElements"/> is <see langword="null"/>.</exception>
