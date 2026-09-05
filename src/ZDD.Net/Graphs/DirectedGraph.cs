@@ -163,7 +163,7 @@ namespace ZDD.Net.Graphs
 
         /// <summary>
         /// The indices (into <see cref="Edges"/>) of the arcs incident to <paramref name="vertex"/>,
-        /// regardless of direction (outgoing arcs first, then incoming, each in arc order).
+        /// regardless of direction, in arc order (the order the arcs were constructed with).
         /// </summary>
         /// <remarks>A read-only view over the backing storage: it cannot be downcast to mutate the graph.</remarks>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="vertex"/> is outside <c>0 .. VertexCount - 1</c>.</exception>
@@ -204,8 +204,8 @@ namespace ZDD.Net.Graphs
         /// </remarks>
         public Graph ToUndirected()
         {
-            var undirectedEdges = new List<Edge>();
-            var seen = new HashSet<Edge>();
+            var undirectedEdges = new List<Edge>(_edges.Length);
+            var seen = new HashSet<Edge>(_edges.Length);
             foreach (DirectedEdge edge in _edges)
             {
                 Edge undirected = edge.AsUndirected();

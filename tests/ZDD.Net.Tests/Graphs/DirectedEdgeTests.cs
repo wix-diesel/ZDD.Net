@@ -1,3 +1,4 @@
+using System;
 using Xunit;
 using ZDD.Net.Graphs;
 
@@ -10,7 +11,7 @@ namespace ZDD.Net.Tests.Graphs
     public class DirectedEdgeTests
     {
         [Fact]
-        public void OppositeDirectionArcsAreNotEqualAndHashDifferently()
+        public void OppositeDirectionArcsAreNotEqual()
         {
             var forward = new DirectedEdge(0, 1);
             var backward = new DirectedEdge(1, 0);
@@ -18,7 +19,17 @@ namespace ZDD.Net.Tests.Graphs
             Assert.NotEqual(forward, backward);
             Assert.True(forward != backward);
             Assert.False(forward == backward);
-            Assert.NotEqual(forward.GetHashCode(), backward.GetHashCode());
+        }
+
+        [Fact]
+        public void HashCodeMatchesTheDocumentedOrderedFormula()
+        {
+            // GetHashCode only promises equal objects hash equally, not that unequal objects hash
+            // differently — so this checks the documented Combine(From, To) formula directly rather
+            // than asserting an inequality that isn't part of the contract.
+            var edge = new DirectedEdge(3, 9);
+
+            Assert.Equal(HashCode.Combine(3, 9), edge.GetHashCode());
         }
 
         [Fact]
