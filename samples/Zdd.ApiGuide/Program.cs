@@ -16,6 +16,8 @@ namespace ZDD.Net.Samples.ApiGuide
         {
             BasicFamilyAlgebra();
             SetOperators();
+            PartialUniverseOperations();
+            OneItemVariants();
             EnumerationAndCounting();
             RankingAndSampling();
             WeightOptimization();
@@ -80,6 +82,52 @@ namespace ZDD.Net.Samples.ApiGuide
 
             Zdd complement = manager.Empty.Complement(); // 2^U
             Assert((~complement).IsEmpty, "complement of the full powerset is empty");
+        }
+
+        /// <summary>
+        /// <see cref="Zdd.ComplementWithin(ReadOnlySpan{int})"/> / <see cref="ZddManager.PowerSetOf(ReadOnlySpan{int})"/>
+        /// の実例: manager の変数がどれだけ多くても、注目している items だけを動かす。
+        /// </summary>
+        private static void PartialUniverseOperations()
+        {
+            using ZddManager manager = new ZddManager(variableCount: 5);
+
+            // manager には 5 個の変数があるが、注目したいのは {0, 1} だけ。
+            int[] items = { 0, 1 };
+
+            Zdd f = manager.Singleton(0); // {{0}}
+
+            // ComplementWithin: 2^items \ F。Complement() と違い、items の外側は動かさない。
+            Zdd complementWithin = f.ComplementWithin(items);
+            Assert(complementWithin.Count == 3, "2^{0,1} minus {{0}} has 3 sets: {}, {1}, {0,1}");
+
+            // PowerSetOf: 2^items を、items の個数だけの手間で作る（VariableCount には依らない）。
+            Zdd powerSetOfItems = manager.PowerSetOf(items);
+            Assert(powerSetOfItems.Count == 4, "PowerSetOf({0,1}) has 4 subsets");
+            Assert(f.Union(complementWithin) == powerSetOfItems, "F union ComplementWithin(F) == PowerSetOf(items)");
+        }
+
+        /// <summary>
+        /// <see cref="Zdd.RemoveSomeItem()"/> / <see cref="Zdd.AddSomeItem()"/> /
+        /// <see cref="Zdd.RemoveAddSomeItems()"/> の実例: 局所探索や「1 手違いの解」を数える用途。
+        /// </summary>
+        private static void OneItemVariants()
+        {
+            using ZddManager manager = new ZddManager(variableCount: 3);
+
+            Zdd f = manager.Singleton(0) | manager.Singleton(0).Product(manager.Singleton(1)); // {{0}, {0,1}}
+
+            // RemoveSomeItem: 含まれる item のどれか 1 つを取り除いた集合の和。
+            Zdd removed = f.RemoveSomeItem();
+            Assert(removed.Contains() && removed.Contains(0), "removing one item from {0} or {0,1} reaches {} and {0}");
+
+            // AddSomeItem: 含まれない item のどれか 1 つを足した集合の和。
+            Zdd added = f.AddSomeItem();
+            Assert(added.Contains(0, 1) && added.Contains(0, 2), "adding one item to {0} or {0,1} reaches {0,1} and {0,2}");
+
+            // RemoveAddSomeItems: 1 つ外して別の 1 つを足す「1 手違い」の全ての解。
+            Zdd swapped = f.RemoveAddSomeItems();
+            Assert(swapped.Contains(1), "swapping item 0 for item 1 in {0} reaches {1}");
         }
 
         /// <summary>

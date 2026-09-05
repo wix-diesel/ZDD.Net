@@ -185,7 +185,7 @@ Core レイヤは下から積むため、序盤の PR は `internal` のコー�
 | [x] | **M6-13** | biclique | `BicliqueSpec`（`SideA`/`SideB`/`Unused` の 3 値状態）、サイズ固定オーバーロード | 完全二部グラフ `K_{a,b}` の既知値と照合。小グラフで総当たり | 〜300 | M6-12 |
 | [x] | **M6-14** | 頂点グループ連結制約 | `VertexGroupSpec`（同グループは連結・別グループは非連結）。comp 配列に所属グループ（未定を含む）を持たせる | 小グラフで総当たり照合。Graphillion の `vertex_groups` と結果一致 | 〜300 | M6-9 |
 | [x] | **M6-15** | 統合ビルダ `Graphs()` | `GraphConstraints` と `GraphSet.Graphs(graph, constraints)` / `gs.Where(constraints)`。`AndErasedSpec` で畳み込む | Graphillion の `graphs()` の代表シナリオが再現できる。個別スペックを `And` した結果と一致 | 〜350 | M6-14 |
-| [ ] | **M6-16** | v0.6 リリース | CHANGELOG / README / `docs/api-guide.md` / 移行対応表 | — | ドキュメント | M6-15 |
+| [x] | **M6-16** | v0.6 リリース | CHANGELOG / README / `docs/api-guide.md` / 移行対応表 | — | ドキュメント | M6-15 |
 
 **M6 の並行可能性**: M6-1 / M6-2 / M6-3 / M6-8 は互いに独立で、M5-7 の直後に並行して切れる。
 M6-4→M6-5→M6-6 は直列。M6-9 以降は M6-8 の後に一列。

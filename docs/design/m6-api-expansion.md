@@ -4,6 +4,11 @@
 - 対応するタスク表: [docs/ROADMAP.md](../ROADMAP.md) の M6 節
 - 上位計画: [docs/PLAN.md](../PLAN.md)
 
+> **追記 (2026-09-05、M6-16)**: M6-1〜M6-15 の実装完了後に本書と実装の食い違いを確認した。
+> §5.2（`RegularGraphSpec` という型は作らず `DegreeConstraintSpec` の別名で済んだ）と
+> §5.3（`BicliqueSpec` の状態は単純な 3 値ではなくパリティ付き union-find になった）の
+> 2 箇所を実態に合わせて更新した。それ以外は設計どおりに実装されている。
+
 ## 0. なぜこのマイルストーンを v1.0 の前に挟むか
 
 v0.5 までで Core・Frontier・Graphs の 3 レイヤと 22 個の組み込みスペックが揃った。
@@ -457,12 +462,12 @@ Graphillion 同様、**連結性は要求しない**（連結な誘導部分グ�
 ### 5.2 次数系の拡充（M6-11）
 
 ```csharp
-public readonly struct RegularGraphSpec : IArrayDdSpec   // 全頂点の次数が k
 public readonly struct DegreeDistributionSpec : IArrayDdSpec  // 次数 d の頂点がちょうど n_d 個
 ```
 
-- `RegularGraphSpec(graph, k)` は `DegreeConstraintSpec(graph, k, k)` の別名で足りる。
-  スペックを新設せず `GraphSet.RegularGraphs(graph, k)` として露出する。
+- `k` 正則グラフには専用スペックを新設しない。`DegreeConstraintSpec(graph, k, k)` の別名で足りる
+  ので、`GraphSet.RegularGraphs(graph, k)` としてのみ露出する（実装後に確定: 当初は
+  `RegularGraphSpec` という新規型も検討したが、`DegreeConstraintSpec` を直接使うだけで済んだ）。
 - `DegreeDistributionSpec(graph, int[] counts)` は本物の新規スペック。
   状態 = フロンティア頂点ごとの現在次数 ＋ **確定済み頂点の次数ヒストグラム**。
   ヒストグラムは状態サイズを押し上げる（最大次数 × 頂点数の組合せ）ため、
@@ -472,9 +477,17 @@ public readonly struct DegreeDistributionSpec : IArrayDdSpec  // 次数 d の頂
 
 ### 5.3 `BicliqueSpec`（M6-13）
 
-Graphillion の `bicliques`。完全二部部分グラフ。頂点を 3 値（`SideA` / `SideB` / `Unused`）に
-分け、「`SideA` と `SideB` の全ての頂点対の間に辺があり、それが全て選ばれている」ことを要求する。
-`InducedSubgraphSpec` と同じ 3 値状態の構造なので、M6-12 の後に置く。
+Graphillion の `bicliques`。完全二部部分グラフ。「両側の全ての頂点対の間に辺があり、それが全て
+選ばれている」ことを要求する。
+
+**状態（実装時に確定）**: 単純な「頂点ごとの `SideA`/`SideB`/`Unused` の 3 値」という全体で
+1 枚のラベルでは足りない——biclique の両側というラベルはグループ（連結成分）ごとにしか
+決まらず、フロンティア上でまだ結合していない複数のグループが同時に育つ間、どちらの側を
+「0」と呼ぶかはグループごとに独立な、辺の処理順に依存する任意の選択になる。そこで
+`BicliqueVertexState` は頂点ごとに「所属グループ」と「そのグループ内での相対サイド」を持つ
+パリティ付き union-find にした。2 つのグループが辺で結合するとき、それぞれの相対サイドの
+対応関係（同じ側と見なすか逆側と見なすか）はその場で決まる。この点は `InducedSubgraphSpec`
+（M6-12）の判定遅延の考え方は引き継ぐが、状態の構造そのものは 3 値では収まらない。
 
 `(a, b)` サイズを固定する `BicliqueSpec(graph, a, b)` オーバーロードも用意する
 （サイズ固定のほうが状態が小さく、実用上こちらがよく使われる）。
