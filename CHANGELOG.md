@@ -26,6 +26,23 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
   `Path` を用意。`Bidirected(g).ToUndirected()` が `g` と（辺順序を除いて）一致することを検証済み。
   `Graph` と同じ辺順序 API（`WithEdgeOrder` / `Optimize` / `EstimateMaxFrontierSize`）は
   `EdgeOrdering` / `FrontierManager` を有向対応させる M7-2 で繋ぐため、このリリースにはまだ無い。
+- `FrontierManager(DirectedGraph)`: `FrontierManager` が有向グラフからも構築できるようになった
+  （M7-2、issue #153、[docs/design/m7-directed-graphs.md](docs/design/m7-directed-graphs.md) §2.3）。
+  `FrontierManager` は元々 `graph.VertexCount` / `graph.EdgeCount` / 各辺の端点対しか見ておらず、
+  `EdgeOrdering` も `IncidentEdges` / `Degree` / グリッド判定までで、どちらも辺の向きを必要としない。
+  「無向の影グラフを作って使い回す」案は採れない（逆平行辺があると影グラフに多重辺が生じ、`Graph`
+  のコンストラクタが拒否するため）ので、頂点数・端点対・接続辺リストだけを持つ internal 型
+  `EdgeTopology` を切り出し、`Graph` と `DirectedGraph` の双方がこれを internal に公開する形にした。
+  `FrontierManager` と `EdgeOrdering`（`BeamSearchPathWidth` 含む）を `EdgeTopology` を受け取るように
+  付け替え、その上で `DirectedGraph.WithEdgeOrder` / `Optimize` / `EstimateMaxFrontierSize` /
+  `SourceOrder`（新設の `DirectedEdgeOrderMapping` 経由。`EdgeOrderMapping.Source` を `Graph` のまま
+  保つため、共通の基底クラスにはせず薄いラッパを複製した）を実際に接続した。**振る舞い不変のリファクタ**
+  であり、既存テストは無変更のまま全て通る（`FrontierManager(Graph)` の結果は一切変わらない）。
+  `EdgeOrdering` のグリッド判定は辺の生の本数ではなく端点対の distinct 集合で判定するよう一般化した
+  （`Graph` は多重辺を拒否するので既存の挙動と完全に一致し、逆平行 2 本を持つ有向グリッドも同じロジック
+  で認識できる）。`Bidirected(g)` のフロンティア構造（`MaxFrontierSize` を含む）が `g` のそれと一致する
+  ことを検証済み。`EdgeTopology` は internal のままで、public API の面は増えていない
+  （`FrontierManager` のコンストラクタ追加と `DirectedGraph` への 4 メンバー追加のみ）。
 
 ## [0.6.0] - 2026-09-05
 

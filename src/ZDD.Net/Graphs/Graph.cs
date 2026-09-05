@@ -112,6 +112,14 @@ namespace ZDD.Net.Graphs
             {
                 _incidentEdgesByVertexView[v] = new ReadOnlyCollection<int>(_incidentEdgesByVertex[v]);
             }
+
+            var endpoints = new (int U, int V)[_edges.Length];
+            for (int i = 0; i < _edges.Length; i++)
+            {
+                endpoints[i] = (_edges[i].U, _edges[i].V);
+            }
+
+            Topology = new EdgeTopology(vertexCount, endpoints, _incidentEdgesByVertexView);
         }
 
         /// <summary>Creates the graph <see cref="WithEdgeOrder"/> returns: the same graph reordered, remembering where its edges came from.</summary>
@@ -130,6 +138,12 @@ namespace ZDD.Net.Graphs
         /// <summary>The edges, in variable order (edge index <c>i</c> is variable index <c>i</c>).</summary>
         /// <remarks>A read-only view over the backing storage: it cannot be downcast to mutate the graph.</remarks>
         public IReadOnlyList<Edge> Edges => _edgesView;
+
+        /// <summary>
+        /// The direction-agnostic view of this graph's edges that <see cref="FrontierManager"/> and
+        /// <see cref="EdgeOrdering"/> build on, shared with <see cref="DirectedGraph.Topology"/>.
+        /// </summary>
+        internal EdgeTopology Topology { get; }
 
         /// <summary>
         /// How this graph's edge indices map back to the graph it was reordered from, or
@@ -288,7 +302,7 @@ namespace ZDD.Net.Graphs
         /// <param name="options">Which vertex the traversal starts from; minimum degree by default.</param>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="strategy"/> is not a known strategy, or a specified start vertex is outside <c>0 .. VertexCount - 1</c>.</exception>
         public Graph Optimize(EdgeOrderStrategy strategy = EdgeOrderStrategy.Bfs, EdgeOrderOptions options = default) =>
-            WithEdgeOrder(EdgeOrdering.Compute(this, strategy, options));
+            WithEdgeOrder(EdgeOrdering.Compute(Topology, strategy, options));
 
         /// <summary>
         /// The peak frontier size this graph's edge order implies: the number of vertices a frontier-method
@@ -302,7 +316,7 @@ namespace ZDD.Net.Graphs
         /// <see cref="Frontier.BuildOptions.MaxFrontierSize"/>, which bounds the states one level holds:
         /// that number is what actually explodes, and this one bounds its exponent.
         /// </remarks>
-        public int EstimateMaxFrontierSize() => EdgeOrdering.MaxFrontierSize(this, null);
+        public int EstimateMaxFrontierSize() => EdgeOrdering.MaxFrontierSize(Topology, null);
 
         /// <summary>
         /// The peak frontier size <paramref name="strategy"/> would achieve, without building the reordered
@@ -312,7 +326,7 @@ namespace ZDD.Net.Graphs
         /// <param name="options">Which vertex the traversal starts from; minimum degree by default.</param>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="strategy"/> is not a known strategy, or a specified start vertex is outside <c>0 .. VertexCount - 1</c>.</exception>
         public int EstimateMaxFrontierSize(EdgeOrderStrategy strategy, EdgeOrderOptions options = default) =>
-            EdgeOrdering.MaxFrontierSize(this, EdgeOrdering.Compute(this, strategy, options));
+            EdgeOrdering.MaxFrontierSize(Topology, EdgeOrdering.Compute(Topology, strategy, options));
 
         /// <summary>Creates an <c>rows</c> × <c>cols</c> grid graph.</summary>
         /// <remarks>

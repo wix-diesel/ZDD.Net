@@ -11,11 +11,11 @@ namespace ZDD.Net.Graphs
     /// <c>docs/design/m7-directed-graphs.md</c> §1).
     /// </summary>
     /// <remarks>
-    /// This type carries only the data structure: arc list, adjacency, and the undirected/directed
-    /// conversions. The edge-order API that <see cref="Graph"/> exposes (<c>WithEdgeOrder</c> /
-    /// <c>Optimize</c> / <c>EstimateMaxFrontierSize</c> / <c>SourceOrder</c>) and frontier-method support
-    /// are deferred to a later milestone that generalizes <c>EdgeOrdering</c> and
-    /// <c>FrontierManager</c> to work over either graph type.
+    /// Besides the data structure (arc list, adjacency, undirected/directed conversions), this type shares
+    /// <see cref="Graph"/>'s edge-order API (<see cref="WithEdgeOrder"/> / <see cref="Optimize"/> /
+    /// <see cref="EstimateMaxFrontierSize()"/> / <see cref="SourceOrder"/>) and frontier-method support
+    /// (<see cref="FrontierManager"/>), both built on the <see cref="Topology"/> this graph and
+    /// <see cref="Graph"/> both expose internally (docs/design/m7-directed-graphs.md §2.3).
     /// </remarks>
     public sealed class DirectedGraph
     {
@@ -31,9 +31,9 @@ namespace ZDD.Net.Graphs
         /// <summary>Creates a directed graph from an explicit vertex count and arc list.</summary>
         /// <param name="vertexCount">The number of vertices; must be positive. Vertices are indexed <c>0 .. vertexCount - 1</c>.</param>
         /// <param name="edges">
-        /// The arcs. Copied, so later mutating a collection passed in has no effect on the graph.
-        /// Order carries no significance yet (there is no edge-order API on this type); it is kept
-        /// only so <see cref="Edges"/> and <see cref="GetEdge"/> are stable and predictable.
+        /// The arcs, in the order that becomes the frontier method's variable order — see
+        /// <see cref="WithEdgeOrder"/> / <see cref="Optimize"/>, which reorder it. Copied, so later
+        /// mutating a collection passed in has no effect on the graph.
         /// </param>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="vertexCount"/> is not positive.</exception>
         /// <exception cref="ArgumentNullException"><paramref name="edges"/> is <see langword="null"/>.</exception>
@@ -119,6 +119,21 @@ namespace ZDD.Net.Graphs
                 _incomingByVertexView[v] = new ReadOnlyCollection<int>(_incomingByVertex[v]);
                 _incidentByVertexView[v] = new ReadOnlyCollection<int>(_incidentByVertex[v]);
             }
+
+            var endpoints = new (int U, int V)[_edges.Length];
+            for (int i = 0; i < _edges.Length; i++)
+            {
+                endpoints[i] = (_edges[i].From, _edges[i].To);
+            }
+
+            Topology = new EdgeTopology(vertexCount, endpoints, _incidentByVertexView);
+        }
+
+        /// <summary>Creates the graph <see cref="WithEdgeOrder"/> returns: the same graph reordered, remembering where its arcs came from.</summary>
+        private DirectedGraph(int vertexCount, DirectedEdge[] edges, DirectedEdgeOrderMapping sourceOrder)
+            : this(vertexCount, edges)
+        {
+            SourceOrder = sourceOrder;
         }
 
         /// <summary>The number of vertices, indexed <c>0 .. VertexCount - 1</c>.</summary>
@@ -130,6 +145,19 @@ namespace ZDD.Net.Graphs
         /// <summary>The arcs, in construction order.</summary>
         /// <remarks>A read-only view over the backing storage: it cannot be downcast to mutate the graph.</remarks>
         public IReadOnlyList<DirectedEdge> Edges => _edgesView;
+
+        /// <summary>
+        /// The direction-agnostic view of this graph's arcs that <see cref="FrontierManager"/> and
+        /// <see cref="EdgeOrdering"/> build on, shared with <see cref="Graph.Topology"/>.
+        /// </summary>
+        internal EdgeTopology Topology { get; }
+
+        /// <summary>
+        /// How this graph's arc indices map back to the graph it was reordered from, or
+        /// <see langword="null"/> if it was constructed directly rather than by
+        /// <see cref="Optimize"/> / <see cref="WithEdgeOrder"/>.
+        /// </summary>
+        public DirectedEdgeOrderMapping? SourceOrder { get; }
 
         /// <summary>Returns the arc at <paramref name="edgeIndex"/>.</summary>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="edgeIndex"/> is outside <c>0 .. EdgeCount - 1</c>.</exception>
@@ -188,6 +216,79 @@ namespace ZDD.Net.Graphs
                 throw new ArgumentOutOfRangeException(nameof(vertex), vertex, $"Must be in 0 .. {VertexCount - 1}.");
             }
         }
+
+        /// <summary>
+        /// Returns a graph with the same vertices and arcs, reordered by <paramref name="edgeOrder"/>,
+        /// carrying a <see cref="SourceOrder"/> back to this graph. This graph is left untouched.
+        /// </summary>
+        /// <param name="edgeOrder">
+        /// A permutation of <c>0 .. EdgeCount - 1</c>: the new graph's arc <c>i</c> is this graph's arc
+        /// <c>edgeOrder[i]</c>.
+        /// </param>
+        /// <exception cref="ArgumentNullException"><paramref name="edgeOrder"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="edgeOrder"/> is not a permutation of <c>0 .. EdgeCount - 1</c>.</exception>
+        public DirectedGraph WithEdgeOrder(IReadOnlyList<int> edgeOrder)
+        {
+            ArgumentNullException.ThrowIfNull(edgeOrder);
+
+            if (edgeOrder.Count != EdgeCount)
+            {
+                throw new ArgumentException($"Expected {EdgeCount} indices, got {edgeOrder.Count}.", nameof(edgeOrder));
+            }
+
+            var seen = new bool[EdgeCount];
+            var toSource = new int[EdgeCount];
+            var reordered = new DirectedEdge[EdgeCount];
+            for (int i = 0; i < EdgeCount; i++)
+            {
+                int source = edgeOrder[i];
+                if ((uint)source >= (uint)EdgeCount || seen[source])
+                {
+                    throw new ArgumentException("Not a permutation of 0 .. EdgeCount - 1.", nameof(edgeOrder));
+                }
+
+                seen[source] = true;
+                toSource[i] = source;
+                reordered[i] = _edges[source];
+            }
+
+            return new DirectedGraph(VertexCount, reordered, new DirectedEdgeOrderMapping(this, toSource));
+        }
+
+        /// <summary>
+        /// Returns a copy of this graph whose arcs are reordered by <paramref name="strategy"/> to keep the
+        /// frontier narrow. This graph is left untouched.
+        /// </summary>
+        /// <remarks>
+        /// <b>The returned graph renumbers the arcs</b> exactly as <see cref="Graph.Optimize"/> renumbers
+        /// edges — read a result built over it back through <see cref="SourceOrder"/>
+        /// (<see cref="DirectedEdgeOrderMapping.ToSourceEdgeIndex"/>) before interpreting it against this
+        /// graph. <see cref="EdgeOrderStrategy.Grid"/> falls back to <see cref="EdgeOrderStrategy.Bfs"/>
+        /// unless the graph is <see cref="Bidirected"/> from a grid numbered row-major (as <see cref="Grid"/>
+        /// numbers one) — a one-way-street grid is not recognized and falls back to BFS too.
+        /// </remarks>
+        /// <param name="strategy">The ordering heuristic; <see cref="EdgeOrderStrategy.Bfs"/> by default.</param>
+        /// <param name="options">Which vertex the traversal starts from; minimum degree by default.</param>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="strategy"/> is not a known strategy, or a specified start vertex is outside <c>0 .. VertexCount - 1</c>.</exception>
+        public DirectedGraph Optimize(EdgeOrderStrategy strategy = EdgeOrderStrategy.Bfs, EdgeOrderOptions options = default) =>
+            WithEdgeOrder(EdgeOrdering.Compute(Topology, strategy, options));
+
+        /// <summary>
+        /// The peak frontier size this graph's arc order implies — the same quantity as
+        /// <see cref="Graph.EstimateMaxFrontierSize()"/>, computed over arcs instead of edges. Runs in
+        /// <c>O(VertexCount + EdgeCount)</c>.
+        /// </summary>
+        public int EstimateMaxFrontierSize() => EdgeOrdering.MaxFrontierSize(Topology, null);
+
+        /// <summary>
+        /// The peak frontier size <paramref name="strategy"/> would achieve, without building the reordered
+        /// graph — for comparing strategies before picking one.
+        /// </summary>
+        /// <param name="strategy">The ordering heuristic to evaluate.</param>
+        /// <param name="options">Which vertex the traversal starts from; minimum degree by default.</param>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="strategy"/> is not a known strategy, or a specified start vertex is outside <c>0 .. VertexCount - 1</c>.</exception>
+        public int EstimateMaxFrontierSize(EdgeOrderStrategy strategy, EdgeOrderOptions options = default) =>
+            EdgeOrdering.MaxFrontierSize(Topology, EdgeOrdering.Compute(Topology, strategy, options));
 
         /// <summary>
         /// Collapses this graph to an undirected <see cref="Graph"/> over the same vertices: an

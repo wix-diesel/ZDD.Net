@@ -14,10 +14,16 @@ namespace ZDD.Net.Graphs
     /// The frontier at edge <c>i</c> is the set of vertices that have appeared in edges <c>0 .. i</c> but
     /// still have an incident edge among <c>i .. EdgeCount - 1</c>; its size is the size of the state a
     /// frontier-method spec must carry, and <see cref="MaxFrontierSize"/> — the largest such size over all
-    /// edges — sits on the exponent of the build's time and memory. Because it only needs <see cref="Graph"/>,
-    /// not an actual spec or build, it doubles as the "estimate before you build" API called for by
-    /// PLAN.md §13: construct a <see cref="FrontierManager"/> and read <see cref="MaxFrontierSize"/> before
-    /// committing to a <see cref="Frontier.FrontierBuilder"/> run.
+    /// edges — sits on the exponent of the build's time and memory. Because it only needs an
+    /// <see cref="EdgeTopology"/>, not an actual spec or build, it doubles as the "estimate before you
+    /// build" API called for by PLAN.md §13: construct a <see cref="FrontierManager"/> and read
+    /// <see cref="MaxFrontierSize"/> before committing to a <see cref="Frontier.FrontierBuilder"/> run.
+    /// </para>
+    /// <para>
+    /// Everything here works over <see cref="Graph"/>'s and <see cref="DirectedGraph"/>'s shared
+    /// <see cref="EdgeTopology"/> (docs/design/m7-directed-graphs.md §2.3): the frontier only ever needs to
+    /// know which vertices an edge touches, never which way it points, so a <see cref="DirectedGraph"/> is
+    /// just as valid a source as a <see cref="Graph"/>.
     /// </para>
     /// <para>
     /// Everything is precomputed once in the constructor in <c>O(VertexCount + EdgeCount)</c> and read from
@@ -26,6 +32,8 @@ namespace ZDD.Net.Graphs
     /// </remarks>
     public sealed class FrontierManager
     {
+        private readonly int _vertexCount;
+        private readonly int _edgeCount;
         private readonly int[] _firstEdge;
         private readonly int[] _lastEdge;
         private readonly int[] _slotOfVertex;
@@ -38,22 +46,45 @@ namespace ZDD.Net.Graphs
         /// <summary>Precomputes the frontier bookkeeping for <paramref name="graph"/>'s edge order.</summary>
         /// <exception cref="ArgumentNullException"><paramref name="graph"/> is <see langword="null"/>.</exception>
         public FrontierManager(Graph graph)
+            : this(RequireTopology(graph))
+        {
+            Graph = graph;
+        }
+
+        /// <summary>Precomputes the frontier bookkeeping for <paramref name="graph"/>'s arc order.</summary>
+        /// <exception cref="ArgumentNullException"><paramref name="graph"/> is <see langword="null"/>.</exception>
+        public FrontierManager(DirectedGraph graph)
+            : this(RequireTopology(graph))
+        {
+            DirectedGraph = graph;
+        }
+
+        private static EdgeTopology RequireTopology(Graph graph)
         {
             ArgumentNullException.ThrowIfNull(graph);
+            return graph.Topology;
+        }
 
-            Graph = graph;
-            int vertexCount = graph.VertexCount;
-            int edgeCount = graph.EdgeCount;
+        private static EdgeTopology RequireTopology(DirectedGraph graph)
+        {
+            ArgumentNullException.ThrowIfNull(graph);
+            return graph.Topology;
+        }
+
+        private FrontierManager(EdgeTopology topology)
+        {
+            _vertexCount = topology.VertexCount;
+            _edgeCount = topology.EdgeCount;
 
             // First/last edge touching each vertex; -1 for an isolated vertex, which never enters the frontier.
-            _firstEdge = new int[vertexCount];
-            _lastEdge = new int[vertexCount];
+            _firstEdge = new int[_vertexCount];
+            _lastEdge = new int[_vertexCount];
             Array.Fill(_firstEdge, -1);
             Array.Fill(_lastEdge, -1);
 
-            for (int i = 0; i < edgeCount; i++)
+            for (int i = 0; i < _edgeCount; i++)
             {
-                Edge edge = graph.GetEdge(i);
+                (int U, int V) edge = topology.Endpoints(i);
 
                 if (_firstEdge[edge.U] < 0)
                 {
@@ -70,9 +101,9 @@ namespace ZDD.Net.Graphs
             }
 
             // Bucket vertices by first/last edge, in a single counting pass (no per-edge lists to grow).
-            var introducedCounts = new int[edgeCount];
-            var forgottenCounts = new int[edgeCount];
-            for (int v = 0; v < vertexCount; v++)
+            var introducedCounts = new int[_edgeCount];
+            var forgottenCounts = new int[_edgeCount];
+            for (int v = 0; v < _vertexCount; v++)
             {
                 if (_firstEdge[v] >= 0)
                 {
@@ -85,11 +116,11 @@ namespace ZDD.Net.Graphs
                 }
             }
 
-            _introducedByEdge = new int[edgeCount][];
-            _forgottenByEdge = new int[edgeCount][];
-            _introducedByEdgeView = new ReadOnlyCollection<int>[edgeCount];
-            _forgottenByEdgeView = new ReadOnlyCollection<int>[edgeCount];
-            for (int i = 0; i < edgeCount; i++)
+            _introducedByEdge = new int[_edgeCount][];
+            _forgottenByEdge = new int[_edgeCount][];
+            _introducedByEdgeView = new ReadOnlyCollection<int>[_edgeCount];
+            _forgottenByEdgeView = new ReadOnlyCollection<int>[_edgeCount];
+            for (int i = 0; i < _edgeCount; i++)
             {
                 _introducedByEdge[i] = new int[introducedCounts[i]];
                 _forgottenByEdge[i] = new int[forgottenCounts[i]];
@@ -97,9 +128,9 @@ namespace ZDD.Net.Graphs
                 _forgottenByEdgeView[i] = new ReadOnlyCollection<int>(_forgottenByEdge[i]);
             }
 
-            var introducedFill = new int[edgeCount];
-            var forgottenFill = new int[edgeCount];
-            for (int v = 0; v < vertexCount; v++)
+            var introducedFill = new int[_edgeCount];
+            var forgottenFill = new int[_edgeCount];
+            for (int v = 0; v < _vertexCount; v++)
             {
                 if (_firstEdge[v] >= 0)
                 {
@@ -119,15 +150,15 @@ namespace ZDD.Net.Graphs
             // free pool. A new slot is only ever allocated when the pool is empty, so the total number of
             // distinct slots used equals the frontier's peak size, regardless of which freed slot is reused
             // first — a LIFO pool (Stack) keeps push/pop O(1), which is what keeps this pass O(V + E).
-            _slotOfVertex = new int[vertexCount];
+            _slotOfVertex = new int[_vertexCount];
             Array.Fill(_slotOfVertex, -1);
-            _frontierSizeByEdge = new int[edgeCount];
+            _frontierSizeByEdge = new int[_edgeCount];
 
             var freeSlots = new Stack<int>();
             int nextSlot = 0;
             int frontierCount = 0;
 
-            for (int i = 0; i < edgeCount; i++)
+            for (int i = 0; i < _edgeCount; i++)
             {
                 foreach (int v in _introducedByEdge[i])
                 {
@@ -146,11 +177,14 @@ namespace ZDD.Net.Graphs
                 }
             }
 
-            MaxFrontierSize = edgeCount == 0 ? 0 : System.Linq.Enumerable.Max(_frontierSizeByEdge);
+            MaxFrontierSize = _edgeCount == 0 ? 0 : System.Linq.Enumerable.Max(_frontierSizeByEdge);
         }
 
-        /// <summary>The graph this instance was built from.</summary>
-        public Graph Graph { get; }
+        /// <summary>The graph this instance was built from, or <see langword="null"/> if it was built from a <see cref="DirectedGraph"/> instead.</summary>
+        public Graph? Graph { get; }
+
+        /// <summary>The directed graph this instance was built from, or <see langword="null"/> if it was built from a <see cref="Graph"/> instead.</summary>
+        public DirectedGraph? DirectedGraph { get; }
 
         /// <summary>
         /// The largest frontier size over all edges — the state size a frontier-method spec on this graph's
@@ -207,9 +241,9 @@ namespace ZDD.Net.Graphs
         {
             ValidateEdgeIndex(edgeIndex);
 
-            if ((uint)vertex >= (uint)Graph.VertexCount)
+            if ((uint)vertex >= (uint)_vertexCount)
             {
-                throw new ArgumentOutOfRangeException(nameof(vertex), vertex, $"Must be in 0 .. {Graph.VertexCount - 1}.");
+                throw new ArgumentOutOfRangeException(nameof(vertex), vertex, $"Must be in 0 .. {_vertexCount - 1}.");
             }
 
             int first = _firstEdge[vertex];
@@ -226,9 +260,9 @@ namespace ZDD.Net.Graphs
 
         private void ValidateEdgeIndex(int edgeIndex)
         {
-            if ((uint)edgeIndex >= (uint)Graph.EdgeCount)
+            if ((uint)edgeIndex >= (uint)_edgeCount)
             {
-                throw new ArgumentOutOfRangeException(nameof(edgeIndex), edgeIndex, $"Must be in 0 .. {Graph.EdgeCount - 1}.");
+                throw new ArgumentOutOfRangeException(nameof(edgeIndex), edgeIndex, $"Must be in 0 .. {_edgeCount - 1}.");
             }
         }
     }

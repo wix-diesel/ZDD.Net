@@ -202,7 +202,7 @@ M6-4→M6-5→M6-6 は直列。M6-9 以降は M6-8 の後に一列。
 | 完了 | ID | タイトル | 内容 | 受け入れ条件 | 目安 | 依存 |
 |---|---|---|---|---|---|---|
 | [x] | **M7-1** | `DirectedEdge` / `DirectedGraph` | 向きを区別する等値性、逆平行辺の許容（自己ループ・多重辺は拒否）、`ToUndirected` / `Bidirected`、`Grid`/`Complete`/`Cycle`/`Path` | 構造テスト。`Bidirected(g).ToUndirected()` が `g` と一致 | 〜350 | M6-16 |
-| [ ] | **M7-2** | フロンティア基盤の有向化 | 内部型 `EdgeTopology` を切り出し、`FrontierManager` / `EdgeOrdering` を付け替え。`DirectedGraph.Optimize` / `EstimateMaxFrontierSize` | **振る舞い不変のリファクタ**。既存テストが全て通ること | 〜400 | M7-1 |
+| [x] | **M7-2** | フロンティア基盤の有向化 | 内部型 `EdgeTopology` を切り出し、`FrontierManager` / `EdgeOrdering` を付け替え。`DirectedGraph.Optimize` / `EstimateMaxFrontierSize` | **振る舞い不変のリファクタ**。既存テストが全て通ること | 〜400 | M7-1 |
 | [ ] | **M7-3** | 有向 s–t 単純パス | `DirectedPathSpec`。mate 配列＋向き 1 ビット／頂点。忘却時に (入次数, 出次数) を検査 | **`Bidirected(格子)` の有向パス数が OEIS A007764 と一致**（7×7 まで CI）。頂点 ≤ 8 の総当たり | 〜350 | M7-2 |
 | [ ] | **M7-4** | 有向閉路・有向ハミルトン | `DirectedCycleSpec` / `DirectedHamiltonianPathSpec` / `DirectedHamiltonianCycleSpec` | `Bidirected(g)` の有向単純閉路数が無向単純閉路数の**ちょうど 2 倍**。`K_n` の有向ハミルトン閉路が `(n-1)!` | 〜350 | M7-3 |
 | [ ] | **M7-5** | 有向次数制約・arborescence | `DirectedDegreeConstraintSpec`、`ArborescenceSpec`（根つき有向全域木） | **有向行列木定理**（有向ラプラシアンの余因子）で独立計算した値と一致 | 〜350 | M7-4 |
