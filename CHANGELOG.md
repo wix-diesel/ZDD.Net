@@ -43,6 +43,28 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
   で認識できる）。`Bidirected(g)` のフロンティア構造（`MaxFrontierSize` を含む）が `g` のそれと一致する
   ことを検証済み。`EdgeTopology` は internal のままで、public API の面は増えていない
   （`FrontierManager` のコンストラクタ追加と `DirectedGraph` への 4 メンバー追加のみ）。
+- `DirectedPathSpec`: 有向 s–t 単純パス列挙（M7-3、issue #154、
+  [docs/design/m7-directed-graphs.md](docs/design/m7-directed-graphs.md) §3.2）。有向の制約は
+  「無向としての形（連結性・閉路の有無）」＋「頂点ごとの入出次数」に分解できるため、既存の
+  `MateChainState` の mate 配列をそのまま流用し、新たに必要な向きの情報だけをフロンティア頂点
+  1 つにつき 1 スロット（`IArrayDdSpec` が値の範囲に応じて自動でバイト詰めするので、2 値のスロット
+  は実質 1 バイト）追加する形で実装した。ビット単位への再詰め直しは状態サイズが実際にボトルネックに
+  なってから検討する後回しの最適化とし、理由を XML doc に残してある。弧 `u→v` を採用するときは
+  `u == to`（`to` に出る弧は無い）／`v == from`（`from` に入る弧は無い）を先に弾き、次に `u` が
+  既に出向きの弧を、`v` が既に入向きの弧を持っていないかを向きビットで確認してから
+  `MateChainState.Splice` を呼ぶ（閉路になれば `PathSpec` と同様に不採用）。頂点がフロンティアから
+  外れるときは `from` が (出 1, 入 0)、`to` が (入 1, 出 0)、その他が (0, 0) または (1, 1) を要求する。
+  `allowAnyEndpoints = true` のときは弧ごとの `to`/`from` 制約を外し、代わりに「入 0・出 1 の頂点が
+  ちょうど 1 つ、入 1・出 0 の頂点がちょうど 1 つ」を 2 本の使い切りカウンタスロットで数える
+  （`PathSpec.AllowAnyEndpoints` の 1 本のカウンタを、向きで区別が要るぶん 2 本に分けた形）。
+  受け入れ条件として **`DirectedGraph.Bidirected(格子)` 上の有向 s→t 単純パス数が OEIS A007764 と
+  厳密に一致する**こと（無向パスは向きが一意に定まるため）を 7×7 まで CI で検証し、頂点数 8 以下の
+  ランダム有向グラフ・逆平行辺を含むグラフ・一方通行のみで到達不能なグラフに対する総当たり照合、
+  `AllowAnyEndpoints` と無向版 `PathSpec` の対応、`.And` によるスペック合成（`CardinalitySpec` との
+  直接合成が事後フィルタと一致すること）もテスト済み。`DirectedGraph` には
+  `EdgeIndexToVariableIndex` / `VariableIndexToEdgeIndex` / `EdgeIndexToLevel` / `LevelToEdgeIndex`
+  （`Graph` の同名メンバーと同じ恒等写像／レベル変換）をあわせて追加した——フロンティア方式のスペックが
+  レベルと弧インデックスを相互変換するのに必要だが、M7-1/M7-2 の時点ではまだ無かったため。
 
 ## [0.6.0] - 2026-09-05
 

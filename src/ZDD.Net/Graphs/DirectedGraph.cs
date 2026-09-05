@@ -201,6 +201,64 @@ namespace ZDD.Net.Graphs
             return _incidentByVertexView[vertex];
         }
 
+        /// <summary>
+        /// Converts an arc index to the ZDD variable index that <see cref="Frontier.IDdSpec{TState}"/>
+        /// implementations for this graph work with. This is the identity: arc index <c>i</c> is variable
+        /// index <c>i</c>, kept as a named conversion rather than an implicit assumption — see
+        /// <see cref="Graph.EdgeIndexToVariableIndex"/>, the undirected counterpart.
+        /// </summary>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="edgeIndex"/> is outside <c>0 .. EdgeCount - 1</c>.</exception>
+        public int EdgeIndexToVariableIndex(int edgeIndex)
+        {
+            if ((uint)edgeIndex >= (uint)_edges.Length)
+            {
+                throw new ArgumentOutOfRangeException(nameof(edgeIndex), edgeIndex, $"Must be in 0 .. {_edges.Length - 1}.");
+            }
+
+            return edgeIndex;
+        }
+
+        /// <summary>The inverse of <see cref="EdgeIndexToVariableIndex"/> (also the identity).</summary>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="variableIndex"/> is outside <c>0 .. EdgeCount - 1</c>.</exception>
+        public int VariableIndexToEdgeIndex(int variableIndex)
+        {
+            if ((uint)variableIndex >= (uint)_edges.Length)
+            {
+                throw new ArgumentOutOfRangeException(nameof(variableIndex), variableIndex, $"Must be in 0 .. {_edges.Length - 1}.");
+            }
+
+            return variableIndex;
+        }
+
+        /// <summary>
+        /// Converts an arc index to the internal ZDD level (PLAN.md §4.1: <c>1</c> = leaf side,
+        /// <c>EdgeCount</c> = root side). Arc <c>0</c> is decided first, at the root, so it maps to the
+        /// highest level; arc <c>EdgeCount - 1</c> maps to level <c>1</c>. See
+        /// <see cref="Graph.EdgeIndexToLevel"/>, the undirected counterpart.
+        /// </summary>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="edgeIndex"/> is outside <c>0 .. EdgeCount - 1</c>.</exception>
+        public int EdgeIndexToLevel(int edgeIndex)
+        {
+            if ((uint)edgeIndex >= (uint)_edges.Length)
+            {
+                throw new ArgumentOutOfRangeException(nameof(edgeIndex), edgeIndex, $"Must be in 0 .. {_edges.Length - 1}.");
+            }
+
+            return _edges.Length - edgeIndex;
+        }
+
+        /// <summary>The inverse of <see cref="EdgeIndexToLevel"/>.</summary>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="level"/> is outside <c>1 .. EdgeCount</c>.</exception>
+        public int LevelToEdgeIndex(int level)
+        {
+            if (level < 1 || level > _edges.Length)
+            {
+                throw new ArgumentOutOfRangeException(nameof(level), level, $"Must be in 1 .. {_edges.Length}.");
+            }
+
+            return _edges.Length - level;
+        }
+
         /// <summary>The number of arcs leaving <paramref name="vertex"/>.</summary>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="vertex"/> is outside <c>0 .. VertexCount - 1</c>.</exception>
         public int OutDegree(int vertex) => OutgoingEdges(vertex).Count;
