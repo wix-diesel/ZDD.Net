@@ -857,6 +857,41 @@ namespace ZDD.Net.Tests.Graphs
         }
 
         [Fact]
+        public void RegularGraphsMatchesDegreeConstrainedKK()
+        {
+            Graph graph = Graph.Complete(5);
+            const int k = 2;
+
+            GraphSet actual = GraphSet.RegularGraphs(graph, k);
+            GraphSet expected = GraphSet.DegreeConstrained(graph, lo: k, hi: k);
+
+            AssertSameEdgeSets(graph, actual, expected.Zdd);
+        }
+
+        [Fact]
+        public void RegularGraphsRejectsNegativeKWithItsOwnParameterName()
+        {
+            Graph graph = Graph.Complete(4);
+
+            var ex = Assert.Throws<ArgumentOutOfRangeException>(() => GraphSet.RegularGraphs(graph, k: -1));
+            Assert.Equal("k", ex.ParamName);
+        }
+
+        [Fact]
+        public void DegreeDistributionsMatchesDirectSpecBuild()
+        {
+            Graph graph = Graph.Complete(4);
+            int[] counts = { 0, 0, 4 }; // every vertex ends at degree 2 -- a 4-cycle inside K4
+
+            GraphSet actual = GraphSet.DegreeDistributions(graph, counts);
+
+            using ZddManager manager = new ZddManager(graph.EdgeCount);
+            Zdd expected = FrontierBuilder.Build<DegreeDistributionSpec>(manager, new DegreeDistributionSpec(graph, counts));
+
+            AssertSameEdgeSets(graph, actual, expected);
+        }
+
+        [Fact]
         public void KnapsacksMatchesDirectSpecBuild()
         {
             Graph graph = Graph.Complete(5);
@@ -893,6 +928,8 @@ namespace ZDD.Net.Tests.Graphs
                 ("Cuts", GraphSet.Cuts(graph, 0, graph.VertexCount - 1)),
                 ("DegreeConstrained", GraphSet.DegreeConstrained(graph, lo: 0, hi: 2)),
                 ("EdgeCovers", GraphSet.EdgeCovers(graph)),
+                ("RegularGraphs", GraphSet.RegularGraphs(graph, k: 2)),
+                ("DegreeDistributions", GraphSet.DegreeDistributions(graph, new[] { 0, 0, graph.VertexCount })),
                 ("Knapsacks", GraphSet.Knapsacks(graph, Enumerable.Repeat(1, graph.EdgeCount).ToArray(), capacity: graph.EdgeCount)),
             };
 
