@@ -56,6 +56,23 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
   作らずそのまま自分自身を返す。変数 12 以下の総当たり照合（写像後の族が「各集合の要素を写した族」と
   一致すること）、`Count` が写像の前後で不変であること、変数 10 万の深い ZDD でスタックオーバー
   フローしないことを確認済み。
+- `Zdd.AddSomeItem` / `RemoveSomeItem` / `RemoveAddSomeItems`（引数なし版と、対象を絞れる
+  `items` 版）: Graphillion の `add_some_element` / `remove_some_element` /
+  `remove_add_some_elements` 相当（M6-7、issue #142）。局所探索や「1 手違いの解」を数える
+  用途で使う。新しい演算は足さず、既存の単項演算の合成で実装した:
+  `RemoveSomeItem(f) = ⋃_{e∈items} OnSet(f, e)`、
+  `AddSomeItem(f) = ⋃_{e∈items} Change(OffSet(f, e), e)`、
+  `RemoveAddSomeItems(f) = ⋃_{e≠e'∈items} Change(OffSet(OnSet(f, e), e'), e')`。
+  前 2 者は `items` の個数に線形（`O(|items|)` 回の族演算）だが、`RemoveAddSomeItems` は
+  `e ≠ e'` の組ぶんだけ回すため `O(|items|²)` 回になる（Graphillion の実装も同じオーダーで、
+  XML doc に明記した）。数千要素のユニバースでは既定の引数なし版（マネージャの全変数を使う）
+  を避け、`items` 版で対象を絞ることを想定している。`SetSet<T>` と `GraphSet` にも同名の
+  ラッパを追加した——`GraphSet` 側は直接 `Zdd` 代数で組み立てた族を、新しい
+  `PrecomputedZddSpec`（既存 ZDD ノードをそのまま辿るだけの `IErasedGraphSpec`）でラップして
+  返すので、`AddSomeItem()` などの結果にさらに `Including` / `Excluding` / `Larger` /
+  `Smaller` を連鎖させても、フロンティア方式のフィルタと矛盾なく合成される（回帰テストで
+  事後 `Intersect` と一致することを確認済み）。変数 12 以下の総当たり照合、`items` 版に全変数を
+  渡したときの引数なし版との一致、`RemoveSomeItem(Base) == Empty` などの境界を確認済み。
 
 ## [0.5.0] - 2026-09-04
 

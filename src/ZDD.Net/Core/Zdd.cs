@@ -458,6 +458,133 @@ namespace ZDD.Net.Core
         /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public Zdd MapItems(params ReadOnlySpan<int> itemMap) => Manager.MapItems(this, itemMap);
 
+        /// <summary>
+        /// Removes one contained item from each set (Graphillion's <c>remove_some_element</c>):
+        /// <c>&#8899;<sub>e &#8712; items</sub> OnSet(e)</c>, using every item of this manager.
+        /// </summary>
+        /// <returns>
+        /// For every set <c>s</c> in this family and every item <c>e</c> with <c>e &#8712; s</c>,
+        /// includes <c>s &#8726; {e}</c> &#8212; one result per (set, contained item) pair, not one per set.
+        /// </returns>
+        /// <remarks>
+        /// Uses this manager's full variable set as <c>items</c> (<see cref="ZddManager.VariableCount"/>
+        /// of them), so cost is <c>O(VariableCount)</c> family operations &#8212; fine for a small
+        /// universe; prefer <see cref="RemoveSomeItem(ReadOnlySpan{int})"/> to bound the cost on a large
+        /// one. <c>Empty.RemoveSomeItem() == Empty</c>; <c>Base.RemoveSomeItem() == Empty</c> (no set has
+        /// anything to remove).
+        /// </remarks>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
+        public Zdd RemoveSomeItem() => Manager.RemoveSomeItem(this, AllItems(Manager.VariableCount));
+
+        /// <summary>
+        /// Removes one contained item, chosen from <paramref name="items"/>, from each set
+        /// (Graphillion's <c>remove_some_element</c>): <c>&#8899;<sub>e &#8712; items</sub> OnSet(e)</c>.
+        /// </summary>
+        /// <param name="items">
+        /// Candidate items to remove, each between 0 and <see cref="ZddManager.VariableCount"/>
+        /// (exclusive). Restricting this list is the usual way to bound the cost on a large universe
+        /// (e.g. a local search only needs to consider items it's allowed to move).
+        /// </param>
+        /// <returns>
+        /// For every set <c>s</c> in this family and every <c>e &#8712; items</c> with <c>e &#8712; s</c>,
+        /// includes <c>s &#8726; {e}</c>. Empty <paramref name="items"/>, or a family with nothing to
+        /// remove, gives &#8709;.
+        /// </returns>
+        /// <remarks>
+        /// <c>O(|items|)</c> family operations: one <see cref="OnSet"/> plus one <see cref="Union"/> per
+        /// item &#8212; linear, unlike <see cref="RemoveAddSomeItems(ReadOnlySpan{int})"/>'s quadratic cost.
+        /// </remarks>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="items"/> contains an out-of-range item.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
+        public Zdd RemoveSomeItem(params ReadOnlySpan<int> items) => Manager.RemoveSomeItem(this, items);
+
+        /// <summary>
+        /// Adds one absent item to each set (Graphillion's <c>add_some_element</c>):
+        /// <c>&#8899;<sub>e &#8712; items</sub> Change(OffSet(e), e)</c>, using every item of this manager.
+        /// </summary>
+        /// <returns>
+        /// For every set <c>s</c> in this family and every item <c>e</c> with <c>e &#8713; s</c>,
+        /// includes <c>s &#8746; {e}</c>.
+        /// </returns>
+        /// <remarks>
+        /// Uses this manager's full variable set as <c>items</c>; see <see cref="RemoveSomeItem()"/>'s
+        /// remarks on cost and on preferring <see cref="AddSomeItem(ReadOnlySpan{int})"/> for a large
+        /// universe. <c>Empty.AddSomeItem() == Empty</c>; <c>Base.AddSomeItem()</c> is the family of
+        /// every singleton <c>{e}</c>.
+        /// </remarks>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
+        public Zdd AddSomeItem() => Manager.AddSomeItem(this, AllItems(Manager.VariableCount));
+
+        /// <summary>
+        /// Adds one absent item, chosen from <paramref name="items"/>, to each set (Graphillion's
+        /// <c>add_some_element</c>): <c>&#8899;<sub>e &#8712; items</sub> Change(OffSet(e), e)</c>.
+        /// </summary>
+        /// <param name="items">
+        /// Candidate items to add, each between 0 and <see cref="ZddManager.VariableCount"/> (exclusive).
+        /// </param>
+        /// <returns>
+        /// For every set <c>s</c> in this family and every <c>e &#8712; items</c> with <c>e &#8713; s</c>,
+        /// includes <c>s &#8746; {e}</c>. Empty <paramref name="items"/> gives &#8709;.
+        /// </returns>
+        /// <remarks><c>O(|items|)</c> family operations, the same shape as <see cref="RemoveSomeItem(ReadOnlySpan{int})"/>.</remarks>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="items"/> contains an out-of-range item.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
+        public Zdd AddSomeItem(params ReadOnlySpan<int> items) => Manager.AddSomeItem(this, items);
+
+        /// <summary>
+        /// Removes one contained item and adds a different absent item to each set (Graphillion's
+        /// <c>remove_add_some_elements</c>):
+        /// <c>&#8899;<sub>e &#8800; e' &#8712; items</sub> Change(OffSet(OnSet(e), e'), e')</c>, using
+        /// every item of this manager.
+        /// </summary>
+        /// <returns>
+        /// For every set <c>s</c> in this family and every ordered pair <c>e &#8800; e'</c> with
+        /// <c>e &#8712; s</c> and <c>e' &#8713; s</c>, includes <c>(s &#8726; {e}) &#8746; {e'}</c>.
+        /// </returns>
+        /// <remarks>
+        /// Uses this manager's full variable set as <c>items</c>; see the remarks on
+        /// <see cref="RemoveAddSomeItems(ReadOnlySpan{int})"/> for cost &#8212;
+        /// <c>O(VariableCount&#178;)</c> family operations here, so this parameterless overload is only
+        /// affordable on a small universe.
+        /// </remarks>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
+        public Zdd RemoveAddSomeItems() => Manager.RemoveAddSomeItems(this, AllItems(Manager.VariableCount));
+
+        /// <summary>
+        /// Removes one contained item and adds a different absent item, both chosen from
+        /// <paramref name="items"/>, to each set (Graphillion's <c>remove_add_some_elements</c>):
+        /// <c>&#8899;<sub>e &#8800; e' &#8712; items</sub> Change(OffSet(OnSet(e), e'), e')</c>.
+        /// </summary>
+        /// <param name="items">
+        /// Candidate items to swap, each between 0 and <see cref="ZddManager.VariableCount"/>
+        /// (exclusive). Restricting this list &#8212; e.g. to the items a local search is allowed to
+        /// move &#8212; is the intended way to keep this affordable on a large universe.
+        /// </param>
+        /// <returns>
+        /// For every set <c>s</c> in this family and every ordered pair <c>e &#8800; e'</c> in
+        /// <paramref name="items"/> with <c>e &#8712; s</c> and <c>e' &#8713; s</c>, includes
+        /// <c>(s &#8726; {e}) &#8746; {e'}</c>. Fewer than two distinct items gives &#8709; (no valid pair).
+        /// </returns>
+        /// <remarks>
+        /// <b>Honest complexity</b>: <c>O(|items|&#178;)</c> family operations &#8212; quadratic, unlike
+        /// <see cref="RemoveSomeItem(ReadOnlySpan{int})"/> and <see cref="AddSomeItem(ReadOnlySpan{int})"/>'s
+        /// linear cost. Each ordered pair <c>(e, e')</c> costs one <see cref="OffSet"/>, one
+        /// <see cref="Change"/> and one <see cref="Union"/> (<see cref="OnSet"/> is shared across every
+        /// <c>e'</c> for a given <c>e</c>, so it only costs once per <c>e</c>, not once per pair). Not
+        /// affordable over a universe of thousands of items unless <paramref name="items"/> is kept small
+        /// (docs/design/m6-api-expansion.md &#167;3.1) &#8212; a single-pass linear DP is possible but out
+        /// of scope for v0.6.
+        /// </remarks>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="items"/> contains an out-of-range item.</exception>
+        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
+        public Zdd RemoveAddSomeItems(params ReadOnlySpan<int> items) => Manager.RemoveAddSomeItems(this, items);
+
         /// <summary>Starts a lazy enumeration of this family's sets in <see cref="ZddEnumerationOrder.Default"/> order.</summary>
         /// <returns>Enumerator yielding each set as an ascending <c>int[]</c> of item indices, a fresh array per set.</returns>
         /// <remarks>
@@ -952,6 +1079,19 @@ namespace ZDD.Net.Core
                 ThrowHelper.ThrowInvalidOperationException(
                     "This is a default Zdd handle, which does not belong to any manager. Obtain a Zdd from a ZddManager instead.");
             }
+        }
+
+        /// <summary>Every item index 0 .. <paramref name="variableCount"/> - 1, ascending. The parameterless overloads' default <c>items</c>.</summary>
+        private static int[] AllItems(int variableCount)
+        {
+            var items = new int[variableCount];
+
+            for (int i = 0; i < variableCount; i++)
+            {
+                items[i] = i;
+            }
+
+            return items;
         }
     }
 }

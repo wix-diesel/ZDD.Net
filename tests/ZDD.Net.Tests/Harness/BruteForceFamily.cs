@@ -502,6 +502,60 @@ namespace ZDD.Net.Tests.Harness
             return new BruteForceFamily(VariableCount, result);
         }
 
+        // ---- 1 要素変種（M6-7）----
+
+        /// <summary>1 要素除去 = ⋃_{e ∈ items} OnSet(e)。定義どおり OnSet の和で書く。</summary>
+        public BruteForceFamily RemoveSomeItem(params ReadOnlySpan<int> items)
+        {
+            BruteForceFamily result = Empty(VariableCount);
+
+            foreach (int item in items)
+            {
+                result = result.Union(OnSet(item));
+            }
+
+            return result;
+        }
+
+        /// <summary>1 要素追加 = ⋃_{e ∈ items} Change(OffSet(e), e)。定義どおり OffSet→Change の和で書く。</summary>
+        public BruteForceFamily AddSomeItem(params ReadOnlySpan<int> items)
+        {
+            BruteForceFamily result = Empty(VariableCount);
+
+            foreach (int item in items)
+            {
+                result = result.Union(OffSet(item).Change(item));
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// 1 要素除去＋別 1 要素追加 = ⋃_{e≠e'} Change(OffSet(OnSet(e), e'), e')。
+        /// e と e' が同じ組は除く（e ≠ e' の定義どおり）。
+        /// </summary>
+        public BruteForceFamily RemoveAddSomeItems(params ReadOnlySpan<int> items)
+        {
+            BruteForceFamily result = Empty(VariableCount);
+
+            foreach (int removed in items)
+            {
+                BruteForceFamily afterRemove = OnSet(removed);
+
+                foreach (int added in items)
+                {
+                    if (added == removed)
+                    {
+                        continue;
+                    }
+
+                    result = result.Union(afterRemove.OffSet(added).Change(added));
+                }
+            }
+
+            return result;
+        }
+
         // ---- 問い合わせ ----
 
         /// <summary>ビットマスクで与えた集合が族に属するか。</summary>
