@@ -515,6 +515,23 @@ namespace ZDD.Net.Graphs
             return Generate(graph, new DegreeDistributionSpec(graph, counts));
         }
 
+        /// <summary>
+        /// The family of edge sets induced by some vertex subset of <paramref name="graph"/>: for every
+        /// graph edge <c>(u,v)</c>, it is in the set exactly when both <c>u</c> and <c>v</c> are chosen
+        /// &#8212; Graphillion's <c>induced_graphs</c>. Connectivity is not required; for connected induced
+        /// subgraphs, call <see cref="ConnectedSubgraphs"/> too and intersect the two results'
+        /// <see cref="Zdd"/> properties (<see cref="Core.Zdd.Intersect(Core.Zdd)"/>). See
+        /// <see cref="Specs.InducedSubgraphSpec"/>.
+        /// </summary>
+        /// <param name="graph">The graph to search.</param>
+        /// <example><code>GraphSet induced = GraphSet.InducedSubgraphs(Graph.Grid(3, 3));</code></example>
+        /// <exception cref="ArgumentNullException"><paramref name="graph"/> is <see langword="null"/>.</exception>
+        public static GraphSet InducedSubgraphs(Graph graph)
+        {
+            ArgumentNullException.ThrowIfNull(graph);
+            return Generate(graph, new InducedSubgraphSpec(graph));
+        }
+
         // ==================== 1-item variants (M6-7) ====================
 
         /// <summary>Removes one contained edge from each edge set, using every edge of <see cref="Graph"/>. See <see cref="Zdd.RemoveSomeItem()"/>.</summary>
