@@ -308,6 +308,78 @@ namespace ZDD.Net.Graphs
         public GraphSet CostEquals(Func<Edge, long> cost, long value) =>
             Filter(new StructSpecErased<LinearConstraintSpec, long>(new LinearConstraintSpec(BuildWeights(cost), LinearConstraintOperator.Equal, value)));
 
+        // ==================== Universe / edge-order transfer (M6-6) ====================
+
+        /// <summary>
+        /// Moves this family onto <paramref name="target"/>, a graph that differs from <see cref="Graph"/>
+        /// only in edge order (M6-6, issue #141) &#8212; the common case being "built over
+        /// <see cref="Graphs.Graph.Optimize"/>'s reordering, results read back against the graph it
+        /// optimized." Built on <see cref="SetSet{T}.ToUniverse"/>, using <see cref="Graph"/>'s
+        /// <see cref="Graphs.Graph.SourceOrder"/> (the mapping <see cref="Graphs.Graph.WithEdgeOrder"/> /
+        /// <see cref="Graphs.Graph.Optimize"/> leaves behind) to build the item map instead of asking the
+        /// caller for one.
+        /// </summary>
+        /// <param name="target">
+        /// The graph to move onto: the same graph <see cref="Graph"/> was reordered from, i.e.
+        /// <c><see cref="Graph"/>.SourceOrder.Source</c> (or another graph with the exact same edges at
+        /// the indices that mapping expects).
+        /// </param>
+        /// <returns>The same family of edge sets, expressed over <paramref name="target"/>.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="target"/> is <see langword="null"/>.</exception>
+        /// <exception cref="InvalidOperationException">
+        /// <see cref="Graph"/> has no <see cref="Graphs.Graph.SourceOrder"/> &#8212; it was not produced by
+        /// <see cref="Graphs.Graph.WithEdgeOrder"/> or <see cref="Graphs.Graph.Optimize"/>, so there is no
+        /// recorded edge-order mapping for <see cref="ToEdgeOrder"/> to use.
+        /// </exception>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="target"/>'s edge count or edges don't match what <see cref="Graph"/>'s
+        /// <see cref="Graphs.Graph.SourceOrder"/> expects (named in the message).
+        /// </exception>
+        public GraphSet ToEdgeOrder(Graph target)
+        {
+            ArgumentNullException.ThrowIfNull(target);
+
+            EdgeOrderMapping? sourceOrder = Graph.SourceOrder;
+            if (sourceOrder is null)
+            {
+                throw new InvalidOperationException(
+                    $"This family's graph has no {nameof(Graph.SourceOrder)}; it was not produced by " +
+                    $"{nameof(Graph.WithEdgeOrder)} or {nameof(Graph.Optimize)}, so there is no recorded " +
+                    $"edge-order mapping for {nameof(ToEdgeOrder)} to use.");
+            }
+
+            if (target.EdgeCount != Graph.EdgeCount)
+            {
+                throw new ArgumentException(
+                    $"'{nameof(target)}' has {target.EdgeCount} edge(s), but this family's graph has " +
+                    $"{Graph.EdgeCount}; {nameof(ToEdgeOrder)} only moves a family between edge orderings of the same graph.",
+                    nameof(target));
+            }
+
+            var itemMap = new int[Graph.EdgeCount];
+            for (int i = 0; i < Graph.EdgeCount; i++)
+            {
+                int targetIndex = sourceOrder.ToSourceEdgeIndex(i);
+                Edge expected = Graph.GetEdge(i);
+                Edge actual = target.GetEdge(targetIndex);
+
+                if (actual != expected)
+                {
+                    throw new ArgumentException(
+                        $"'{nameof(target)}' does not match this family's graph's {nameof(Graph.SourceOrder)}: " +
+                        $"edge {expected} (index {i}) is expected at index {targetIndex} of '{nameof(target)}', but found {actual}. " +
+                        $"{nameof(ToEdgeOrder)} only moves a family between edge orderings of the same graph.",
+                        nameof(target));
+                }
+
+                itemMap[i] = targetIndex;
+            }
+
+            var universe = new SetUniverse<Edge>(target.Edges);
+            Zdd mapped = Zdd.MapItemsTo(universe.Manager, itemMap);
+            return new GraphSet(target, universe, mapped, new PrecomputedZddSpec(mapped));
+        }
+
         // ==================== Enumeration ====================
 
         /// <summary>Enumerates the member edge sets lazily, in <see cref="ZddEnumerationOrder.Default"/> order.</summary>

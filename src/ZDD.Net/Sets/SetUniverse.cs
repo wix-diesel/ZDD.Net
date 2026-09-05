@@ -106,6 +106,35 @@ namespace ZDD.Net.Sets
             return _elements[index];
         }
 
+        /// <summary>
+        /// Returns a new universe with <paramref name="additionalElements"/> appended after this
+        /// universe's own elements (M6-6, issue #141). This universe, its <see cref="Manager"/>, and
+        /// every <see cref="SetSet{T}"/> built over it are left untouched and keep working.
+        /// </summary>
+        /// <param name="additionalElements">
+        /// Extra elements to add. An element already in this universe (per <see cref="Comparer"/>)
+        /// is dropped, keeping its original index; duplicates among <paramref name="additionalElements"/>
+        /// themselves keep only the first occurrence &#8212; the same dedup rule the constructor applies.
+        /// </param>
+        /// <returns>
+        /// A universe whose first <see cref="Count"/> elements are this universe's, in the same order
+        /// (so they keep the same item index), followed by the newly seen elements of
+        /// <paramref name="additionalElements"/>. Because item indices are stable variable identities
+        /// (B7), this universe's <see cref="ZddManager"/> can't simply grow: the result gets a fresh,
+        /// bigger one instead (B19) &#8212; move a <see cref="SetSet{T}"/> onto it with
+        /// <see cref="SetSet{T}.ToUniverse"/>.
+        /// </returns>
+        /// <exception cref="ArgumentNullException"><paramref name="additionalElements"/> is <see langword="null"/>.</exception>
+        public SetUniverse<T> Extend(IEnumerable<T> additionalElements)
+        {
+            ArgumentNullException.ThrowIfNull(additionalElements);
+
+            var combined = new List<T>(_elements);
+            combined.AddRange(additionalElements);
+
+            return new SetUniverse<T>(combined, Comparer);
+        }
+
         /// <summary>Converts a sequence of elements to their item indices, in the given order (not deduplicated or sorted).</summary>
         /// <exception cref="ArgumentNullException"><paramref name="elements"/> is <see langword="null"/>.</exception>
         /// <exception cref="ArgumentException">An element is not part of this universe.</exception>

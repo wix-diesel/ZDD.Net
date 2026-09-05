@@ -560,6 +560,84 @@ namespace ZDD.Net.Tests.Graphs
             }
         }
 
+        // ---- ToEdgeOrder（M6-6, issue #141）----
+
+        [Fact]
+        public void ToEdgeOrderMovesAnOptimizedFamilyBackToTheOriginalEdgeOrder()
+        {
+            Graph grid = Shuffle(Graph.Grid(5, 5), seed: 3);
+            Graph optimized = grid.Optimize(EdgeOrderStrategy.BeamSearchPathWidth);
+            Assert.NotEqual(grid.Edges.ToArray(), optimized.Edges.ToArray()); // sanity: the order actually changed
+
+            GraphSet fromOptimized = GraphSet.Paths(optimized, 0, grid.VertexCount - 1);
+            GraphSet backOnOriginal = fromOptimized.ToEdgeOrder(grid);
+
+            Assert.Same(grid, backOnOriginal.Graph);
+            Assert.Equal(fromOptimized.Count, backOnOriginal.Count);
+
+            // Not just "same count, same keys once translated" (that's ReorderingBuildsTheSameFamily...
+            // in EdgeOrderTests) — the edge SETS themselves must be identical, since ToEdgeOrder claims to
+            // hand back exactly the family a build over `grid` directly would have produced.
+            GraphSet fromOriginal = GraphSet.Paths(grid, 0, grid.VertexCount - 1);
+            HashSet<string> expectedKeys = fromOriginal.Select(EdgeSetKey).ToHashSet();
+            HashSet<string> actualKeys = backOnOriginal.Select(EdgeSetKey).ToHashSet();
+            Assert.Equal(expectedKeys, actualKeys);
+
+            foreach (IReadOnlySet<Edge> set in backOnOriginal)
+            {
+                AssertIsSimplePath(grid, 0, grid.VertexCount - 1, set);
+            }
+        }
+
+        [Fact]
+        public void ToEdgeOrderThrowsWhenTheFamilysGraphHasNoSourceOrder()
+        {
+            Graph graph = Graph.Grid(3, 3);
+            GraphSet paths = GraphSet.Paths(graph, 0, graph.VertexCount - 1);
+
+            Assert.Null(graph.SourceOrder);
+            Assert.Throws<InvalidOperationException>(() => paths.ToEdgeOrder(Graph.Grid(3, 3)));
+        }
+
+        [Fact]
+        public void ToEdgeOrderThrowsWhenTargetHasADifferentEdgeCount()
+        {
+            Graph graph = Graph.Grid(3, 3);
+            Graph optimized = graph.Optimize();
+            GraphSet paths = GraphSet.Paths(optimized, 0, graph.VertexCount - 1);
+
+            Graph wrongSize = Graph.Grid(4, 4);
+
+            ArgumentException ex = Assert.Throws<ArgumentException>(() => paths.ToEdgeOrder(wrongSize));
+            Assert.Equal("target", ex.ParamName);
+        }
+
+        [Fact]
+        public void ToEdgeOrderThrowsWhenTargetsEdgesDoNotMatchTheSourceOrderMapping()
+        {
+            Graph graph = Graph.Grid(3, 3);
+            Graph optimized = graph.Optimize();
+            GraphSet paths = GraphSet.Paths(optimized, 0, graph.VertexCount - 1);
+
+            // Same edge count as `graph`, but every vertex shifted by 100, so no edge of `unrelated` can
+            // ever equal an edge of `graph` — a mismatch is guaranteed, not just overwhelmingly likely.
+            Edge[] shifted = graph.Edges.Select(e => new Edge(e.U + 100, e.V + 100)).ToArray();
+            Graph unrelated = new Graph(graph.VertexCount + 100, shifted);
+
+            ArgumentException ex = Assert.Throws<ArgumentException>(() => paths.ToEdgeOrder(unrelated));
+            Assert.Equal("target", ex.ParamName);
+        }
+
+        [Fact]
+        public void ToEdgeOrderThrowsForANullTarget()
+        {
+            Graph graph = Graph.Grid(3, 3);
+            Graph optimized = graph.Optimize();
+            GraphSet paths = GraphSet.Paths(optimized, 0, graph.VertexCount - 1);
+
+            Assert.Throws<ArgumentNullException>(() => paths.ToEdgeOrder(null!));
+        }
+
         // ---- ToDot（M5-4、issue #56）----
 
         [Fact]
