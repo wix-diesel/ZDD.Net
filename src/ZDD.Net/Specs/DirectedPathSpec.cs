@@ -224,7 +224,7 @@ namespace ZDD.Net.Specs
 
             if (MateChainState.Splice(state, su, sv) != MateChainState.SpliceResult.Spliced)
             {
-                return false; // degree 3 at one endpoint, or this arc would close a directed cycle
+                return false; // degree 3 at one endpoint, or this arc would close a cycle (PathSpec's rule, direction-agnostic)
             }
 
             // u's undirected degree just became 1 (if it was isolated: this arc, outgoing, is its only
