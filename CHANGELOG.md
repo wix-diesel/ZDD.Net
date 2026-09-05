@@ -45,17 +45,34 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
   配列状態スペック（`IArrayDdSpec`）の両方にオーバーロードを用意。
 - `Zdd.MapItems(itemMap)`: 同じマネージャ内での項目写像、順序保存の高速経路（M6-4、issue #139、
   `docs/OPEN-QUESTIONS.md` B17）。CUDD の `Cudd_bddPermute` に相当する「変数の張り替え」が無く、
-  辺順序を変えた `Graph` で組み直した族を元の順序で解釈する、といったことができなかった穴埋め
-  （一般の置換とマネージャ間転送は別 PR にする M6-5 で追加）。`level = VariableCount - item` なので
-  item の大小関係がそのまま level の順序を決める——`itemMap` が **support 上で狭義単調増加**なら
-  親子の level 順序が保たれるので、ボトムアップの明示スタックによる 1 パス再構築で済む
-  （`MapItemsOperation`、ノード id をキーにメモ化、O(ノード数)、非再帰）。`itemMap` は「旧 item →
-  新 item」の全域かつ単射な写像（長さ `Manager.VariableCount`）で、重複があれば `ArgumentException`、
-  範囲外なら `ArgumentOutOfRangeException`。support 外の要素の写像先は検査しない。単調でない
-  `itemMap` を渡すと `NotSupportedException`（一般経路は M6-5 で追加予定）。恒等写像は新しいノードを
-  作らずそのまま自分自身を返す。変数 12 以下の総当たり照合（写像後の族が「各集合の要素を写した族」と
-  一致すること）、`Count` が写像の前後で不変であること、変数 10 万の深い ZDD でスタックオーバー
-  フローしないことを確認済み。
+  辺順序を変えた `Graph` で組み直した族を元の順序で解釈する、といったことができなかった穴埋め。
+  `level = VariableCount - item` なので item の大小関係がそのまま level の順序を決める——`itemMap`
+  が **support 上で狭義単調増加**なら親子の level 順序が保たれるので、ボトムアップの明示スタックに
+  よる 1 パス再構築で済む（`MapItemsOperation`、ノード id をキーにメモ化、O(ノード数)、非再帰）。
+  `itemMap` は「旧 item → 新 item」の全域かつ単射な写像（長さ `Manager.VariableCount`）で、重複が
+  あれば `ArgumentException`、範囲外なら `ArgumentOutOfRangeException`。support 外の要素の写像先は
+  検査しない。単調でない `itemMap` は一般経路（M6-5）に回る。恒等写像は新しいノードを作らずそのまま
+  自分自身を返す。変数 12 以下の総当たり照合（写像後の族が「各集合の要素を写した族」と一致すること）、
+  `Count` が写像の前後で不変であること、変数 10 万の深い ZDD でスタックオーバーフローしないことを
+  確認済み。
+- `Zdd.MapItemsTo(target, itemMap)` / `Zdd.TransferTo(target)`: 一般（非単調）の項目写像とマネージャ間
+  転送（M6-5、issue #140、`docs/OPEN-QUESTIONS.md` B19）。`itemMap` が support 上で狭義単調増加でない
+  場合、M6-4 のボトムアップ再構築ではノードをそのまま作り直せない（子の level が親より大きくなって
+  しまう）ので、ZDD の再帰的定義 `f = f0 ∪ (f1 × {v})` をそのまま使い、`map(f) = map(f0) ∪
+  Change(map(f1), σ(v))` をノード id をキーにメモ化しながら後行順の明示スタックで計算する
+  （`GeneralMapItemsOperation`、非再帰）。正当性は `σ` の単射性から従う: `f1` の部分木に現れる item は
+  すべて `v` より大きく、`σ` は単射なので `σ(v)` は `map(f1)` の support に現れない——したがって
+  `Change` は反転ではなく常に追加として振る舞う。計算量はノード数 ×（`Union` + `Change`）回で、
+  順序保存経路の O(ノード数) より重いが指数的ではない。`Union` / `Change` を `target` マネージャ上で
+  呼ぶだけで一般経路がそのままマネージャ間転送になるので、`MapItemsTo` 1 つで
+  同一マネージャの一般置換とマネージャ間コピーの両方を賄う——同一マネージャ版 `MapItems` は
+  `MapItemsTo(Manager, itemMap)` に委譲する。`TransferTo(target)` は `MapItemsTo(target, 恒等写像)` で、
+  `target.VariableCount >= Manager.VariableCount` を要求し、足りなければ `ArgumentException`
+  （B7「変数数は固定」の実質的な回避策——変数を増やしたければ大きいマネージャを新しく作って
+  `TransferTo` する）。変数 12 以下の総当たり照合、ランダム置換での往復テスト
+  （`MapItems(σ).MapItems(σ⁻¹) == f`）、順序保存経路と一般経路が同じ単調写像に対して完全に同じ結果
+  （同じノード id）を返すこと、`TransferTo` した族が転送先マネージャで元と同じ `Count` /
+  列挙結果を返すこと、反復実装であることの確認済み。
 - `Zdd.AddSomeItem` / `RemoveSomeItem` / `RemoveAddSomeItems`（引数なし版と、対象を絞れる
   `items` 版）: Graphillion の `add_some_element` / `remove_some_element` /
   `remove_add_some_elements` 相当（M6-7、issue #142）。局所探索や「1 手違いの解」を数える

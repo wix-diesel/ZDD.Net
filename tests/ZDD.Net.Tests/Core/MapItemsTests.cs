@@ -7,15 +7,18 @@ using ZDD.Net.Tests.Harness;
 namespace ZDD.Net.Tests.Core
 {
     /// <summary>
-    /// <see cref="Zdd.MapItems"/> の検証（M6-4, issue #139）: 同じマネージャ内で item を
-    /// 張り替える、順序保存の高速経路。
+    /// <see cref="Zdd.MapItems"/> の検証: 同じマネージャ内で item を張り替える。順序保存の高速経路
+    /// （M6-4, issue #139）と、一般（非単調）の経路（M6-5, issue #140）の両方をここで照合する。
+    /// マネージャ間転送（<see cref="Zdd.MapItemsTo"/> / <see cref="Zdd.TransferTo"/>）は
+    /// <c>MapItemsToTests</c> の担当。
     /// </summary>
     /// <remarks>
     /// 照合相手は <see cref="BruteForceFamily.MapItems"/>（定義をそのままループで書いた素朴実装）で、
     /// 比較は <see cref="FamilyAssert.AssertSameFamily(string?, in Zdd, BruteForceFamily, BruteForceFamily?)"/>
-    /// が行う。この PR は「<c>itemMap</c> が support 上で狭義単調増加」の場合だけを実装するので、
-    /// 総当たり照合ではその条件を満たす <c>itemMap</c> だけをランダムに作って試す
-    /// （<see cref="BuildMonotonicItemMap"/>）。一般の置換は M6-5 で追加される。
+    /// が行う。単調な <c>itemMap</c>（<see cref="BuildMonotonicItemMap"/>）は高速経路
+    /// （<see cref="MapItemsOperation"/>）を、そうでない一般の単射置換
+    /// （<see cref="BuildRandomPermutation"/>）は一般経路（<see cref="GeneralMapItemsOperation"/>）を
+    /// 通る——<c>BruteForceFamily</c> 側はどちらも同じ素朴実装で計算するので、区別せず照合できる。
     /// </remarks>
     public class MapItemsTests
     {
@@ -77,6 +80,104 @@ namespace ZDD.Net.Tests.Core
             // 冪集合（support = 全変数）も 1 度。support が全域だと単調な itemMap は恒等写像しかない
             // ので、ここでの目的は「その境界ケースでも壊れない」ことの確認。
             AssertMapItemsMatchesNaive(manager, BruteForceFamily.PowerSet(VariableCount), random, itemMapsPerFamily: 1);
+        }
+
+        // ---- 総当たり照合（一般の単射置換、M6-5） ----
+
+        [Fact]
+        public void EveryFamilyOfThreeVariablesMatchesTheNaiveImplementationWithGeneralPermutations()
+        {
+            const int VariableCount = 3;
+
+            using ZddManager manager = new ZddManager(VariableCount);
+            Random random = new Random(20260905);
+
+            foreach (BruteForceFamily family in FamilyCases.AllFamilies(VariableCount))
+            {
+                AssertMapItemsMatchesNaiveGeneral(manager, family, random, itemMapsPerFamily: 3);
+            }
+        }
+
+        [Theory]
+        [InlineData(1)]
+        [InlineData(2)]
+        [InlineData(4)]
+        [InlineData(7)]
+        [InlineData(FamilyCases.DefaultVariableCount)]
+        [InlineData(FamilyCases.ExhaustiveVariableLimit)]
+        public void RandomFamiliesMatchTheNaiveImplementationWithGeneralPermutations(int variableCount)
+        {
+            using ZddManager manager = new ZddManager(variableCount);
+            Random random = new Random(20260905 + variableCount);
+
+            foreach (BruteForceFamily family in
+                FamilyCases.RandomFamilies(variableCount, 50, seed: 20260905 + variableCount))
+            {
+                AssertMapItemsMatchesNaiveGeneral(manager, family, random, itemMapsPerFamily: 3);
+            }
+        }
+
+        [Fact]
+        [Trait("Category", "Slow")]
+        public void EverySubsetOfTwelveVariablesMatchesTheNaiveImplementationWithGeneralPermutations()
+        {
+            const int VariableCount = FamilyCases.ExhaustiveVariableLimit;
+
+            using ZddManager manager = new ZddManager(VariableCount);
+            Random random = new Random(1934);
+
+            foreach (int mask in FamilyCases.AllSubsets(VariableCount))
+            {
+                AssertMapItemsMatchesNaiveGeneral(
+                    manager,
+                    BruteForceFamily.FromMasks(VariableCount, [mask]),
+                    random,
+                    itemMapsPerFamily: 1);
+            }
+
+            AssertMapItemsMatchesNaiveGeneral(manager, BruteForceFamily.PowerSet(VariableCount), random, itemMapsPerFamily: 1);
+        }
+
+        [Fact]
+        public void RoundTripThroughAPermutationAndItsInverseReturnsTheOriginalFamily()
+        {
+            const int VariableCount = FamilyCases.DefaultVariableCount;
+
+            using ZddManager manager = new ZddManager(VariableCount);
+            Random random = new Random(112358);
+
+            foreach (BruteForceFamily family in FamilyCases.RandomFamilies(VariableCount, 30, seed: 112358))
+            {
+                Zdd zdd = ZddFamilies.Build(manager, family);
+
+                int[] sigma = BuildRandomPermutation(VariableCount, random);
+                int[] sigmaInverse = InvertPermutation(sigma);
+
+                Zdd roundTripped = zdd.MapItems(sigma).MapItems(sigmaInverse);
+
+                Assert.Equal(zdd, roundTripped);
+            }
+        }
+
+        [Fact]
+        public void TheFastPathAndTheGeneralPathAgreeOnAMonotonicItemMap()
+        {
+            const int VariableCount = FamilyCases.DefaultVariableCount;
+
+            using ZddManager manager = new ZddManager(VariableCount);
+            Random random = new Random(90210);
+
+            foreach (BruteForceFamily family in FamilyCases.RandomFamilies(VariableCount, 30, seed: 90210))
+            {
+                Zdd zdd = ZddFamilies.Build(manager, family);
+                int[] itemMap = BuildMonotonicItemMap(VariableCount, zdd.Support(), random);
+
+                int viaFastPath = MapItemsOperation.Apply(manager, manager, zdd.Id, itemMap);
+                int viaGeneralPath = GeneralMapItemsOperation.Apply(manager, manager, zdd.Id, itemMap);
+
+                // ZDD は正準形なので、同じ族なら同じノード id になるはず。
+                Assert.Equal(viaFastPath, viaGeneralPath);
+            }
         }
 
         // ---- 恒等写像 ----
@@ -168,6 +269,45 @@ namespace ZDD.Net.Tests.Core
             Assert.Equal(expectedSupport, mapped.Support());
         }
 
+        [Fact]
+        public void DeepDiagramsDoNotOverflowTheStackOnTheGeneralPath()
+        {
+            // 上と同じ鎖状の族だが、itemMap を逆順にして一般経路（M6-5）を強制する。一般経路は
+            // ノードごとに Union/Change を呼ぶので、変数 10 万は Union の最悪計算量（O(現在の
+            // サイズ)）が積み重なって遅すぎる——ここでの目的は速さではなく「反復実装なので
+            // スタックオーバーフローしない」ことの確認なので、経路選択に影響しない程度に
+            // 変数を減らす（一般経路は support の順序に関係なく必ず全ノードを Union/Change で
+            // 通るので、この縮小はテストの意味を変えない）。
+            const int VariableCount = 4_000;
+
+            using ZddManager manager = new ZddManager(VariableCount);
+
+            // { {i} : i は偶数, 0 <= i < VariableCount }。
+            Zdd singletons = manager.Empty;
+            for (int item = VariableCount - 2; item >= 0; item -= 2)
+            {
+                singletons = manager.CreateNode(item, singletons, manager.Base);
+            }
+
+            // 全体を反転する写像。support（偶数のみ）上でも狭義単調"減少"なので、一般経路に落ちる。
+            int[] itemMap = new int[VariableCount];
+            for (int i = 0; i < VariableCount; i++)
+            {
+                itemMap[i] = VariableCount - 1 - i;
+            }
+
+            int mappedId = GeneralMapItemsOperation.Apply(manager, manager, singletons.Id, itemMap);
+            Zdd mapped = new Zdd(manager, mappedId);
+
+            Assert.Equal(singletons.Count, mapped.Count);
+
+            int[] expectedSupport = Enumerable.Range(0, VariableCount / 2)
+                .Select(i => VariableCount - 1 - 2 * i)
+                .OrderBy(item => item)
+                .ToArray();
+            Assert.Equal(expectedSupport, mapped.Support());
+        }
+
         // ---- 引数の検査 ----
 
         [Fact]
@@ -206,7 +346,7 @@ namespace ZDD.Net.Tests.Core
         }
 
         [Fact]
-        public void ANonMonotonicItemMapOnTheSupportIsRejected()
+        public void ANonMonotonicItemMapOnTheSupportUsesTheGeneralPath()
         {
             using ZddManager manager = new ZddManager(4);
 
@@ -214,8 +354,15 @@ namespace ZDD.Net.Tests.Core
             Zdd zdd = ZddFamilies.Build(manager, [0], [2]);
             Assert.Equal([0, 2], zdd.Support());
 
-            // item 0 と item 2 を入れ替えると、support 上で 0 -> 2, 2 -> 0 となり単調増加でない。
-            Assert.Throws<NotSupportedException>(() => zdd.MapItems(2, 1, 0, 3));
+            // item 0 と item 2 を入れ替えると、support 上で 0 -> 2, 2 -> 0 となり単調増加でない
+            // ので高速経路は使えないが、一般経路（M6-5）で正しく計算できる。
+            int[] itemMap = [2, 1, 0, 3];
+            Zdd mapped = zdd.MapItems(itemMap);
+
+            FamilyAssert.AssertSameFamily(
+                "MapItems(support 上で入れ替え)",
+                mapped,
+                ZddFamilies.ToBruteForce(zdd).MapItems(itemMap));
         }
 
         [Fact]
@@ -253,7 +400,7 @@ namespace ZDD.Net.Tests.Core
 
             Zdd foreign = other.Singleton(0);
 
-            Assert.Equal("f", Assert.Throws<ArgumentException>(() => one.MapItems(foreign, [1, 0, 2, 3])).ParamName);
+            Assert.Equal("f", Assert.Throws<ArgumentException>(() => one.MapItemsTo(foreign, one, [1, 0, 2, 3])).ParamName);
         }
 
         [Fact]
@@ -292,12 +439,12 @@ namespace ZDD.Net.Tests.Core
             // ポイント全体（itemMap の検査や CollectSupport）は対象外——検査は O(VariableCount) の
             // 一度きりの費用で、ノード数に比例するホットパスとは別物（PowerSetOf/Flip も同様に
             // 呼び出しごとの検査は許容している）。
-            _ = MapItemsOperation.Apply(manager, zdd.Id, itemMap);
+            _ = MapItemsOperation.Apply(manager, manager, zdd.Id, itemMap);
 
             long before = GC.GetAllocatedBytesForCurrentThread();
             for (int i = 0; i < 200; i++)
             {
-                _ = MapItemsOperation.Apply(manager, zdd.Id, itemMap);
+                _ = MapItemsOperation.Apply(manager, manager, zdd.Id, itemMap);
             }
 
             long after = GC.GetAllocatedBytesForCurrentThread();
@@ -372,6 +519,44 @@ namespace ZDD.Net.Tests.Core
                 int j = random.Next(i + 1);
                 (values[i], values[j]) = (values[j], values[i]);
             }
+        }
+
+        /// <summary>族を ZDD に組み立て、いくつかのランダムな単射置換（単調とは限らない）で照合する。</summary>
+        private static void AssertMapItemsMatchesNaiveGeneral(
+            ZddManager manager,
+            BruteForceFamily family,
+            Random random,
+            int itemMapsPerFamily)
+        {
+            Zdd zdd = ZddFamilies.Build(manager, family);
+
+            FamilyAssert.AssertSameFamily("the family builder", zdd, family);
+
+            for (int i = 0; i < itemMapsPerFamily; i++)
+            {
+                int[] itemMap = BuildRandomPermutation(manager.VariableCount, random);
+                FamilyAssert.AssertSameFamily($"MapItems(general) #{i}", zdd.MapItems(itemMap), family.MapItems(itemMap), family);
+            }
+        }
+
+        /// <summary>0..variableCount - 1 の一様ランダムな置換（単調とは限らない）を作る。</summary>
+        private static int[] BuildRandomPermutation(int variableCount, Random random)
+        {
+            int[] permutation = Enumerable.Range(0, variableCount).ToArray();
+            Shuffle(permutation, random);
+            return permutation;
+        }
+
+        /// <summary>置換の逆写像を作る（<c>inverse[permutation[i]] == i</c>）。</summary>
+        private static int[] InvertPermutation(int[] permutation)
+        {
+            int[] inverse = new int[permutation.Length];
+            for (int i = 0; i < permutation.Length; i++)
+            {
+                inverse[permutation[i]] = i;
+            }
+
+            return inverse;
         }
     }
 }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using ZDD.Net.Core;
 
 namespace ZDD.Net.Tests.Harness
 {
@@ -460,13 +461,22 @@ namespace ZDD.Net.Tests.Harness
         /// MapItems: すべての集合について、要素 item を itemMap[item] に張り替える。
         /// </summary>
         /// <remarks>
-        /// 定義をそのまま書いただけなので、単射でない itemMap を渡しても（ZDD 側の高速経路が
-        /// NotSupportedException で断る場合でも）ここでは普通に計算できる。ZDD 側と照合するのは
-        /// 単射かつ support 上で狭義単調増加な itemMap のときだけ。
+        /// 定義をそのまま書いただけなので、単射でない itemMap や、support 上で単調でない
+        /// itemMap を渡してもここでは普通に計算できる。ZDD 側の高速経路（順序保存のみ）と
+        /// 一般経路（M6-5、単射なら何でも）のどちらとも、単射な itemMap なら照合できる。
+        /// 写像先の変数の個数を変えたいとき（マネージャ間転送の照合）は <see cref="MapItemsTo"/> を使う。
         /// </remarks>
-        public BruteForceFamily MapItems(int[] itemMap)
+        public BruteForceFamily MapItems(int[] itemMap) => MapItemsTo(VariableCount, itemMap);
+
+        /// <summary>
+        /// MapItems の一般形: 写像先の変数の個数 <paramref name="targetVariableCount"/> が
+        /// この族自身の <see cref="VariableCount"/> と異なってもよい（<see cref="Zdd.MapItemsTo"/> /
+        /// <see cref="Zdd.TransferTo"/> の照合用、M6-5）。
+        /// </summary>
+        public BruteForceFamily MapItemsTo(int targetVariableCount, int[] itemMap)
         {
             ArgumentNullException.ThrowIfNull(itemMap);
+            ArgumentOutOfRangeException.ThrowIfNegative(targetVariableCount);
 
             if (itemMap.Length != VariableCount)
             {
@@ -479,7 +489,7 @@ namespace ZDD.Net.Tests.Harness
             // target fails loudly instead of being silently masked by C#'s shift-count wraparound.
             foreach (int target in itemMap)
             {
-                ValidateItem(VariableCount, target);
+                ValidateItem(targetVariableCount, target);
             }
 
             SortedSet<int> result = new SortedSet<int>();
@@ -499,7 +509,7 @@ namespace ZDD.Net.Tests.Harness
                 result.Add(mapped);
             }
 
-            return new BruteForceFamily(VariableCount, result);
+            return new BruteForceFamily(targetVariableCount, result);
         }
 
         // ---- 1 要素変種（M6-7）----

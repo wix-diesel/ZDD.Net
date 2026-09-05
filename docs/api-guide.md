@@ -121,7 +121,9 @@ Zdd b = manager.Singleton(1) | manager.Singleton(2); // {{1}, {2}}
 | `F.Maximal()` | — | 包含関係で極大な集合だけを残す（結果は反鎖） |
 | `F.Minimal()` | — | 包含関係で極小な集合だけを残す（結果は反鎖） |
 | `F.HittingSets()` | `F.Blocking()` | `F` のどの集合とも交わる集合をすべて集める |
-| `F.MapItems(itemMap)` | — | 同じマネージャ内で item を `itemMap[item]` に張り替える（`itemMap` が support 上で狭義単調増加のときのみ。O(ノード数)） |
+| `F.MapItems(itemMap)` | — | 同じマネージャ内で item を `itemMap[item]` に張り替える（support 上で狭義単調増加なら O(ノード数)、そうでなければ一般経路） |
+| `F.MapItemsTo(target, itemMap)` | — | `MapItems` を別の `ZddManager` 上に複製しながら行う |
+| `F.TransferTo(target)` | — | `MapItemsTo(target, 恒等写像)`。`target` のほうが変数が多いマネージャへ複製する（B7 の回避策） |
 
 `F == F / G * G + F % G`（`+` は `Union`）が恒等式として常に成り立つ。
 
