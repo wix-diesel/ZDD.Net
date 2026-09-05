@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using ZDD.Net.Core;
 using ZDD.Net.Internal;
 using ZDD.Net.Io;
+using ZDD.Net.Specs;
 
 namespace ZDD.Net.Sets
 {
@@ -333,6 +334,30 @@ namespace ZDD.Net.Sets
 
         /// <inheritdoc cref="TopK(IReadOnlyDictionary{T, int}, int)"/>
         public (IReadOnlySet<T> Set, double Weight)[] TopK(IReadOnlyDictionary<T, double> weights, int k) => Wrap(Zdd.TopK(Universe.ToValueArray(weights, nameof(weights)), k));
+
+        /// <summary>Keeps only member sets whose total cost is at most <paramref name="bound"/> (Graphillion's <c>cost_le</c>).</summary>
+        /// <param name="costs">Per-element cost; must have an entry for every element of <see cref="Universe"/>. May contain negatives.</param>
+        /// <param name="bound">The maximum total cost.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="costs"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="costs"/> is missing an entry for a universe element.</exception>
+        public SetSet<T> CostAtMost(IReadOnlyDictionary<T, long> costs, long bound) =>
+            new SetSet<T>(Universe, Zdd.CostAtMost(Universe.ToValueArray(costs, nameof(costs)), bound));
+
+        /// <summary>Keeps only member sets whose total cost is at least <paramref name="bound"/>.</summary>
+        /// <param name="costs">Per-element cost; must have an entry for every element of <see cref="Universe"/>. May contain negatives.</param>
+        /// <param name="bound">The minimum total cost.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="costs"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="costs"/> is missing an entry for a universe element.</exception>
+        public SetSet<T> CostAtLeast(IReadOnlyDictionary<T, long> costs, long bound) =>
+            new SetSet<T>(Universe, Zdd.CostAtLeast(Universe.ToValueArray(costs, nameof(costs)), bound));
+
+        /// <summary>Keeps only member sets whose total cost is exactly <paramref name="value"/>.</summary>
+        /// <param name="costs">Per-element cost; must have an entry for every element of <see cref="Universe"/>. May contain negatives.</param>
+        /// <param name="value">The required total cost.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="costs"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="costs"/> is missing an entry for a universe element.</exception>
+        public SetSet<T> CostEquals(IReadOnlyDictionary<T, long> costs, long value) =>
+            new SetSet<T>(Universe, Zdd.CostEquals(Universe.ToValueArray(costs, nameof(costs)), value));
 
         /// <summary>
         /// Returns the probability that a set formed by independently including each universe

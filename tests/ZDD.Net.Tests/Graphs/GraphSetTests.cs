@@ -242,6 +242,48 @@ namespace ZDD.Net.Tests.Graphs
             Assert.Equal(basePaths.Universe.Manager.Empty, basePaths.Smaller(0).Zdd);
         }
 
+        // ---- コストフィルタ（M6-8）----
+
+        [Fact]
+        public void CostAtMostCostAtLeastCostEqualsMatchPostHocWeightFilteringExactly()
+        {
+            Graph grid = Graph.Grid(4, 4);
+            GraphSet basePaths = GraphSet.Paths(grid, 0, grid.VertexCount - 1);
+            ZddManager manager = basePaths.Universe.Manager;
+
+            // Alternating positive/negative per-edge costs, so the completion criterion's "negative
+            // coefficients" is covered by the same scenario as the three operators.
+            long[] costs = new long[grid.EdgeCount];
+            var costByEdge = new Dictionary<Edge, long>();
+            for (int i = 0; i < costs.Length; i++)
+            {
+                costs[i] = i % 2 == 0 ? i + 1 : -(i + 1);
+                costByEdge[grid.GetEdge(i)] = costs[i];
+            }
+
+            const long bound = 3;
+            GraphSet atMost = basePaths.CostAtMost(e => costByEdge[e], bound);
+            GraphSet atLeast = basePaths.CostAtLeast(e => costByEdge[e], bound);
+            GraphSet equals = basePaths.CostEquals(e => costByEdge[e], bound);
+
+            LinearConstraintSpec specAtMost = new LinearConstraintSpec(costs, LinearConstraintOperator.LessOrEqual, bound);
+            LinearConstraintSpec specAtLeast = new LinearConstraintSpec(costs, LinearConstraintOperator.GreaterOrEqual, bound);
+            LinearConstraintSpec specEquals = new LinearConstraintSpec(costs, LinearConstraintOperator.Equal, bound);
+
+            Zdd postHocAtMost = basePaths.Zdd.Intersect(FrontierBuilder.Build<LinearConstraintSpec, long>(manager, specAtMost));
+            Zdd postHocAtLeast = basePaths.Zdd.Intersect(FrontierBuilder.Build<LinearConstraintSpec, long>(manager, specAtLeast));
+            Zdd postHocEquals = basePaths.Zdd.Intersect(FrontierBuilder.Build<LinearConstraintSpec, long>(manager, specEquals));
+
+            Assert.Equal(postHocAtMost, atMost.Zdd);
+            Assert.Equal(postHocAtLeast, atLeast.Zdd);
+            Assert.Equal(postHocEquals, equals.Zdd);
+
+            // Every kept edge set actually satisfies the operator it was filtered by.
+            Assert.All(atMost, set => Assert.True(TotalCost(set, costByEdge) <= bound));
+            Assert.All(atLeast, set => Assert.True(TotalCost(set, costByEdge) >= bound));
+            Assert.All(equals, set => Assert.Equal(bound, TotalCost(set, costByEdge)));
+        }
+
         [Fact]
         public void ChainedFiltersComposeCorrectly()
         {
@@ -265,6 +307,37 @@ namespace ZDD.Net.Tests.Graphs
                 .Intersect(basePaths.Smaller(20).Zdd);
 
             Assert.Equal(expected, chained.Zdd);
+        }
+
+        [Fact]
+        public void CostAtMostComposesWithOtherFiltersInAChain()
+        {
+            Graph grid = Graph.Grid(4, 4);
+            GraphSet basePaths = GraphSet.Paths(grid, 0, grid.VertexCount - 1);
+            Edge include = grid.GetEdge(0);
+
+            GraphSet chained = basePaths.Including(include).CostAtMost(e => 1, 8);
+
+            Assert.All(chained, set =>
+            {
+                Assert.Contains(include, set);
+                Assert.True(set.Count <= 8);
+            });
+
+            Zdd expected = basePaths.Including(include).Zdd.Intersect(basePaths.CostAtMost(e => 1, 8).Zdd);
+            Assert.Equal(expected, chained.Zdd);
+        }
+
+        private static long TotalCost(IReadOnlySet<Edge> set, IReadOnlyDictionary<Edge, long> costByEdge)
+        {
+            long sum = 0;
+
+            foreach (Edge edge in set)
+            {
+                sum += costByEdge[edge];
+            }
+
+            return sum;
         }
 
         // ---- 1 要素変種（M6-7）----

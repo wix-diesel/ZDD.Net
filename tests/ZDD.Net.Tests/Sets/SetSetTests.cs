@@ -7,6 +7,7 @@ using Xunit;
 using ZDD.Net.Core;
 using ZDD.Net.Io;
 using ZDD.Net.Sets;
+using ZDD.Net.Specs;
 using ZDD.Net.Tests.Harness;
 
 namespace ZDD.Net.Tests.Sets
@@ -204,6 +205,48 @@ namespace ZDD.Net.Tests.Sets
             Assert.Equal(9, top2[0].Weight);
             Assert.Equal(8, top2[1].Weight);
             Assert.True(top2[1].Set.SetEquals(new[] { "b", "c" }));
+        }
+
+        [Fact]
+        public void CostAtMostCostAtLeastCostEqualsMatchTheUnderlyingZddOperations()
+        {
+            SetSet<string> family = SetSet<string>.PowerSet(new[] { "a", "b", "c", "d" });
+            var costs = new Dictionary<string, long> { ["a"] = 1, ["b"] = -2, ["c"] = 3, ["d"] = -4 };
+            long[] costArray = { 1, -2, 3, -4 }; // family's universe order: first-appearance order above.
+            const long bound = -1;
+
+            SetSet<string> atMost = family.CostAtMost(costs, bound);
+            SetSet<string> atLeast = family.CostAtLeast(costs, bound);
+            SetSet<string> equals = family.CostEquals(costs, bound);
+
+            Assert.Equal(family.Zdd.CostAtMost(costArray, bound), atMost.Zdd);
+            Assert.Equal(family.Zdd.CostAtLeast(costArray, bound), atLeast.Zdd);
+            Assert.Equal(family.Zdd.CostEquals(costArray, bound), equals.Zdd);
+
+            Assert.All(atMost, set => Assert.True(TotalCost(set, costs) <= bound));
+            Assert.All(atLeast, set => Assert.True(TotalCost(set, costs) >= bound));
+            Assert.All(equals, set => Assert.Equal(bound, TotalCost(set, costs)));
+        }
+
+        [Fact]
+        public void CostAtMostThrowsWhenACostIsMissingForAUniverseElement()
+        {
+            SetSet<string> family = SetSet<string>.PowerSet(new[] { "a", "b" });
+            var incompleteCosts = new Dictionary<string, long> { ["a"] = 1 };
+
+            Assert.Throws<ArgumentException>(() => family.CostAtMost(incompleteCosts, 0));
+        }
+
+        private static long TotalCost(IReadOnlySet<string> set, IReadOnlyDictionary<string, long> costs)
+        {
+            long sum = 0;
+
+            foreach (string element in set)
+            {
+                sum += costs[element];
+            }
+
+            return sum;
         }
 
         [Fact]

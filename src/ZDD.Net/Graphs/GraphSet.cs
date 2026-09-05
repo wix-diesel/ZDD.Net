@@ -286,6 +286,28 @@ namespace ZDD.Net.Graphs
             return Filter(new StructSpecErased<CardinalitySpec, int>(new CardinalitySpec(Graph.EdgeCount, n, n)));
         }
 
+        /// <summary>Keeps only edge sets whose total cost is at most <paramref name="bound"/> (Graphillion's <c>cost_le</c>).</summary>
+        /// <param name="cost">Per-edge cost function; may return negatives.</param>
+        /// <param name="bound">The maximum total cost.</param>
+        /// <example><code>GraphSet cheap = paths.CostAtMost(e =&gt; e.Weight, 100);</code></example>
+        /// <exception cref="ArgumentNullException"><paramref name="cost"/> is <see langword="null"/>.</exception>
+        public GraphSet CostAtMost(Func<Edge, long> cost, long bound) =>
+            Filter(new StructSpecErased<LinearConstraintSpec, long>(new LinearConstraintSpec(BuildWeights(cost), LinearConstraintOperator.LessOrEqual, bound)));
+
+        /// <summary>Keeps only edge sets whose total cost is at least <paramref name="bound"/>.</summary>
+        /// <param name="cost">Per-edge cost function; may return negatives.</param>
+        /// <param name="bound">The minimum total cost.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="cost"/> is <see langword="null"/>.</exception>
+        public GraphSet CostAtLeast(Func<Edge, long> cost, long bound) =>
+            Filter(new StructSpecErased<LinearConstraintSpec, long>(new LinearConstraintSpec(BuildWeights(cost), LinearConstraintOperator.GreaterOrEqual, bound)));
+
+        /// <summary>Keeps only edge sets whose total cost is exactly <paramref name="value"/>.</summary>
+        /// <param name="cost">Per-edge cost function; may return negatives.</param>
+        /// <param name="value">The required total cost.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="cost"/> is <see langword="null"/>.</exception>
+        public GraphSet CostEquals(Func<Edge, long> cost, long value) =>
+            Filter(new StructSpecErased<LinearConstraintSpec, long>(new LinearConstraintSpec(BuildWeights(cost), LinearConstraintOperator.Equal, value)));
+
         // ==================== Enumeration ====================
 
         /// <summary>Enumerates the member edge sets lazily, in <see cref="ZddEnumerationOrder.Default"/> order.</summary>
