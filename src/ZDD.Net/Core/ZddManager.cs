@@ -505,15 +505,20 @@ namespace ZDD.Net.Core
         }
 
         /// <summary>
-        /// Rebuilds <paramref name="f"/> within this manager, relabeling every item via
-        /// <paramref name="itemMap"/> (M6-4, issue #139); see <see cref="Zdd.MapItems"/> for the
-        /// full semantics (B17).
+        /// Rebuilds <paramref name="f"/> in <paramref name="target"/>, relabeling every item via
+        /// <paramref name="itemMap"/> (M6-4/M6-5, issues #139/#140); see <see cref="Zdd.MapItemsTo"/>
+        /// for the full semantics (B17).
         /// </summary>
         /// <param name="f">The family; must belong to this manager.</param>
-        /// <param name="itemMap">Old-item-to-new-item map; length must equal <see cref="VariableCount"/>.</param>
-        internal Zdd MapItems(in Zdd f, ReadOnlySpan<int> itemMap)
+        /// <param name="target">Manager the rebuilt family is created in; may be this manager.</param>
+        /// <param name="itemMap">
+        /// Old-item-to-new-item map; length must equal <see cref="VariableCount"/>, values must be
+        /// injective into <paramref name="target"/>'s variables.
+        /// </param>
+        internal Zdd MapItemsTo(in Zdd f, ZddManager target, ReadOnlySpan<int> itemMap)
         {
             EnsureOwns(f, nameof(f));
+            ThrowHelper.ThrowIfNull(target, nameof(target));
 
             if (itemMap.Length != _variableCount)
             {
@@ -522,47 +527,80 @@ namespace ZDD.Net.Core
                     $"'{nameof(itemMap)}' must have length {nameof(VariableCount)} ({_variableCount}), but was {itemMap.Length}.");
             }
 
-            ValidateItemMapIsAPermutation(itemMap);
+            ValidateItemMapIsInjective(itemMap, target.VariableCount);
 
-            // Throws ObjectDisposedException here if disposed (touches both table and cache).
-            // Called unconditionally, before the identity short-circuit below, so a disposed
-            // manager always throws regardless of itemMap's contents (matching Zdd.MapItems' docs).
+            // Throws ObjectDisposedException here if either manager is disposed (touches both
+            // table and cache). Called unconditionally, before the identity short-circuit below, so
+            // a disposed manager always throws regardless of itemMap's contents (matching
+            // Zdd.MapItemsTo's docs).
             TuneCache();
+            target.TuneCache();
 
-            if (IsIdentity(itemMap))
+            bool sameManager = ReferenceEquals(this, target);
+
+            if (sameManager && IsIdentity(itemMap))
             {
                 // No node is rebuilt, so the same handle is returned rather than a copy.
                 return f;
             }
 
-            // B17: only order-preserving maps on f's support get the fast path in this release;
-            // general permutation and cross-manager transfer arrive in M6-5.
-            EnsureMonotonicOnSupport(f.Id, itemMap);
+            // B17: order-preserving maps on f's support get the O(node count) fast path; a
+            // non-monotonic map (or a monotonic one crossing into a different manager) still needs
+            // the general path (M6-5), which is also how a cross-manager transfer is done.
+            int resultId = IsMonotonicOnSupport(f.Id, itemMap)
+                ? MapItemsOperation.Apply(this, target, f.Id, itemMap)
+                : GeneralMapItemsOperation.Apply(this, target, f.Id, itemMap);
 
-            return new Zdd(this, MapItemsOperation.Apply(this, f.Id, itemMap));
+            return new Zdd(target, resultId);
         }
 
-        /// <summary>Validates that <paramref name="itemMap"/> is total and injective over 0..<see cref="VariableCount"/> - 1.</summary>
-        /// <exception cref="ArgumentOutOfRangeException">An entry is outside 0..<see cref="VariableCount"/> - 1.</exception>
-        /// <exception cref="ArgumentException">Two entries map to the same new item.</exception>
-        private void ValidateItemMapIsAPermutation(ReadOnlySpan<int> itemMap)
+        /// <summary>
+        /// Copies <paramref name="f"/> into <paramref name="target"/> unchanged (every item maps to
+        /// itself); see <see cref="Zdd.TransferTo"/> (M6-5, issue #140, B19).
+        /// </summary>
+        /// <param name="f">The family; must belong to this manager.</param>
+        /// <param name="target">Manager the copy is created in; must have at least as many variables as this manager.</param>
+        internal Zdd TransferTo(in Zdd f, ZddManager target)
         {
-            // Injective + same-size domain/codomain implies bijective, so range + no-duplicates is
-            // enough to guarantee a permutation; a bool per possible target catches duplicates in
-            // the same pass as the range check.
-            bool[] seenTargets = _variableCount == 0 ? Array.Empty<bool>() : new bool[_variableCount];
+            EnsureOwns(f, nameof(f));
+            ThrowHelper.ThrowIfNull(target, nameof(target));
+
+            if (target.VariableCount < _variableCount)
+            {
+                ThrowHelper.ThrowArgumentException(
+                    nameof(target),
+                    $"'{nameof(target)}' must have at least as many variables as the source manager " +
+                    $"({_variableCount}), but has {target.VariableCount}.");
+            }
+
+            int[] identity = new int[_variableCount];
+            for (int item = 0; item < identity.Length; item++)
+            {
+                identity[item] = item;
+            }
+
+            return MapItemsTo(f, target, identity);
+        }
+
+        /// <summary>Validates that <paramref name="itemMap"/> is total and injective over 0..<paramref name="targetVariableCount"/> - 1.</summary>
+        /// <exception cref="ArgumentOutOfRangeException">An entry is outside 0..<paramref name="targetVariableCount"/> - 1.</exception>
+        /// <exception cref="ArgumentException">Two entries map to the same new item.</exception>
+        private static void ValidateItemMapIsInjective(ReadOnlySpan<int> itemMap, int targetVariableCount)
+        {
+            // A bool per possible target catches duplicates in the same pass as the range check.
+            bool[] seenTargets = targetVariableCount == 0 ? Array.Empty<bool>() : new bool[targetVariableCount];
 
             for (int oldItem = 0; oldItem < itemMap.Length; oldItem++)
             {
                 int newItem = itemMap[oldItem];
 
-                if ((uint)newItem >= (uint)_variableCount)
+                if ((uint)newItem >= (uint)targetVariableCount)
                 {
                     ThrowHelper.ThrowArgumentOutOfRangeException(
                         nameof(itemMap),
-                        _variableCount == 0
-                            ? $"This manager has no variables, so there is no valid item index; '{nameof(itemMap)}[{oldItem}]' was {newItem}."
-                            : $"'{nameof(itemMap)}[{oldItem}]' must be in the range 0..{_variableCount - 1}, but was {newItem}.");
+                        targetVariableCount == 0
+                            ? $"The target manager has no variables, so there is no valid item index; '{nameof(itemMap)}[{oldItem}]' was {newItem}."
+                            : $"'{nameof(itemMap)}[{oldItem}]' must be in the range 0..{targetVariableCount - 1}, but was {newItem}.");
                 }
 
                 if (seenTargets[newItem])
@@ -591,12 +629,11 @@ namespace ZDD.Net.Core
         }
 
         /// <summary>
-        /// Confirms <paramref name="itemMap"/> is strictly increasing across <paramref name="rootId"/>'s
+        /// Whether <paramref name="itemMap"/> is strictly increasing across <paramref name="rootId"/>'s
         /// support, which is exactly what preserves parent/child level ordering after relabeling
         /// (B17's order-preserving fast path). Items outside the support are unconstrained.
         /// </summary>
-        /// <exception cref="NotSupportedException"><paramref name="itemMap"/> is not order-preserving on the support.</exception>
-        private void EnsureMonotonicOnSupport(int rootId, ReadOnlySpan<int> itemMap)
+        private bool IsMonotonicOnSupport(int rootId, ReadOnlySpan<int> itemMap)
         {
             int[] support = CollectSupport(rootId);
 
@@ -607,13 +644,11 @@ namespace ZDD.Net.Core
 
                 if (itemMap[previousItem] >= itemMap[item])
                 {
-                    ThrowHelper.ThrowNotSupportedException(
-                        $"'{nameof(itemMap)}' must be strictly increasing on the family's support to use the " +
-                        $"fast path, but item {previousItem} (support-ordered before item {item}) maps to " +
-                        $"{itemMap[previousItem]}, which is not less than item {item}'s target {itemMap[item]}. " +
-                        "General (non-monotonic) permutation is not yet supported (planned for M6-5).");
+                    return false;
                 }
             }
+
+            return true;
         }
 
         /// <summary>Union of <c>OnSet(f, e)</c> over every <paramref name="items"/> element (M6-7).</summary>

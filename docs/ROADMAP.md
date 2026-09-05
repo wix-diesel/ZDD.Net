@@ -174,7 +174,7 @@ Core レイヤは下から積むため、序盤の PR は `internal` のコー�
 | [x] | **M6-2** | バッファ列挙 `EnumerateInto` | アロケーションなしの `ref struct` 列挙子（B9 の (b)）、`Zdd.MaxSetSize`（新 `IDdEval<int>`） | 変数 ≤ 16 全網羅で `Sets()` と要素・順序が一致。列挙ループが 0 アロケーション | 〜250 | M5-7 |
 | [x] | **M6-3** | `TryBuild` | 上限超過を `false` で返す構築（B11 の未実装分）。キャンセルは例外のまま | 上限超過で `false` かつ**マネージャの `NodeCount` が不変**であること | 〜200 | M5-7 |
 | [x] | **M6-4** | 項目写像（順序保存） | `Zdd.MapItems`（同一マネージャ内、support 上で単調写像のみ）。ボトムアップ 1 パス O(ノード数) | 総当たり照合。恒等写像は自分自身を返す | 〜300 | M6-1 |
-| [ ] | **M6-5** | 一般置換とマネージャ間転送 | `MapItemsTo` / `TransferTo(manager)`。非単調な単射写像を `map(f) = map(f0) ∪ Change(map(f1), σ(v))` の反復＋メモ化で | ランダム置換の往復 `σ→σ⁻¹` で元に戻る。順序保存経路と結果が完全一致 | 〜300 | M6-4 |
+| [x] | **M6-5** | 一般置換とマネージャ間転送 | `MapItemsTo` / `TransferTo(manager)`。非単調な単射写像を `map(f) = map(f0) ∪ Change(map(f1), σ(v))` の反復＋メモ化で | ランダム置換の往復 `σ→σ⁻¹` で元に戻る。順序保存経路と結果が完全一致 | 〜300 | M6-4 |
 | [ ] | **M6-6** | ユニバース／辺順序をまたぐ移送 | `SetUniverse<T>.Extend`、`SetSet<T>.ToUniverse`、`GraphSet.ToEdgeOrder` | 別々に作った 2 つの `SetSet<T>` が `ToUniverse` 経由で合成できる。`Optimize()` 後の族を元の辺順序で解釈できる | 〜300 | M6-5 |
 | [x] | **M6-7** | 1 要素変種 | `AddSomeItem` / `RemoveSomeItem` / `RemoveAddSomeItems`（既存単項演算の合成で実装、対象要素を絞る `items` 版つき） | 総当たり照合（変数 ≤ 12）。計算量を XML doc に明記 | 〜250 | M6-1 |
 | [ ] | **M6-8** | コストフィルタ | `CostAtMost` / `CostAtLeast` / `CostEquals`（`Subset` + `LinearConstraintSpec`）を `Zdd` / `GraphSet` / `SetSet<T>` に | 事後フィルタと結果一致。中間 ZDD が小さいこと | 〜200 | M5-7 |

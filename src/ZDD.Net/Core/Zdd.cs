@@ -416,7 +416,8 @@ namespace ZDD.Net.Core
 
         /// <summary>
         /// Rebuilds this family within the same manager, renaming every item via <paramref name="itemMap"/>
-        /// (Cudd_bddPermute's order-preserving fast path — M6-4, issue #139).
+        /// (Cudd_bddPermute's order-preserving fast path — M6-4, issue #139; general permutation —
+        /// M6-5, issue #140). Shorthand for <c>MapItemsTo(Manager, itemMap)</c>.
         /// </summary>
         /// <param name="itemMap">
         /// Total, injective old-item-to-new-item map (so effectively a permutation, since domain and
@@ -436,14 +437,15 @@ namespace ZDD.Net.Core
         /// <see cref="Support"/> are never inspected, since they cannot affect the result.
         /// </para>
         /// <para>
-        /// <b>Fast path only</b>: since <c>level = VariableCount - item</c>, item order directly
-        /// determines level order. This release only implements the case where
-        /// <paramref name="itemMap"/> is strictly increasing across <see cref="Support"/> — that is
-        /// exactly what keeps parent/child level ordering intact after relabeling, so the result can
-        /// be rebuilt bottom-up in a single iterative pass, O(node count), with no recursion.
-        /// A non-order-preserving <paramref name="itemMap"/> throws <see cref="NotSupportedException"/>
-        /// in this release; the general case (and transferring a family to a different manager) is
-        /// planned for M6-5.
+        /// <b>Two paths, same result</b>: since <c>level = VariableCount - item</c>, item order
+        /// directly determines level order. When <paramref name="itemMap"/> is strictly increasing
+        /// across <see cref="Support"/>, parent/child level ordering survives relabeling, so the
+        /// result is rebuilt bottom-up in a single iterative pass, O(node count). Otherwise the
+        /// general path applies the ZDD recursion <c>map(f) = map(f0) &#8746; Change(map(f1), &#963;(v))</c>
+        /// node by node — correct for any injective <paramref name="itemMap"/>, but each of the two
+        /// operations per node costs up to O(node count), so this is not linear in general (see
+        /// <see cref="MapItemsTo"/>'s remarks for why it's still correct). Both paths give identical
+        /// results for a map that qualifies for the fast one.
         /// </para>
         /// <para><see cref="Count"/> is unchanged, since the map is injective.</para>
         /// </remarks>
@@ -453,10 +455,76 @@ namespace ZDD.Net.Core
         /// <exception cref="ArgumentOutOfRangeException">
         /// <paramref name="itemMap"/> contains a value outside 0..<see cref="ZddManager.VariableCount"/> - 1.
         /// </exception>
-        /// <exception cref="NotSupportedException"><paramref name="itemMap"/> is not strictly increasing across <see cref="Support"/>.</exception>
         /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
         /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
-        public Zdd MapItems(params ReadOnlySpan<int> itemMap) => Manager.MapItems(this, itemMap);
+        public Zdd MapItems(params ReadOnlySpan<int> itemMap) => MapItemsTo(Manager, itemMap);
+
+        /// <summary>
+        /// Rebuilds this family in <paramref name="target"/>, renaming every item via <paramref name="itemMap"/>
+        /// (M6-5, issue #140). <paramref name="target"/> may be this family's own manager, in which
+        /// case this is exactly <see cref="MapItems"/>.
+        /// </summary>
+        /// <param name="target">The manager the rebuilt family is created in.</param>
+        /// <param name="itemMap">
+        /// Total, injective old-item-to-new-item map: length must equal
+        /// <see cref="ZddManager.VariableCount"/> of this family's manager, and every entry must be
+        /// in 0..<c>target.VariableCount</c> - 1. See <see cref="MapItems"/> for the semantics (B17):
+        /// injective-only, support-outside entries unchecked, <see cref="Count"/> unchanged.
+        /// </param>
+        /// <returns>
+        /// <c>{ { itemMap[i] : i &#8712; s } : s &#8712; this }</c>, built in <paramref name="target"/>.
+        /// Only when <paramref name="target"/> is this family's own manager <i>and</i>
+        /// <paramref name="itemMap"/> is the identity does this return this same handle without
+        /// building anything — a cross-manager call always creates (at least) a new root node, even
+        /// for an identity map, since ids from one manager mean nothing in another.
+        /// </returns>
+        /// <remarks>
+        /// <b>Cross-manager transfer</b>: running <see cref="Union"/> / <see cref="Change"/>
+        /// against <paramref name="target"/> instead of this family's own manager turns the general
+        /// permutation path into a copy — no separate "transfer" algorithm is needed. The
+        /// order-preserving fast path does the same by pointing its node creation at
+        /// <paramref name="target"/>'s table. See <see cref="TransferTo"/> for the identity-map
+        /// special case (B19: this is the workaround for a manager's fixed variable count — grow by
+        /// creating a bigger manager and transferring into it).
+        /// </remarks>
+        /// <exception cref="ArgumentNullException"><paramref name="target"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="itemMap"/>'s length is not this manager's <see cref="ZddManager.VariableCount"/>, or it is not injective.
+        /// </exception>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// <paramref name="itemMap"/> contains a value outside 0..<c>target.VariableCount</c> - 1.
+        /// </exception>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">Either manager has been disposed.</exception>
+        public Zdd MapItemsTo(ZddManager target, params ReadOnlySpan<int> itemMap) => Manager.MapItemsTo(this, target, itemMap);
+
+        /// <summary>
+        /// Copies this family into <paramref name="target"/> unchanged — every item maps to itself
+        /// (M6-5, issue #140). Defined as <c>MapItemsTo(target, identity)</c>.
+        /// </summary>
+        /// <param name="target">
+        /// The manager the copy is created in; must have at least as many variables as this
+        /// family's own manager, since every item this family might use has to have a place there.
+        /// </param>
+        /// <returns>
+        /// The same family of sets, rebuilt in <paramref name="target"/>: same <see cref="Count"/>,
+        /// same enumeration result. Since this is exactly <c>MapItemsTo(target, identity)</c>, it
+        /// inherits <see cref="MapItemsTo"/>'s short-circuit — passing this family's own manager as
+        /// <paramref name="target"/> returns this same handle without building anything; any other
+        /// (necessarily bigger, per B7) manager always gets a fresh copy.
+        /// </returns>
+        /// <remarks>
+        /// <b>B19 — the workaround for B7</b>: a <see cref="ZddManager"/>'s variable count is fixed
+        /// for its lifetime, and this is the sanctioned way around that: create a new, bigger
+        /// manager and <see cref="TransferTo"/> the families you need into it, rather than growing
+        /// the original in place (which would require rebuilding its unique table under every live
+        /// handle).
+        /// </remarks>
+        /// <exception cref="ArgumentNullException"><paramref name="target"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="target"/>.<see cref="ZddManager.VariableCount"/> is less than this family's own manager's.</exception>
+        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
+        /// <exception cref="ObjectDisposedException">Either manager has been disposed.</exception>
+        public Zdd TransferTo(ZddManager target) => Manager.TransferTo(this, target);
 
         /// <summary>
         /// Removes one contained item from each set (Graphillion's <c>remove_some_element</c>):
