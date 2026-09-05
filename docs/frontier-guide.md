@@ -99,7 +99,7 @@ Graph optimized = grid.Optimize(EdgeOrderStrategy.Bfs);
 | `CliqueSpec` | グラフのクリーク（内部で補グラフの `IndependentSetSpec` に委譲） | 同上（補グラフ上） | `IArrayDdSpec` |
 | `VertexCoverSpec` | グラフの頂点被覆 | フロンティア頂点ごとの選択フラグ | `IArrayDdSpec` |
 | `DominatingSetSpec` | グラフの支配集合 | フロンティア頂点ごとの「選択／被支配／未支配」の3値 | `IArrayDdSpec` |
-| `DegreeConstraintSpec` | 各頂点の次数が `[lo[v], hi[v]]` に収まる辺集合（マッチング・パス・サイクルなどの一般形） | フロンティア頂点ごとの現在の次数 | `IArrayDdSpec` |
+| `DegreeConstraintSpec` | 各頂点の次数が `[lo[v], hi[v]]` に収まる辺集合（マッチング・パス・サイクルなどの一般形。`lo: 1, hi: graph.EdgeCount` は辺被覆——専用スペックはなく `GraphSet.EdgeCovers` はこの別名、M6-9） | フロンティア頂点ごとの現在の次数 | `IArrayDdSpec` |
 | `ConnectedSubgraphSpec` | 指定した頂点集合（terminals）が全て同じ連結成分に入る辺集合（`SpanningTreeSpec` の「全頂点」を「指定頂点だけ」に一般化） | フロンティア頂点ごとの成分番号 + 端点の入り繰り数 | `IArrayDdSpec` |
 | `SteinerTreeSpec` | terminals を含むシュタイナー木（連結・非巡回で、terminal でない葉を持たない） | 同上 + 頂点ごとの次数（飽和カウンタ） | `IArrayDdSpec` |
 | `GraphPartitionSpec` | 「残す」辺で連結な `K` 個のブロックに分割し、各ブロックの頂点数が `[minBlockSize, maxBlockSize]` に収まる辺集合（区割り問題） | フロンティア頂点ごとの成分番号 + ブロックサイズ | `IArrayDdSpec` |
@@ -578,16 +578,31 @@ Zdd cheapPaths = shortPaths.CostAtMost(edgeCosts, bound: 100);
 ここまでは `FrontierBuilder.Build<TSpec>` を直接呼ぶ低レベル API を使ってきたが、日常的な用途では
 `ZDD.Net.Graphs.GraphSet`（Graphillion 相当の高レベル API）の方が短く書ける。中身はここまでの
 スペックの上に立つ薄いラッパーで、`GraphSet.Paths` / `Cycles` / `Trees` / `Forests` /
-`Matchings` / `HamiltonianPaths` / `HamiltonianCycles` / `Cliques` / `IndependentSets` という
-生成メソッドと、`Including` / `Excluding` / `Larger` / `Smaller` / `LenEquals` /
-`CostAtMost` / `CostAtLeast` / `CostEquals` という構築時フィルタ（§8 の合成スペックと同じ
-考え方——絞り込む前の族を経由しない）、`MinIter` / `MaxIter` /
-`RandIter` という遅延列挙、`Sample` / `MaxWeight` / `TopK` などの問い合わせを持つ。
+`Matchings` / `HamiltonianPaths` / `HamiltonianCycles` / `Cliques` / `IndependentSets` /
+`ConnectedSubgraphs` / `SteinerTrees` / `Cuts` / `DegreeConstrained` / `EdgeCovers` /
+`Knapsacks`（M6-9、issue #144）という生成メソッドと、`Including` / `Excluding` / `Larger` /
+`Smaller` / `LenEquals` / `CostAtMost` / `CostAtLeast` / `CostEquals` という構築時フィルタ
+（§8 の合成スペックと同じ考え方——絞り込む前の族を経由しない）、`MinIter` / `MaxIter` /
+`RandIter` という遅延列挙、`Sample` / `MaxWeight` / `TopK` などの問い合わせを持つ。どの生成
+メソッドの結果も、これらのフィルタと自由に連鎖できる（例: `GraphSet.Cuts(g, s, t).Smaller(5)`）。
 
 ```csharp
 GraphSet paths = GraphSet.Paths(Graph.Grid(9, 9), from: 0, to: 80);
 GraphSet shortPaths = paths.Smaller(20);
 var shortest = paths.MinWeight(edge => 1);
+```
+
+M6-9 で追加した辺の族の生成メソッドも同じ流儀:
+
+```csharp
+Graph grid = Graph.Grid(3, 3);
+
+GraphSet connected = GraphSet.ConnectedSubgraphs(grid, new[] { 0, 4, 8 });
+GraphSet steinerTrees = GraphSet.SteinerTrees(grid, new[] { 0, 4, 8 });
+GraphSet cuts = GraphSet.Cuts(grid, s: 0, t: 8, minimalOnly: true);
+GraphSet degreeConstrained = GraphSet.DegreeConstrained(grid, lo: 0, hi: 2);
+GraphSet edgeCovers = GraphSet.EdgeCovers(grid); // DegreeConstrained(grid, lo: 1, hi: grid.EdgeCount) の別名
+GraphSet knapsacks = GraphSet.Knapsacks(grid, weights: new[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 }, capacity: 20);
 ```
 
 任意の要素型（グラフの辺以外）の族を同じ流儀で扱いたいときは `ZDD.Net.Sets.SetSet<T>` を使う。

@@ -202,6 +202,141 @@ namespace ZDD.Net.Graphs
             return GenerateVertexFamily(graph, new IndependentSetSpec(graph));
         }
 
+        // ==================== Edge-family generators (M6-9) ====================
+
+        /// <summary>
+        /// The family of edge sets in which every one of <paramref name="terminals"/> lies in the same
+        /// connected component &#8212; Graphillion's <c>graphs</c>, a generalization of <see cref="Trees"/>'s
+        /// "every vertex must be one component" down to "only these vertices must be one component". See
+        /// <see cref="Specs.ConnectedSubgraphSpec"/>.
+        /// </summary>
+        /// <param name="graph">The graph to search.</param>
+        /// <param name="terminals">The vertices that must end up in the same connected component.</param>
+        /// <example><code>GraphSet connected = GraphSet.ConnectedSubgraphs(Graph.Grid(3, 3), new[] { 0, 4, 8 });</code></example>
+        /// <exception cref="ArgumentNullException"><paramref name="graph"/> or <paramref name="terminals"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">A terminal is outside <c>0 .. graph.VertexCount - 1</c>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="terminals"/> repeats a vertex.</exception>
+        public static GraphSet ConnectedSubgraphs(Graph graph, IEnumerable<int> terminals)
+        {
+            ArgumentNullException.ThrowIfNull(graph);
+            return Generate(graph, new ConnectedSubgraphSpec(graph, terminals));
+        }
+
+        /// <summary>
+        /// The family of Steiner trees connecting <paramref name="terminals"/>: connected, acyclic edge
+        /// sets containing every terminal, in which every leaf is itself a terminal &#8212; Graphillion's
+        /// <c>steiner_subgraphs</c> / <c>steiner_trees</c>. <see cref="MinWeight(Func{Edge, int})"/> over
+        /// the result gives a minimum Steiner tree. See <see cref="Specs.SteinerTreeSpec"/>.
+        /// </summary>
+        /// <param name="graph">The graph to search.</param>
+        /// <param name="terminals">The vertices the tree must connect.</param>
+        /// <example><code>GraphSet trees = GraphSet.SteinerTrees(Graph.Grid(3, 3), new[] { 0, 4, 8 });</code></example>
+        /// <exception cref="ArgumentNullException"><paramref name="graph"/> or <paramref name="terminals"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">A terminal is outside <c>0 .. graph.VertexCount - 1</c>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="terminals"/> repeats a vertex.</exception>
+        public static GraphSet SteinerTrees(Graph graph, IEnumerable<int> terminals)
+        {
+            ArgumentNullException.ThrowIfNull(graph);
+            return Generate(graph, new SteinerTreeSpec(graph, terminals));
+        }
+
+        /// <summary>
+        /// The family of edge sets whose removal disconnects <paramref name="s"/> from <paramref name="t"/>
+        /// &#8212; Graphillion's <c>graphs</c> restricted by <c>cuts</c> / <c>min_cuts</c>. See
+        /// <see cref="Specs.CutSpec"/>.
+        /// </summary>
+        /// <param name="graph">The graph to search.</param>
+        /// <param name="s">One endpoint.</param>
+        /// <param name="t">The other endpoint.</param>
+        /// <param name="minimalOnly">When <see langword="true"/>, only inclusion-minimal cuts (no proper subset of a member also disconnects <paramref name="s"/> and <paramref name="t"/>).</param>
+        /// <example><code>GraphSet cuts = GraphSet.Cuts(Graph.Grid(3, 3), s: 0, t: 8);</code></example>
+        /// <exception cref="ArgumentNullException"><paramref name="graph"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="s"/> or <paramref name="t"/> is outside <c>0 .. graph.VertexCount - 1</c>.</exception>
+        public static GraphSet Cuts(Graph graph, int s, int t, bool minimalOnly = false)
+        {
+            ArgumentNullException.ThrowIfNull(graph);
+            return Generate(graph, new CutSpec(graph, s, t, minimalOnly));
+        }
+
+        /// <summary>
+        /// The family of edge sets in which every vertex <c>v</c>'s degree lies in <c>[lo[v], hi[v]]</c>
+        /// &#8212; a general form covering <see cref="Matchings"/> (<c>[0, 1]</c> everywhere) and
+        /// <see cref="EdgeCovers"/> (<c>[1, &#8734;)</c> everywhere) as special cases. See
+        /// <see cref="Specs.DegreeConstraintSpec"/>.
+        /// </summary>
+        /// <param name="graph">The graph to search.</param>
+        /// <param name="lo">The minimum degree for each vertex, indexed like <see cref="Graphs.Graph.VertexCount"/>.</param>
+        /// <param name="hi">The maximum degree for each vertex, indexed like <see cref="Graphs.Graph.VertexCount"/>.</param>
+        /// <example><code>GraphSet degreeConstrained = GraphSet.DegreeConstrained(Graph.Complete(5), lo: new[] { 1, 1, 1, 1, 1 }, hi: new[] { 2, 2, 2, 2, 2 });</code></example>
+        /// <exception cref="ArgumentNullException"><paramref name="graph"/>, <paramref name="lo"/> or <paramref name="hi"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="lo"/> or <paramref name="hi"/> does not have exactly <see cref="Graphs.Graph.VertexCount"/> entries,
+        /// or some <c>hi[v]</c> is less than <c>lo[v]</c>.
+        /// </exception>
+        /// <exception cref="ArgumentOutOfRangeException">Some <c>lo[v]</c> is negative.</exception>
+        public static GraphSet DegreeConstrained(Graph graph, int[] lo, int[] hi)
+        {
+            ArgumentNullException.ThrowIfNull(graph);
+            return Generate(graph, new DegreeConstraintSpec(graph, lo, hi));
+        }
+
+        /// <summary>The family of edge sets in which every vertex's degree lies in <c>[lo, hi]</c>. See <see cref="DegreeConstrained(Graph, int[], int[])"/>.</summary>
+        /// <param name="graph">The graph to search.</param>
+        /// <param name="lo">The minimum degree, applied to every vertex.</param>
+        /// <param name="hi">The maximum degree, applied to every vertex.</param>
+        /// <example><code>GraphSet pathsAndCycles = GraphSet.DegreeConstrained(Graph.Grid(3, 3), lo: 0, hi: 2);</code></example>
+        /// <exception cref="ArgumentNullException"><paramref name="graph"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="hi"/> is less than <paramref name="lo"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="lo"/> is negative.</exception>
+        public static GraphSet DegreeConstrained(Graph graph, int lo, int hi)
+        {
+            ArgumentNullException.ThrowIfNull(graph);
+            return Generate(graph, new DegreeConstraintSpec(graph, lo, hi));
+        }
+
+        /// <summary>
+        /// The family of edge covers of <paramref name="graph"/>: edge sets touching every vertex at
+        /// least once. An alias for <see cref="DegreeConstrained(Graph, int, int)"/> with <c>lo: 1</c> and
+        /// <c>hi</c> effectively unbounded (no vertex's degree can ever reach <c>graph.EdgeCount</c>, so
+        /// it plays the role of &#8734;) &#8212; an edge cover is simply "every vertex has degree at least
+        /// one", the specific case of a degree constraint that needs no upper bound, so no separate spec
+        /// exists for it.
+        /// </summary>
+        /// <param name="graph">The graph to search.</param>
+        /// <example><code>GraphSet covers = GraphSet.EdgeCovers(Graph.Complete(5));</code></example>
+        /// <exception cref="ArgumentNullException"><paramref name="graph"/> is <see langword="null"/>.</exception>
+        public static GraphSet EdgeCovers(Graph graph)
+        {
+            ArgumentNullException.ThrowIfNull(graph);
+            return Generate(graph, new DegreeConstraintSpec(graph, lo: 1, hi: graph.EdgeCount));
+        }
+
+        /// <summary>
+        /// The family of edge sets whose total weight fits <paramref name="capacity"/>:
+        /// <c>&#931; weights[i] x[i] &lt;= capacity</c> &#8212; Graphillion's <c>graphs</c> restricted by a
+        /// knapsack constraint. See <see cref="Specs.KnapsackSpec"/>.
+        /// </summary>
+        /// <param name="graph">The graph whose edges are the items.</param>
+        /// <param name="weights">The per-edge weight, indexed like <see cref="Graphs.Graph.Edges"/>; must all be non-negative.</param>
+        /// <param name="capacity">The capacity.</param>
+        /// <example><code>GraphSet fits = GraphSet.Knapsacks(Graph.Complete(5), weights: new[] { 2, 3, 4, 5, 9, 1, 6, 7, 8, 2 }, capacity: 10);</code></example>
+        /// <exception cref="ArgumentNullException"><paramref name="graph"/> or <paramref name="weights"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="weights"/> does not have exactly <see cref="Graphs.Graph.EdgeCount"/> entries.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Some weight is negative.</exception>
+        public static GraphSet Knapsacks(Graph graph, int[] weights, long capacity)
+        {
+            ArgumentNullException.ThrowIfNull(graph);
+            ArgumentNullException.ThrowIfNull(weights);
+
+            if (weights.Length != graph.EdgeCount)
+            {
+                throw new ArgumentException(
+                    $"Expected {graph.EdgeCount} entries (one per edge), got {weights.Length}.", nameof(weights));
+            }
+
+            return Generate<KnapsackSpec, long>(graph, new KnapsackSpec(weights, capacity));
+        }
+
         // ==================== 1-item variants (M6-7) ====================
 
         /// <summary>Removes one contained edge from each edge set, using every edge of <see cref="Graph"/>. See <see cref="Zdd.RemoveSomeItem()"/>.</summary>
@@ -513,6 +648,15 @@ namespace ZDD.Net.Graphs
         {
             var universe = new SetUniverse<Edge>(graph.Edges);
             IErasedGraphSpec erased = new ArraySpecErased<TSpec>(spec);
+            Zdd zdd = Build(universe.Manager, erased);
+            return new GraphSet(graph, universe, zdd, erased);
+        }
+
+        private static GraphSet Generate<TSpec, TState>(Graph graph, TSpec spec)
+            where TSpec : struct, IDdSpec<TState>
+        {
+            var universe = new SetUniverse<Edge>(graph.Edges);
+            IErasedGraphSpec erased = new StructSpecErased<TSpec, TState>(spec);
             Zdd zdd = Build(universe.Manager, erased);
             return new GraphSet(graph, universe, zdd, erased);
         }
