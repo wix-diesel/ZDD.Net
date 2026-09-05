@@ -1140,7 +1140,7 @@ namespace ZDD.Net.Graphs
                 {
                     throw new ArgumentException(
                         $"DegreeConstraints has an entry for vertex {entry.Key}, which is outside 0 .. {graph.VertexCount - 1}.",
-                        "constraints");
+                        nameof(GraphConstraints.DegreeConstraints));
                 }
 
                 lo[entry.Key] = entry.Value.Lo;
