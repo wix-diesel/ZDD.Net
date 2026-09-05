@@ -202,6 +202,29 @@ namespace ZDD.Net.Graphs
             return GenerateVertexFamily(graph, new IndependentSetSpec(graph));
         }
 
+        // ==================== 1-item variants (M6-7) ====================
+
+        /// <summary>Removes one contained edge from each edge set, using every edge of <see cref="Graph"/>. See <see cref="Zdd.RemoveSomeItem()"/>.</summary>
+        public GraphSet RemoveSomeItem() => WrapPrecomputed(Zdd.RemoveSomeItem());
+
+        /// <summary>Removes one contained edge, chosen from <paramref name="edges"/>, from each edge set. See <see cref="Zdd.RemoveSomeItem(ReadOnlySpan{int})"/>.</summary>
+        /// <exception cref="ArgumentException">An edge of <paramref name="edges"/> is not part of <see cref="Graph"/>.</exception>
+        public GraphSet RemoveSomeItem(params ReadOnlySpan<Edge> edges) => WrapPrecomputed(Zdd.RemoveSomeItem(ResolveEdgeIndices(edges)));
+
+        /// <summary>Adds one absent edge to each edge set, using every edge of <see cref="Graph"/>. See <see cref="Zdd.AddSomeItem()"/>.</summary>
+        public GraphSet AddSomeItem() => WrapPrecomputed(Zdd.AddSomeItem());
+
+        /// <summary>Adds one absent edge, chosen from <paramref name="edges"/>, to each edge set. See <see cref="Zdd.AddSomeItem(ReadOnlySpan{int})"/>.</summary>
+        /// <exception cref="ArgumentException">An edge of <paramref name="edges"/> is not part of <see cref="Graph"/>.</exception>
+        public GraphSet AddSomeItem(params ReadOnlySpan<Edge> edges) => WrapPrecomputed(Zdd.AddSomeItem(ResolveEdgeIndices(edges)));
+
+        /// <summary>Removes one contained edge and adds a different absent edge to each edge set, using every edge of <see cref="Graph"/>. See <see cref="Zdd.RemoveAddSomeItems()"/>.</summary>
+        public GraphSet RemoveAddSomeItems() => WrapPrecomputed(Zdd.RemoveAddSomeItems());
+
+        /// <summary>Removes one contained edge and adds a different absent edge, both chosen from <paramref name="edges"/>, to each edge set. See <see cref="Zdd.RemoveAddSomeItems(ReadOnlySpan{int})"/>.</summary>
+        /// <exception cref="ArgumentException">An edge of <paramref name="edges"/> is not part of <see cref="Graph"/>.</exception>
+        public GraphSet RemoveAddSomeItems(params ReadOnlySpan<Edge> edges) => WrapPrecomputed(Zdd.RemoveAddSomeItems(ResolveEdgeIndices(edges)));
+
         // ==================== Filters (applied at construction time) ====================
 
         /// <summary>Keeps only edge sets that include <paramref name="edge"/>.</summary>
@@ -520,6 +543,25 @@ namespace ZDD.Net.Graphs
 
             throw new ArgumentException($"Edge {edge} is not part of this graph set's graph.", nameof(edge));
         }
+
+        private int[] ResolveEdgeIndices(ReadOnlySpan<Edge> edges)
+        {
+            var indices = new int[edges.Length];
+
+            for (int i = 0; i < edges.Length; i++)
+            {
+                indices[i] = ResolveEdgeIndex(edges[i]);
+            }
+
+            return indices;
+        }
+
+        /// <summary>
+        /// Wraps a <see cref="Zdd"/> built by direct algebra (not a frontier walk) as a
+        /// <see cref="GraphSet"/>, using <see cref="PrecomputedZddSpec"/> so a later <see cref="Filter"/>
+        /// call (<see cref="Including(Edge)"/>, <see cref="Larger"/>, ...) still composes correctly.
+        /// </summary>
+        private GraphSet WrapPrecomputed(Zdd zdd) => new GraphSet(Graph, Universe, zdd, new PrecomputedZddSpec(zdd));
 
         private IEnumerable<IReadOnlySet<Edge>> IterCore<TWeight, TOps>(Func<Edge, TWeight> weight, bool maximize)
             where TOps : struct, IWeightOps<TWeight>

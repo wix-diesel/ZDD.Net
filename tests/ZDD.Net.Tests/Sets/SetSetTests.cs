@@ -291,6 +291,25 @@ namespace ZDD.Net.Tests.Sets
             Assert.Equal(rawF.SubsetsOf(rawG), f.SubsetsOf(g).Zdd);
             Assert.Equal(rawF.Maximal(), f.Maximal().Zdd);
             Assert.Equal(rawF.Minimal(), f.Minimal().Zdd);
+
+            Assert.Equal(rawF.RemoveSomeItem(), f.RemoveSomeItem().Zdd);
+            Assert.Equal(rawF.AddSomeItem(), f.AddSomeItem().Zdd);
+            Assert.Equal(rawF.RemoveAddSomeItems(), f.RemoveAddSomeItems().Zdd);
+
+            int[] items = [universe.IndexOf("a"), universe.IndexOf("b")];
+            Assert.Equal(rawF.RemoveSomeItem(items), f.RemoveSomeItem("a", "b").Zdd);
+            Assert.Equal(rawF.AddSomeItem(items), f.AddSomeItem("a", "b").Zdd);
+            Assert.Equal(rawF.RemoveAddSomeItems(items), f.RemoveAddSomeItems("a", "b").Zdd);
+        }
+
+        [Fact]
+        public void SomeItemVariantsRejectAnElementOutsideTheUniverse()
+        {
+            SetSet<string> family = SetSet<string>.FromSets(new[] { new[] { "a" } });
+
+            Assert.Throws<ArgumentException>(() => family.RemoveSomeItem("z"));
+            Assert.Throws<ArgumentException>(() => family.AddSomeItem("z"));
+            Assert.Throws<ArgumentException>(() => family.RemoveAddSomeItems("z"));
         }
 
         [Fact]

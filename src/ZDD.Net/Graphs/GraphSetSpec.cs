@@ -1,4 +1,5 @@
 using System;
+using ZDD.Net.Core;
 using ZDD.Net.Frontier;
 
 namespace ZDD.Net.Graphs
@@ -243,6 +244,61 @@ namespace ZDD.Net.Graphs
 
             public int LevelB { get; }
         }
+    }
+
+    /// <summary>
+    /// Wraps an already-built <see cref="Zdd"/> as an <see cref="IErasedGraphSpec"/>, walking its
+    /// existing node structure directly instead of computing anything &#8212; the bridge that lets a
+    /// family built by direct <see cref="Zdd"/> algebra (e.g. <see cref="GraphSet.AddSomeItem()"/>,
+    /// M6-7) still compose correctly with <see cref="GraphSet"/>'s frontier-based filters
+    /// (<see cref="GraphSet.Including(Edge)"/> / <see cref="GraphSet.Excluding(Edge)"/> / ...), the
+    /// same way any other erased spec does &#8212; <see cref="AndErasedSpec"/> cannot tell it apart
+    /// from one.
+    /// </summary>
+    /// <remarks>
+    /// State is the current node id (boxed <see cref="int"/>). Both <see cref="Graph"/>'s edge
+    /// numbering and this library's ZDD variable numbering already agree that edge index <c>i</c> is
+    /// item index <c>i</c> (see <see cref="GraphSet"/>'s class remarks), and a ZDD node's own
+    /// <c>Level</c> uses that same numbering (<see cref="ZddManager.LevelOf"/>), so no translation is
+    /// needed between the level this spec reports and the level <see cref="AndErasedSpec"/> or
+    /// <see cref="FrontierBuilder"/> drives it at.
+    /// </remarks>
+    internal sealed class PrecomputedZddSpec : IErasedGraphSpec
+    {
+        private readonly Zdd _zdd;
+
+        public PrecomputedZddSpec(Zdd zdd) => _zdd = zdd;
+
+        public int GetRoot(out object? state)
+        {
+            ZddManager manager = _zdd.Manager; // Validates the handle (throws if disposed/collected).
+            int id = _zdd.Id;
+            state = id;
+            return LevelOf(manager, id);
+        }
+
+        public int GetChild(object? state, int level, int value, out object? nextState)
+        {
+            ZddManager manager = _zdd.Manager; // Re-validates on every call; cheap (field reads only).
+            int id = (int)state!;
+
+            ref ZddNode node = ref manager.Table.Nodes[id];
+            int child = value == 0 ? node.Lo : node.Hi;
+
+            nextState = child;
+            return LevelOf(manager, child);
+        }
+
+        public bool StateEquals(object? left, object? right) => (int)left! == (int)right!;
+
+        public int StateHashCode(object? state) => (int)state!;
+
+        private static int LevelOf(ZddManager manager, int id) => id switch
+        {
+            NodeTable.Bottom => DdResult.False,
+            NodeTable.Top => DdResult.True,
+            _ => manager.Table.Nodes[id].Level,
+        };
     }
 
     /// <summary>Bridges one <see cref="IErasedGraphSpec"/> back into <see cref="IDdSpec{TState}"/> so <see cref="FrontierBuilder"/> can build it.</summary>

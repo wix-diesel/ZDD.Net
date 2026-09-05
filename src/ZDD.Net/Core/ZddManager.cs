@@ -504,6 +504,104 @@ namespace ZDD.Net.Core
             return new Zdd(this, BinaryOperations.Apply(this, ZddOperation.Difference, powerSet.Id, f.Id));
         }
 
+        /// <summary>Union of <c>OnSet(f, e)</c> over every <paramref name="items"/> element (M6-7).</summary>
+        /// <param name="f">The family; must belong to this manager.</param>
+        /// <param name="items">Candidate items to remove; see <see cref="Zdd.RemoveSomeItem(ReadOnlySpan{int})"/> for the semantics.</param>
+        /// <remarks><c>O(|items|)</c> family operations: one <see cref="ZddOperation.OnSet"/> and one <see cref="ZddOperation.Union"/> per item.</remarks>
+        internal Zdd RemoveSomeItem(in Zdd f, ReadOnlySpan<int> items)
+        {
+            EnsureOwns(f, nameof(f));
+            ValidateItems(items);
+
+            // Throws ObjectDisposedException here if disposed (touches both table and cache).
+            TuneCache();
+
+            int result = NodeTable.Bottom;
+
+            foreach (int item in items)
+            {
+                int onSet = UnaryOperations.Apply(this, ZddOperation.OnSet, f.Id, item);
+                result = BinaryOperations.Apply(this, ZddOperation.Union, result, onSet);
+            }
+
+            return new Zdd(this, result);
+        }
+
+        /// <summary>Union of <c>Change(OffSet(f, e), e)</c> over every <paramref name="items"/> element (M6-7).</summary>
+        /// <param name="f">The family; must belong to this manager.</param>
+        /// <param name="items">Candidate items to add; see <see cref="Zdd.AddSomeItem(ReadOnlySpan{int})"/> for the semantics.</param>
+        /// <remarks><c>O(|items|)</c> family operations: one <see cref="ZddOperation.OffSet"/>, one <see cref="ZddOperation.Change"/> and one <see cref="ZddOperation.Union"/> per item.</remarks>
+        internal Zdd AddSomeItem(in Zdd f, ReadOnlySpan<int> items)
+        {
+            EnsureOwns(f, nameof(f));
+            ValidateItems(items);
+
+            // Throws ObjectDisposedException here if disposed (touches both table and cache).
+            TuneCache();
+
+            int result = NodeTable.Bottom;
+
+            foreach (int item in items)
+            {
+                int offSet = UnaryOperations.Apply(this, ZddOperation.OffSet, f.Id, item);
+                int changed = UnaryOperations.Apply(this, ZddOperation.Change, offSet, item);
+                result = BinaryOperations.Apply(this, ZddOperation.Union, result, changed);
+            }
+
+            return new Zdd(this, result);
+        }
+
+        /// <summary>
+        /// Union of <c>Change(OffSet(OnSet(f, e), e'), e')</c> over every ordered pair <c>e &#8800; e'</c>
+        /// in <paramref name="items"/> (M6-7).
+        /// </summary>
+        /// <param name="f">The family; must belong to this manager.</param>
+        /// <param name="items">Candidate items to swap; see <see cref="Zdd.RemoveAddSomeItems(ReadOnlySpan{int})"/> for the semantics.</param>
+        /// <remarks>
+        /// <c>O(|items|&#178;)</c> family operations: every ordered pair costs one
+        /// <see cref="ZddOperation.OnSet"/>, one <see cref="ZddOperation.OffSet"/>, one
+        /// <see cref="ZddOperation.Change"/> and one <see cref="ZddOperation.Union"/>.
+        /// <see cref="ZddOperation.OnSet"/> is only recomputed once per <c>e</c>, not once per pair.
+        /// </remarks>
+        internal Zdd RemoveAddSomeItems(in Zdd f, ReadOnlySpan<int> items)
+        {
+            EnsureOwns(f, nameof(f));
+            ValidateItems(items);
+
+            // Throws ObjectDisposedException here if disposed (touches both table and cache).
+            TuneCache();
+
+            int result = NodeTable.Bottom;
+
+            foreach (int removed in items)
+            {
+                int onSet = UnaryOperations.Apply(this, ZddOperation.OnSet, f.Id, removed);
+
+                foreach (int added in items)
+                {
+                    if (added == removed)
+                    {
+                        continue;
+                    }
+
+                    int offSet = UnaryOperations.Apply(this, ZddOperation.OffSet, onSet, added);
+                    int changed = UnaryOperations.Apply(this, ZddOperation.Change, offSet, added);
+                    result = BinaryOperations.Apply(this, ZddOperation.Union, result, changed);
+                }
+            }
+
+            return new Zdd(this, result);
+        }
+
+        /// <summary>Validates every item in <paramref name="items"/> before any operation touches the unique table (M6-7's three operations share this).</summary>
+        private void ValidateItems(ReadOnlySpan<int> items)
+        {
+            foreach (int item in items)
+            {
+                _ = LevelOf(item);
+            }
+        }
+
         /// <summary>Returns whether the set described by <paramref name="items"/> belongs to <paramref name="f"/>.</summary>
         /// <param name="f">The family; must belong to this manager.</param>
         /// <param name="items">Item indices of the set to check; order and duplicates don't matter.</param>

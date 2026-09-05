@@ -225,6 +225,30 @@ namespace ZDD.Net.Sets
         /// <summary>Keeps only the member sets that are minimal under inclusion.</summary>
         public SetSet<T> Minimal() => new SetSet<T>(Universe, Zdd.Minimal());
 
+        /// <summary>Removes one contained element from each member set, using every element of <see cref="Universe"/>. See <see cref="Core.Zdd.RemoveSomeItem()"/>.</summary>
+        public SetSet<T> RemoveSomeItem() => new SetSet<T>(Universe, Zdd.RemoveSomeItem());
+
+        /// <summary>Removes one contained element, chosen from <paramref name="elements"/>, from each member set. See <see cref="Core.Zdd.RemoveSomeItem(ReadOnlySpan{int})"/>.</summary>
+        /// <exception cref="ArgumentException">An element of <paramref name="elements"/> is not part of <see cref="Universe"/>.</exception>
+        public SetSet<T> RemoveSomeItem(params ReadOnlySpan<T> elements) =>
+            new SetSet<T>(Universe, Zdd.RemoveSomeItem(Universe.ToIndices(elements.ToArray())));
+
+        /// <summary>Adds one absent element to each member set, using every element of <see cref="Universe"/>. See <see cref="Core.Zdd.AddSomeItem()"/>.</summary>
+        public SetSet<T> AddSomeItem() => new SetSet<T>(Universe, Zdd.AddSomeItem());
+
+        /// <summary>Adds one absent element, chosen from <paramref name="elements"/>, to each member set. See <see cref="Core.Zdd.AddSomeItem(ReadOnlySpan{int})"/>.</summary>
+        /// <exception cref="ArgumentException">An element of <paramref name="elements"/> is not part of <see cref="Universe"/>.</exception>
+        public SetSet<T> AddSomeItem(params ReadOnlySpan<T> elements) =>
+            new SetSet<T>(Universe, Zdd.AddSomeItem(Universe.ToIndices(elements.ToArray())));
+
+        /// <summary>Removes one contained element and adds a different absent element to each member set, using every element of <see cref="Universe"/>. See <see cref="Core.Zdd.RemoveAddSomeItems()"/>.</summary>
+        public SetSet<T> RemoveAddSomeItems() => new SetSet<T>(Universe, Zdd.RemoveAddSomeItems());
+
+        /// <summary>Removes one contained element and adds a different absent element, both chosen from <paramref name="elements"/>, to each member set. See <see cref="Core.Zdd.RemoveAddSomeItems(ReadOnlySpan{int})"/>.</summary>
+        /// <exception cref="ArgumentException">An element of <paramref name="elements"/> is not part of <see cref="Universe"/>.</exception>
+        public SetSet<T> RemoveAddSomeItems(params ReadOnlySpan<T> elements) =>
+            new SetSet<T>(Universe, Zdd.RemoveAddSomeItems(Universe.ToIndices(elements.ToArray())));
+
         /// <summary>Returns whether <paramref name="set"/> belongs to this family.</summary>
         /// <exception cref="ArgumentNullException"><paramref name="set"/> is <see langword="null"/>.</exception>
         /// <exception cref="ArgumentException">An element of <paramref name="set"/> is not part of <see cref="Universe"/>.</exception>
