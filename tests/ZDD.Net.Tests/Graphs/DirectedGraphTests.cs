@@ -240,6 +240,53 @@ namespace ZDD.Net.Tests.Graphs
             Assert.Throws<ArgumentOutOfRangeException>(() => DirectedGraph.Path(n));
         }
 
+        [Theory]
+        [InlineData(0)]
+        [InlineData(4)]
+        public void EdgeIndexToVariableIndexIsTheIdentity(int edgeIndex)
+        {
+            var graph = DirectedGraph.Path(6); // 5 arcs: indices 0 .. 4
+
+            int variableIndex = graph.EdgeIndexToVariableIndex(edgeIndex);
+
+            Assert.Equal(edgeIndex, variableIndex);
+            Assert.Equal(edgeIndex, graph.VariableIndexToEdgeIndex(variableIndex));
+        }
+
+        [Theory]
+        [InlineData(0)]
+        [InlineData(4)]
+        public void EdgeIndexToLevelRoundTripsAtTheBoundaries(int edgeIndex)
+        {
+            var graph = DirectedGraph.Path(6); // 5 arcs: indices 0 .. 4
+
+            int level = graph.EdgeIndexToLevel(edgeIndex);
+
+            Assert.InRange(level, 1, graph.EdgeCount);
+            Assert.Equal(edgeIndex, graph.LevelToEdgeIndex(level));
+        }
+
+        [Fact]
+        public void EdgeZeroIsTheRootLevelAndTheLastEdgeIsLevelOne()
+        {
+            var graph = DirectedGraph.Path(6); // 5 arcs
+
+            Assert.Equal(graph.EdgeCount, graph.EdgeIndexToLevel(0));
+            Assert.Equal(1, graph.EdgeIndexToLevel(graph.EdgeCount - 1));
+        }
+
+        [Fact]
+        public void EdgeIndexConversionsRejectOutOfRangeInput()
+        {
+            var graph = DirectedGraph.Path(6); // 5 arcs: indices 0 .. 4
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => graph.EdgeIndexToVariableIndex(5));
+            Assert.Throws<ArgumentOutOfRangeException>(() => graph.VariableIndexToEdgeIndex(5));
+            Assert.Throws<ArgumentOutOfRangeException>(() => graph.EdgeIndexToLevel(5));
+            Assert.Throws<ArgumentOutOfRangeException>(() => graph.LevelToEdgeIndex(0));
+            Assert.Throws<ArgumentOutOfRangeException>(() => graph.LevelToEdgeIndex(6));
+        }
+
         private static void AssertSimpleDirectedGraph(DirectedGraph graph)
         {
             var seen = new HashSet<DirectedEdge>();
