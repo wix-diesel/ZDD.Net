@@ -560,6 +560,37 @@ namespace ZDD.Net.Graphs
             return Generate(graph, new InducedSubgraphSpec(graph));
         }
 
+        /// <summary>
+        /// The family of complete bipartite subgraphs (bicliques) of <paramref name="graph"/>, of any size
+        /// &#8212; Graphillion's <c>bicliques</c>. The empty edge set is included as the trivial biclique.
+        /// See <see cref="Specs.BicliqueSpec"/>.
+        /// </summary>
+        /// <param name="graph">The graph to search.</param>
+        /// <example><code>GraphSet bicliques = GraphSet.Bicliques(Graph.Complete(4));</code></example>
+        /// <exception cref="ArgumentNullException"><paramref name="graph"/> is <see langword="null"/>.</exception>
+        public static GraphSet Bicliques(Graph graph)
+        {
+            ArgumentNullException.ThrowIfNull(graph);
+            return Generate(graph, new BicliqueSpec(graph));
+        }
+
+        /// <summary>
+        /// The family of complete bipartite subgraphs of <paramref name="graph"/> whose two sides have
+        /// exactly <paramref name="a"/> and <paramref name="b"/> vertices (in either order). See
+        /// <see cref="Specs.BicliqueSpec"/>.
+        /// </summary>
+        /// <param name="graph">The graph to search.</param>
+        /// <param name="a">The required size of one side.</param>
+        /// <param name="b">The required size of the other side.</param>
+        /// <example><code>GraphSet k33 = GraphSet.Bicliques(Graph.Complete(6), a: 3, b: 3);</code></example>
+        /// <exception cref="ArgumentNullException"><paramref name="graph"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="a"/> or <paramref name="b"/> is negative.</exception>
+        public static GraphSet Bicliques(Graph graph, int a, int b)
+        {
+            ArgumentNullException.ThrowIfNull(graph);
+            return Generate(graph, new BicliqueSpec(graph, a, b));
+        }
+
         // ==================== 1-item variants (M6-7) ====================
 
         /// <summary>Removes one contained edge from each edge set, using every edge of <see cref="Graph"/>. See <see cref="Zdd.RemoveSomeItem()"/>.</summary>
