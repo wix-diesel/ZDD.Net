@@ -361,6 +361,34 @@ namespace ZDD.Net.Graphs
         }
 
         /// <summary>
+        /// The family of edge sets in which every vertex group ends up as its own connected component
+        /// &#8212; two vertices from the same group always share a component, two from different groups
+        /// never do &#8212; Graphillion's <c>graphs(vertex_groups=...)</c>, a generalization of
+        /// <see cref="ConnectedSubgraphs"/> to several mutually-exclusive terminal sets at once. A vertex in
+        /// none of <paramref name="groups"/> is free: it may join at most one group's component (or none),
+        /// but may never bridge two different groups. See <see cref="Specs.VertexGroupSpec"/>.
+        /// </summary>
+        /// <param name="graph">The graph to search.</param>
+        /// <param name="groups">
+        /// The vertex groups: vertices within one group must end up in the same connected component,
+        /// vertices from different groups must not.
+        /// </param>
+        /// <example>
+        /// <code>GraphSet vg = GraphSet.VertexGroups(Graph.Grid(3, 3), new[] { new[] { 0, 4 }, new[] { 2, 6 } });</code>
+        /// </example>
+        /// <exception cref="ArgumentNullException">
+        /// <paramref name="graph"/> or <paramref name="groups"/> is <see langword="null"/>, or one of
+        /// <paramref name="groups"/>'s entries is <see langword="null"/>.
+        /// </exception>
+        /// <exception cref="ArgumentOutOfRangeException">A vertex is outside <c>0 .. graph.VertexCount - 1</c>.</exception>
+        /// <exception cref="ArgumentException">A vertex is repeated, whether within one group or across two.</exception>
+        public static GraphSet VertexGroups(Graph graph, IReadOnlyList<IReadOnlyList<int>> groups)
+        {
+            ArgumentNullException.ThrowIfNull(graph);
+            return Generate(graph, new VertexGroupSpec(graph, groups));
+        }
+
+        /// <summary>
         /// The family of Steiner trees connecting <paramref name="terminals"/>: connected, acyclic edge
         /// sets containing every terminal, in which every leaf is itself a terminal &#8212; Graphillion's
         /// <c>steiner_subgraphs</c> / <c>steiner_trees</c>. <see cref="MinWeight(Func{Edge, int})"/> over
