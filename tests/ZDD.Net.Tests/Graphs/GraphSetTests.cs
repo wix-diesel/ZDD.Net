@@ -705,6 +705,19 @@ namespace ZDD.Net.Tests.Graphs
         }
 
         [Fact]
+        public void VertexGroupsMatchesDirectSpecBuild()
+        {
+            Graph graph = Graph.Grid(3, 3);
+            IReadOnlyList<IReadOnlyList<int>> groups = new IReadOnlyList<int>[] { new[] { 0, 4 }, new[] { 2, 6 } };
+            GraphSet actual = GraphSet.VertexGroups(graph, groups);
+
+            using ZddManager manager = new ZddManager(graph.EdgeCount);
+            Zdd expected = FrontierBuilder.Build<VertexGroupSpec>(manager, new VertexGroupSpec(graph, groups));
+
+            AssertSameEdgeSets(graph, actual, expected);
+        }
+
+        [Fact]
         public void SteinerTreesMatchesDirectSpecBuild()
         {
             Graph graph = Graph.Grid(3, 3);
@@ -924,6 +937,7 @@ namespace ZDD.Net.Tests.Graphs
             var generators = new (string Name, GraphSet Family)[]
             {
                 ("ConnectedSubgraphs", GraphSet.ConnectedSubgraphs(graph, new[] { 0, 4, 8 })),
+                ("VertexGroups", GraphSet.VertexGroups(graph, new IReadOnlyList<int>[] { new[] { 0, 4 }, new[] { 2, 6 } })),
                 ("SteinerTrees", GraphSet.SteinerTrees(graph, new[] { 0, 4, 8 })),
                 ("Cuts", GraphSet.Cuts(graph, 0, graph.VertexCount - 1)),
                 ("DegreeConstrained", GraphSet.DegreeConstrained(graph, lo: 0, hi: 2)),
