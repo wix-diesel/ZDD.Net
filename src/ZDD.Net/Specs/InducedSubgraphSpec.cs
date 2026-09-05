@@ -92,7 +92,7 @@ namespace ZDD.Net.Specs
                     int edgeIndex = incident[k];
                     active.RemoveAll(entry => entry.NeighborLastEdge < edgeIndex);
 
-                    var slots = new int[active.Count];
+                    var slots = active.Count == 0 ? Array.Empty<int>() : new int[active.Count];
                     for (int i = 0; i < active.Count; i++)
                     {
                         slots[i] = _frontierManager.MateIndex(edgeIndex, active[i].Neighbor);

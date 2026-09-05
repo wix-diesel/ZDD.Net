@@ -519,8 +519,9 @@ namespace ZDD.Net.Graphs
         /// The family of edge sets induced by some vertex subset of <paramref name="graph"/>: for every
         /// graph edge <c>(u,v)</c>, it is in the set exactly when both <c>u</c> and <c>v</c> are chosen
         /// &#8212; Graphillion's <c>induced_graphs</c>. Connectivity is not required; for connected induced
-        /// subgraphs, intersect this family's <see cref="Zdd"/> with <see cref="ConnectedSubgraphs"/>'s
-        /// (<see cref="Core.Zdd.Intersect(Core.Zdd)"/>). See <see cref="Specs.InducedSubgraphSpec"/>.
+        /// subgraphs, call <see cref="ConnectedSubgraphs"/> too and intersect the two results'
+        /// <see cref="Zdd"/> properties (<see cref="Core.Zdd.Intersect(Core.Zdd)"/>). See
+        /// <see cref="Specs.InducedSubgraphSpec"/>.
         /// </summary>
         /// <param name="graph">The graph to search.</param>
         /// <example><code>GraphSet induced = GraphSet.InducedSubgraphs(Graph.Grid(3, 3));</code></example>
