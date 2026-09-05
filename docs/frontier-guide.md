@@ -564,14 +564,24 @@ Zdd shortPaths = FrontierBuilder.Build<PathSpec>(manager, new PathSpec(graph, s,
 Zdd filtered = shortPaths.Subset<CardinalitySpec, int>(atMostTen);
 ```
 
+`Zdd.CostAtMost` / `CostAtLeast` / `CostEquals`（M6-8、Graphillion の `cost_le` 相当）は、
+`LinearConstraintSpec` を使ったこの `Subset` そのものを 3 つの演算子ぶん薄くラップしたもの——
+新しいアルゴリズムではない:
+
+```csharp
+Zdd cheapPaths = shortPaths.CostAtMost(edgeCosts, bound: 100);
+// == shortPaths.Subset<LinearConstraintSpec, long>(new LinearConstraintSpec(edgeCosts, LinearConstraintOperator.LessOrEqual, 100))
+```
+
 ## 9. 高レベル API: `GraphSet` / `SetSet<T>` とグラフ入出力
 
 ここまでは `FrontierBuilder.Build<TSpec>` を直接呼ぶ低レベル API を使ってきたが、日常的な用途では
 `ZDD.Net.Graphs.GraphSet`（Graphillion 相当の高レベル API）の方が短く書ける。中身はここまでの
 スペックの上に立つ薄いラッパーで、`GraphSet.Paths` / `Cycles` / `Trees` / `Forests` /
 `Matchings` / `HamiltonianPaths` / `HamiltonianCycles` / `Cliques` / `IndependentSets` という
-生成メソッドと、`Including` / `Excluding` / `Larger` / `Smaller` / `LenEquals` という構築時
-フィルタ（§8 の合成スペックと同じ考え方——絞り込む前の族を経由しない）、`MinIter` / `MaxIter` /
+生成メソッドと、`Including` / `Excluding` / `Larger` / `Smaller` / `LenEquals` /
+`CostAtMost` / `CostAtLeast` / `CostEquals` という構築時フィルタ（§8 の合成スペックと同じ
+考え方——絞り込む前の族を経由しない）、`MinIter` / `MaxIter` /
 `RandIter` という遅延列挙、`Sample` / `MaxWeight` / `TopK` などの問い合わせを持つ。
 
 ```csharp

@@ -73,6 +73,22 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
   `Smaller` を連鎖させても、フロンティア方式のフィルタと矛盾なく合成される（回帰テストで
   事後 `Intersect` と一致することを確認済み）。変数 12 以下の総当たり照合、`items` 版に全変数を
   渡したときの引数なし版との一致、`RemoveSomeItem(Base) == Empty` などの境界を確認済み。
+- `Zdd.CostAtMost` / `CostAtLeast` / `CostEquals`: Graphillion の `cost_le` 相当のコストフィルタ
+  （M6-8、issue #143）。既存の族に対して「重み合計が閾値以下／以上／ちょうど」の集合だけを残す
+  操作で、新しいアルゴリズムは追加していない——`zdd.Subset(new LinearConstraintSpec(costs, op,
+  bound))`（M3-5 の `ZddSubsetting`）そのものを 3 つの演算子ぶん薄くラップしただけ。事後フィルタ
+  （族を丸ごと構築してから `Intersect`）と違い、フロンティア走査中に閾値を外れた枝を切るので、
+  中間状態が「既存の族が実際に到達できる重みの組」だけに絞られ、コスト制約を単独で（＝族の外側で）
+  構築するより中間 ZDD が小さくなる（回帰テストで確認済み）。`LinearConstraintSpec` は係数を
+  `int[]` としてしか受け付けなかったため、新たに `ReadOnlySpan<long>` 版のコンストラクタを追加し
+  （内部の係数配列自体を `long[]` に一般化——`int[]` 版はそこへ委譲するだけになった)、辺のコストが
+  `int` に収まらない場合にも対応した（`double` 係数は丸めの扱いが自明でないため見送り、
+  PLAN §8 の「Graphillion の語彙を .NET 命名規約に直して踏襲」の方針どおり `cost_le` ではなく
+  `CostAtMost` と命名）。`GraphSet.CostAtMost(Func<Edge, long>, long)` / `CostAtLeast` /
+  `CostEquals` は既存の `Filter(IErasedGraphSpec)` の仕組みに乗せてあるので、`Including` /
+  `Excluding` / `Larger` / `Smaller` と同じフィルタ連鎖に組み込める。`SetSet<T>` にも同名の
+  ラッパを追加した。負の係数、`bound` が到達可能な最小値／最大値ちょうどの境界、3 演算子すべてで
+  事後フィルタ・`LinearConstraintSpec` を直接 `Subset` した結果との一致を確認済み。
 
 ## [0.5.0] - 2026-09-04
 

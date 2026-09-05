@@ -26,7 +26,7 @@ namespace ZDD.Net.Specs
     /// </remarks>
     public readonly struct LinearConstraintSpec : IDdSpec<long>
     {
-        private readonly int[] _coefficients;
+        private readonly long[] _coefficients;
         private readonly LinearConstraintOperator _op;
         private readonly long _bound;
 
@@ -43,10 +43,21 @@ namespace ZDD.Net.Specs
         /// <param name="op">The comparison to enforce.</param>
         /// <param name="bound">The bound <c>b</c>.</param>
         public LinearConstraintSpec(int[] coefficients, LinearConstraintOperator op, long bound)
+            : this(WidenToLong(coefficients), op, bound)
         {
-            ArgumentNullException.ThrowIfNull(coefficients);
+        }
 
-            _coefficients = (int[])coefficients.Clone();
+        /// <summary>
+        /// Creates a spec enforcing <c>Σ coefficients[i] x[i] {op} bound</c>, with <c>long</c>
+        /// coefficients &#8212; e.g. arbitrary per-edge costs (<see cref="Graphs.GraphSet"/>'s
+        /// <c>CostAtMost</c>/<c>CostAtLeast</c>/<c>CostEquals</c>) that need not fit in <see cref="int"/>.
+        /// </summary>
+        /// <param name="coefficients">The per-item coefficients <c>a[i]</c>; may contain negatives. Copied.</param>
+        /// <param name="op">The comparison to enforce.</param>
+        /// <param name="bound">The bound <c>b</c>.</param>
+        public LinearConstraintSpec(ReadOnlySpan<long> coefficients, LinearConstraintOperator op, long bound)
+        {
+            _coefficients = coefficients.ToArray();
             _op = op;
             _bound = bound;
 
@@ -60,6 +71,19 @@ namespace ZDD.Net.Specs
                 _suffixMaxSum[i] = _suffixMaxSum[i + 1] + Math.Max(c, 0);
                 _suffixMinSum[i] = _suffixMinSum[i + 1] + Math.Min(c, 0);
             }
+        }
+
+        private static long[] WidenToLong(int[] coefficients)
+        {
+            ArgumentNullException.ThrowIfNull(coefficients);
+
+            long[] widened = new long[coefficients.Length];
+            for (int i = 0; i < coefficients.Length; i++)
+            {
+                widened[i] = coefficients[i];
+            }
+
+            return widened;
         }
 
         /// <summary>The number of items, i.e. the length of the coefficient array.</summary>
@@ -78,7 +102,7 @@ namespace ZDD.Net.Specs
         public int GetChild(ref long sum, int level, int value)
         {
             int idx = ItemCount - level;
-            sum += (long)_coefficients[idx] * value;
+            sum += _coefficients[idx] * value;
 
             int remaining = level - 1;
             int next = idx + 1; // = ItemCount - remaining
