@@ -128,7 +128,7 @@ namespace ZDD.Net.Graphs
         {
             int vertexCount = topology.VertexCount;
 
-            var distinctPairs = new HashSet<(int, int)>();
+            var distinctPairs = new HashSet<(int, int)>(topology.EdgeCount);
             for (int i = 0; i < topology.EdgeCount; i++)
             {
                 (int u, int v) = topology.Endpoints(i);

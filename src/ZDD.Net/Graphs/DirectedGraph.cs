@@ -142,7 +142,7 @@ namespace ZDD.Net.Graphs
         /// <summary>The number of arcs.</summary>
         public int EdgeCount => _edges.Length;
 
-        /// <summary>The arcs, in construction order.</summary>
+        /// <summary>The arcs, in variable order (arc index <c>i</c> is variable index <c>i</c>).</summary>
         /// <remarks>A read-only view over the backing storage: it cannot be downcast to mutate the graph.</remarks>
         public IReadOnlyList<DirectedEdge> Edges => _edgesView;
 
