@@ -524,14 +524,16 @@ namespace ZDD.Net.Core
 
             ValidateItemMapIsAPermutation(itemMap);
 
+            // Throws ObjectDisposedException here if disposed (touches both table and cache).
+            // Called unconditionally, before the identity short-circuit below, so a disposed
+            // manager always throws regardless of itemMap's contents (matching Zdd.MapItems' docs).
+            TuneCache();
+
             if (IsIdentity(itemMap))
             {
                 // No node is rebuilt, so the same handle is returned rather than a copy.
                 return f;
             }
-
-            // Throws ObjectDisposedException here if disposed (touches both table and cache).
-            TuneCache();
 
             // B17: only order-preserving maps on f's support get the fast path in this release;
             // general permutation and cross-manager transfer arrive in M6-5.

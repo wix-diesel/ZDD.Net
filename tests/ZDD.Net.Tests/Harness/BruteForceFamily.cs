@@ -475,6 +475,13 @@ namespace ZDD.Net.Tests.Harness
                     nameof(itemMap));
             }
 
+            // Validated up front (not just the entries actually used below) so an out-of-range
+            // target fails loudly instead of being silently masked by C#'s shift-count wraparound.
+            foreach (int target in itemMap)
+            {
+                ValidateItem(VariableCount, target);
+            }
+
             SortedSet<int> result = new SortedSet<int>();
 
             foreach (int mask in _masks)

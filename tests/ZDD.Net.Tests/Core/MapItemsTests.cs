@@ -263,8 +263,11 @@ namespace ZDD.Net.Tests.Core
             Zdd zdd = ZddFamilies.Build(manager, [0], [2]);
             manager.Dispose();
 
-            // 恒等写像でない張り替えでなければテーブルに触れないので、必ず非恒等写像を使う。
             Assert.Throws<ObjectDisposedException>(() => zdd.MapItems(1, 0, 3, 2));
+
+            // 恒等写像でも disposed チェックは飛ばさない（結果が短絡で自分自身になるとしても、
+            // 検査自体は itemMap の中身に関わらず必ず走る）。
+            Assert.Throws<ObjectDisposedException>(() => zdd.MapItems(0, 1, 2, 3));
         }
 
         // ---- ホットパスのアロケーション ----
