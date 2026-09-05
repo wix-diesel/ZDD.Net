@@ -591,6 +591,71 @@ namespace ZDD.Net.Graphs
             return Generate(graph, new BicliqueSpec(graph, a, b));
         }
 
+        // ==================== Unified constraint builder (M6-15) ====================
+
+        /// <summary>
+        /// The family of edge sets of <paramref name="graph"/> satisfying every constraint set on
+        /// <paramref name="constraints"/> &#8212; Graphillion's single-entry-point <c>graphs(degree_constraints=,
+        /// num_edges=, num_comps=, no_loop=, vertex_groups=, ...)</c>. Leaving every field of
+        /// <paramref name="constraints"/> at its default returns every subgraph (the same family
+        /// <see cref="Specs.PowerSetSpec"/> builds). See <see cref="GraphConstraints"/>'s remarks for how the
+        /// fields are composed and what a contradictory combination does.
+        /// </summary>
+        /// <param name="graph">The graph to search.</param>
+        /// <param name="constraints">The constraints to apply.</param>
+        /// <example>
+        /// <code>
+        /// GraphSet gs = GraphSet.Graphs(graph, new GraphConstraints
+        /// {
+        ///     DegreeConstraints = new Dictionary&lt;int, (int, int)&gt; { [0] = (1, 1), [80] = (1, 1) },
+        ///     EdgeCount = (1, 40),
+        ///     ComponentCount = 1,
+        ///     NoLoop = true,
+        /// });
+        /// </code>
+        /// </example>
+        /// <exception cref="ArgumentNullException"><paramref name="graph"/> or <paramref name="constraints"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException">A constraint refers to a vertex outside <c>0 .. graph.VertexCount - 1</c>, or a <see cref="GraphConstraints.LinearConstraints"/> entry's coefficient count does not match <paramref name="graph"/>'s edge count.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">A constraint's own range is invalid (e.g. a maximum below its minimum, or a negative bound where one is required).</exception>
+        public static GraphSet Graphs(Graph graph, GraphConstraints constraints)
+        {
+            ArgumentNullException.ThrowIfNull(graph);
+            ArgumentNullException.ThrowIfNull(constraints);
+
+            IErasedGraphSpec spec = BuildConstraintSpec(graph, constraints) ??
+                new StructSpecErased<PowerSetSpec, byte>(new PowerSetSpec(graph.EdgeCount));
+            return GenerateErased(graph, spec);
+        }
+
+        /// <summary>
+        /// Keeps only the member edge sets of this family that also satisfy every constraint set on
+        /// <paramref name="constraints"/> &#8212; Graphillion's <c>graphs(..., graphset=this)</c>. Unlike
+        /// <see cref="Graphs(Graph, GraphConstraints)"/>, which builds the constrained family from scratch
+        /// over the full power set, this narrows an already-built family: <see cref="Zdd"/>'s existing node
+        /// structure and <paramref name="constraints"/>' composed spec are walked together
+        /// (<see cref="Frontier.ZddExtensions.Subset{TSpec, TState}"/>, M3-5), so the constraints are applied
+        /// during that walk rather than by intersecting after the fact &#8212; the same "no wasted
+        /// intermediate diagram" property <see cref="Including(Edge)"/> and friends already have.
+        /// </summary>
+        /// <param name="constraints">The constraints to apply, on top of this family's own membership.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="constraints"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException">A constraint refers to a vertex outside <c>0 .. Graph.VertexCount - 1</c>, or a <see cref="GraphConstraints.LinearConstraints"/> entry's coefficient count does not match <see cref="Graph"/>'s edge count.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">A constraint's own range is invalid (e.g. a maximum below its minimum, or a negative bound where one is required).</exception>
+        public GraphSet Where(GraphConstraints constraints)
+        {
+            ArgumentNullException.ThrowIfNull(constraints);
+
+            IErasedGraphSpec? constraintSpec = BuildConstraintSpec(Graph, constraints);
+            if (constraintSpec is null)
+            {
+                return this; // no constraint set: this family, unchanged
+            }
+
+            Zdd result = Zdd.Subset<ErasedGraphDdSpec, object?>(new ErasedGraphDdSpec(constraintSpec));
+            IErasedGraphSpec combined = new AndErasedSpec(_spec, constraintSpec);
+            return new GraphSet(Graph, Universe, result, combined);
+        }
+
         // ==================== 1-item variants (M6-7) ====================
 
         /// <summary>Removes one contained edge from each edge set, using every edge of <see cref="Graph"/>. See <see cref="Zdd.RemoveSomeItem()"/>.</summary>
@@ -993,6 +1058,96 @@ namespace ZDD.Net.Graphs
             IErasedGraphSpec erased = new StructSpecErased<TSpec, TState>(spec);
             Zdd zdd = Build(universe.Manager, erased);
             return new GraphSet(graph, universe, zdd, erased);
+        }
+
+        private static GraphSet GenerateErased(Graph graph, IErasedGraphSpec erased)
+        {
+            var universe = new SetUniverse<Edge>(graph.Edges);
+            Zdd zdd = Build(universe.Manager, erased);
+            return new GraphSet(graph, universe, zdd, erased);
+        }
+
+        /// <summary>
+        /// Folds every non-default field of <paramref name="constraints"/> into one <see cref="IErasedGraphSpec"/>
+        /// via <see cref="AndErasedSpec"/>, or returns <see langword="null"/> if <paramref name="constraints"/>
+        /// sets nothing at all (the caller then supplies its own "no constraint" default &#8212; the full
+        /// power set for <see cref="Graphs(Graph, GraphConstraints)"/>, this family unchanged for <see cref="Where"/>).
+        /// </summary>
+        private static IErasedGraphSpec? BuildConstraintSpec(Graph graph, GraphConstraints constraints)
+        {
+            IErasedGraphSpec? current = null;
+
+            if (constraints.DegreeConstraints is { } degreeConstraints)
+            {
+                current = And(current, new ArraySpecErased<DegreeConstraintSpec>(BuildDegreeConstraintSpec(graph, degreeConstraints)));
+            }
+
+            if (constraints.EdgeCount is (int min, int max))
+            {
+                current = And(current, new StructSpecErased<CardinalitySpec, int>(new CardinalitySpec(graph.EdgeCount, min, max)));
+            }
+
+            if (constraints.ComponentCount is int componentCount)
+            {
+                current = And(current, new ArraySpecErased<ComponentCountSpec>(new ComponentCountSpec(graph, componentCount)));
+            }
+
+            if (constraints.NoLoop)
+            {
+                current = And(current, new ArraySpecErased<ForestSpec>(new ForestSpec(graph)));
+            }
+
+            if (constraints.VertexGroups is { } vertexGroups)
+            {
+                current = And(current, new ArraySpecErased<VertexGroupSpec>(new VertexGroupSpec(graph, vertexGroups)));
+            }
+
+            if (constraints.LinearConstraints is { } linearConstraints)
+            {
+                foreach ((int[] coefficients, LinearConstraintOperator op, long bound) in linearConstraints)
+                {
+                    if (coefficients is null || coefficients.Length != graph.EdgeCount)
+                    {
+                        throw new ArgumentException(
+                            $"Every LinearConstraints entry must have {graph.EdgeCount} coefficient(s) (one per edge), " +
+                            $"but one had {coefficients?.Length.ToString() ?? "null"}.",
+                            nameof(constraints));
+                    }
+
+                    current = And(current, new StructSpecErased<LinearConstraintSpec, long>(new LinearConstraintSpec(coefficients, op, bound)));
+                }
+            }
+
+            return current;
+
+            static IErasedGraphSpec And(IErasedGraphSpec? left, IErasedGraphSpec right) =>
+                left is null ? right : new AndErasedSpec(left, right);
+        }
+
+        private static DegreeConstraintSpec BuildDegreeConstraintSpec(Graph graph, IReadOnlyDictionary<int, (int Lo, int Hi)> degreeConstraints)
+        {
+            var lo = new int[graph.VertexCount];
+            var hi = new int[graph.VertexCount];
+
+            for (int v = 0; v < graph.VertexCount; v++)
+            {
+                hi[v] = graph.Degree(v); // unconstrained default: [0, graph.Degree(v)], never actually restrictive
+            }
+
+            foreach (KeyValuePair<int, (int Lo, int Hi)> entry in degreeConstraints)
+            {
+                if ((uint)entry.Key >= (uint)graph.VertexCount)
+                {
+                    throw new ArgumentException(
+                        $"DegreeConstraints has an entry for vertex {entry.Key}, which is outside 0 .. {graph.VertexCount - 1}.",
+                        "constraints");
+                }
+
+                lo[entry.Key] = entry.Value.Lo;
+                hi[entry.Key] = entry.Value.Hi;
+            }
+
+            return new DegreeConstraintSpec(graph, lo, hi);
         }
 
         private static SetSet<int> GenerateVertexFamily<TSpec>(Graph graph, TSpec spec)

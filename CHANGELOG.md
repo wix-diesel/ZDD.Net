@@ -155,6 +155,27 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
   Petersen グラフの既知の 3 正則部分グラフ（いずれも自分自身 1 個だけ）との照合、`counts` の合計が
   頂点数と食い違う場合の空族、残ヒストグラムが負になるケースの枝刈り、6×6 格子での代表的なフロン
   ティア幅の実測、`GetChild` が無割り当てであることを確認済み。
+- `GraphConstraints` / `GraphSet.Graphs(graph, constraints)` / `GraphSet.Where(constraints)`: 統合ビルダ
+  （M6-15、issue #150）。Graphillion の単一入口 `graphs(degree_constraints=, num_edges=, num_comps=,
+  no_loop=, vertex_groups=, graphset=, ...)` 相当——今までも `spec.And(other)` で書けたが、Graphillion
+  から移ってくる利用者にとって入口が分散していること自体が学習コストだった。`DegreeConstraints` /
+  `EdgeCount` / `ComponentCount` / `NoLoop` / `VertexGroups` / `LinearConstraints` の各フィールドを、
+  非デフォルトのものだけ既存の `IErasedGraphSpec`（`DegreeConstraintSpec` / `CardinalitySpec` /
+  `ForestSpec` / `VertexGroupSpec` / `LinearConstraintSpec`）でラップし、`AndErasedSpec` で畳み込むだけ
+  ——`Including` / `Excluding` / `Larger` / `Smaller` が既に使っている型消去の連鎖にそのまま乗るので、
+  新しい合成基盤は要らなかった。`ComponentCount` だけは対応する既存スペックが無く、本物の新規スペック
+  `ComponentCountSpec` を追加した——「連結成分数」という定義自体、Graphillion の `num_comps` は
+  **孤立頂点を数えない**（辺を 1 本も持たない頂点は無視する）という、`ForestSpec(components:)`
+  の「森の木の本数」（孤立頂点も 1 本の木として数える、スパニング前提の定義）とは異なる非自明な仕様
+  で、状態はサイズではなく「一度でも辺を取ったか」を表す符号ビット（`ComponentCountComponentState`）
+  だけで足りる——閉じた成分がその符号を持っているときだけ数える。母集合つきの `Where` は
+  `Zdd.Subset`（M3-5）に落としてあるので、既存の族の構造と制約スペックを同じフロンティア走査で
+  同時に辿る（母集合を全部作ってから絞るより中間 ZDD が小さい）。矛盾する制約（`EdgeCount = (5, 3)`
+  など）は個々のスペックのコンストラクタ検証にそのまま乗せて例外にし、空族を黙って返すことはしない
+  （`CardinalitySpec` 等、既存スペックの流儀と同じ）。制約を 1 つも指定しなければ全部分グラフ
+  （`PowerSetSpec` と同じ族）になること、個別スペックを `And` で合成した結果と完全一致すること、
+  `ComponentCount` の孤立頂点除外の定義、矛盾する範囲が例外になること、`Where` が事後フィルタと
+  一致しつつ中間 ZDD が小さいことを確認済み。
 
 ## [0.5.0] - 2026-09-04
 
