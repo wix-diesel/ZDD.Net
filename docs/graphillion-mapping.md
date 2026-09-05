@@ -19,14 +19,14 @@ API 対応表の暫定版（v0.6、issue #151）。**本番の移行ガイドは
 | `GraphSet.paths(s, t)` | `GraphSet.Paths(graph, from: s, to: t)` | |
 | `GraphSet.cycles()` | `GraphSet.Cycles(graph, single: true)` | `single: false` で互いに素なサイクルの和 |
 | `GraphSet.trees(is_spanning=True)` | `GraphSet.Trees(graph)` | 全域木 |
-| `GraphSet.forests(roots)` | `GraphSet.Forests(graph, components:)` | 成分数を指定する形（`roots` の集合そのものではない） |
+| `GraphSet.forests(roots)` | `GraphSet.Forests(graph, components: 1)` | 成分数を指定する形（`roots` の集合そのものではない） |
 | `GraphSet.matchings()` | `GraphSet.Matchings(graph)` | `perfect: true` で完全マッチングのみ |
 | `GraphSet.cliques(k)` | `GraphSet.Cliques(graph)` | サイズ固定は事後 `LenEquals(k)` |
 | `GraphSet.independent_sets()` | `GraphSet.IndependentSets(graph)` | |
 | `GraphSet.vertex_covers()` | `GraphSet.VertexCovers(graph)` | `SetSet<int>` で返る（M6-10） |
 | `GraphSet.dominating_sets()` | `GraphSet.DominatingSets(graph)` | `SetSet<int>` で返る（M6-10） |
 | `GraphSet.graph_partitions(num_comp_lb, num_comp_ub, ...)` | `GraphSet.Partitions(graph, k, minBlockSize, maxBlockSize)` | |
-| `GraphSet.balanced_partitions(...)` | `GraphSet.BalancedPartitions(graph, k, tolerance:)` | 境界計算は `Partitions` の糖衣（M6-10） |
+| `GraphSet.balanced_partitions(...)` | `GraphSet.BalancedPartitions(graph, k, tolerance: 0.2)` | 境界計算は `Partitions` の糖衣（M6-10） |
 | `GraphSet.colorings(k)` | `GraphSet.Colorings(graph, k)` | `SetSet<(int Vertex, int Color)>` で返り、`(頂点, 色)` を直接読める（M6-10） |
 | `GraphSet.regular_graphs(k)` | `GraphSet.RegularGraphs(graph, k)` | `DegreeConstrained(graph, lo: k, hi: k)` の別名（M6-11） |
 | `GraphSet.degree_distribution_graphs(deg_dist)` | `GraphSet.DegreeDistributions(graph, counts)` | `counts[d]` = 次数 `d` の頂点数（M6-11） |
@@ -35,7 +35,7 @@ API 対応表の暫定版（v0.6、issue #151）。**本番の移行ガイドは
 | `GraphSet.connected_components(terminals)` | `GraphSet.ConnectedSubgraphs(graph, terminals)` | terminals が全て同じ連結成分（M6-9） |
 | `GraphSet.steiner_subgraphs(terminals)` | `GraphSet.SteinerTrees(graph, terminals)` | terminal 以外に葉を作らない木（M6-9） |
 | `GraphSet.graphs(vertex_groups=[[...], [...]])` | `GraphSet.VertexGroups(graph, groups)` | 単独メソッドとしても露出（M6-14） |
-| `GraphSet.min_cuts(s, t)` / カット全般 | `GraphSet.Cuts(graph, s, t, minimalOnly:)` | `minimalOnly: true` で極小カットに絞れる（M6-9） |
+| `GraphSet.min_cuts(s, t)` / カット全般 | `GraphSet.Cuts(graph, s, t, minimalOnly: true)` | 極小カットだけに絞る場合。既定（省略時）は全てのカット（M6-9） |
 | — | `GraphSet.DegreeConstrained(graph, lo, hi)` | 汎用の次数制約（辺被覆・k 正則の元になっている一般形、M6-9） |
 | — | `GraphSet.EdgeCovers(graph)` | `DegreeConstrained(graph, lo: 1, hi: graph.EdgeCount)` の別名（M6-9） |
 | `GraphSet.knapsacks(weights, capacity)`（あるいは相当のコード） | `GraphSet.Knapsacks(graph, weights, capacity)` | M6-9 |

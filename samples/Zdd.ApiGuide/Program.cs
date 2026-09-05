@@ -118,16 +118,25 @@ namespace ZDD.Net.Samples.ApiGuide
             Zdd f = manager.Singleton(0) | manager.Singleton(0).Product(manager.Singleton(1)); // {{0}, {0,1}}
 
             // RemoveSomeItem: 含まれる item のどれか 1 つを取り除いた集合の和。
+            // {0} から 0 を除くと {}、{0,1} から 0 を除くと {1}、1 を除くと {0}。
             Zdd removed = f.RemoveSomeItem();
-            Assert(removed.Contains() && removed.Contains(0), "removing one item from {0} or {0,1} reaches {} and {0}");
+            Assert(removed.Count == 3, "removing one item from {0} or {0,1} reaches exactly 3 sets");
+            Assert(removed.Contains() && removed.Contains(0) && removed.Contains(1),
+                "removing one item from {0} or {0,1} reaches {}, {0}, and {1}");
 
             // AddSomeItem: 含まれない item のどれか 1 つを足した集合の和。
+            // {0} に 1 か 2 を足すと {0,1}/{0,2}、{0,1} に 2 を足すと {0,1,2}。
             Zdd added = f.AddSomeItem();
-            Assert(added.Contains(0, 1) && added.Contains(0, 2), "adding one item to {0} or {0,1} reaches {0,1} and {0,2}");
+            Assert(added.Count == 3, "adding one item to {0} or {0,1} reaches exactly 3 sets");
+            Assert(added.Contains(0, 1) && added.Contains(0, 2) && added.Contains(0, 1, 2),
+                "adding one item to {0} or {0,1} reaches {0,1}, {0,2}, and {0,1,2}");
 
             // RemoveAddSomeItems: 1 つ外して別の 1 つを足す「1 手違い」の全ての解。
+            // {0} を経由して {1}/{2}/{1,2} に、{0,1} を経由して {0,2} に到達できる。
             Zdd swapped = f.RemoveAddSomeItems();
-            Assert(swapped.Contains(1), "swapping item 0 for item 1 in {0} reaches {1}");
+            Assert(swapped.Count == 4, "swapping one item for another reaches exactly 4 sets");
+            Assert(swapped.Contains(1) && swapped.Contains(2) && swapped.Contains(1, 2) && swapped.Contains(0, 2),
+                "swapping one item for another reaches {1}, {2}, {1,2}, and {0,2}");
         }
 
         /// <summary>
