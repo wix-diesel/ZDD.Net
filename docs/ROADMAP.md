@@ -180,7 +180,7 @@ Core レイヤは下から積むため、序盤の PR は `internal` のコー�
 | [x] | **M6-8** | コストフィルタ | `CostAtMost` / `CostAtLeast` / `CostEquals`（`Subset` + `LinearConstraintSpec`）を `Zdd` / `GraphSet` / `SetSet<T>` に | 事後フィルタと結果一致。中間 ZDD が小さいこと | 〜200 | M5-7 |
 | [x] | **M6-9** | `GraphSet` 露出①（辺の族） | `ConnectedSubgraphs` / `SteinerTrees` / `Cuts` / `DegreeConstrained` / `EdgeCovers` / `Knapsacks` | 対応するスペックを直接使った結果と一致。`EdgeCovers` は次数制約の別名（PLAN §7.2 の `EdgeCoverSpec` 相当） | 〜300 | M6-8 |
 | [x] | **M6-10** | `GraphSet` 露出②（頂点の族・彩色） | `VertexCovers` / `DominatingSets` / `Partitions` / `BalancedPartitions` / `Colorings`（`SetSet<(int Vertex, int Color)>` で返す） | 同上。`BalancedPartitions` の境界計算の単体テスト | 〜300 | M6-9 |
-| [ ] | **M6-11** | 次数系スペックの拡充 | `GraphSet.RegularGraphs(k)`（次数制約の別名）、`DegreeDistributionSpec`（残ヒストグラムを状態に持つ新規スペック） | 素朴 DP と一致。3 正則グラフの既知値と照合 | 〜300 | M6-9 |
+| [x] | **M6-11** | 次数系スペックの拡充 | `GraphSet.RegularGraphs(k)`（次数制約の別名）、`DegreeDistributionSpec`（残ヒストグラムを状態に持つ新規スペック） | 素朴 DP と一致。3 正則グラフの既知値と照合 | 〜300 | M6-9 |
 | [ ] | **M6-12** | 頂点誘導部分グラフ | `InducedSubgraphSpec`。フロンティア頂点を 3 値（`Unknown`/`In`/`Out`）で持ち、判定を忘却時まで遅延させる | 頂点 ≤ 8 の総当たり（全頂点部分集合の誘導辺集合と一致） | 〜350 | M6-9 |
 | [ ] | **M6-13** | biclique | `BicliqueSpec`（`SideA`/`SideB`/`Unused` の 3 値状態）、サイズ固定オーバーロード | 完全二部グラフ `K_{a,b}` の既知値と照合。小グラフで総当たり | 〜300 | M6-12 |
 | [ ] | **M6-14** | 頂点グループ連結制約 | `VertexGroupSpec`（同グループは連結・別グループは非連結）。comp 配列に所属グループ（未定を含む）を持たせる | 小グラフで総当たり照合。Graphillion の `vertex_groups` と結果一致 | 〜300 | M6-9 |

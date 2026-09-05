@@ -137,6 +137,24 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
   ものと一致）、`SteinerTrees` の `MinWeight` が M4-5 の既知の最小シュタイナー木と、`Cuts` の
   `MinWeight` が M4-6 の最大流最小カット定理による照合とそれぞれ一致すること、
   `Including` / `Excluding` / `Larger` / `Smaller` / `CostAtMost` と連鎖できることを確認済み。
+- `DegreeDistributionSpec` / `GraphSet.RegularGraphs` / `GraphSet.DegreeDistributions`: 次数系スペックの
+  拡充（M6-11、issue #146）。`RegularGraphs(graph, k)` は専用スペックを新設せず
+  `DegreeConstrained(graph, lo: k, hi: k)` の別名にした——k 正則は「全頂点の次数がちょうど k」であり
+  次数制約の特殊形にすぎないため。`DegreeDistributionSpec(graph, counts)` は本物の新規スペックで、
+  「次数 `d` の頂点がちょうど `counts[d]` 個」という制約（Graphillion の `degree_distribution_graphs`
+  相当）。状態はフロンティア頂点ごとの現在次数に加え、確定済み頂点の次数分布を直接持たず
+  `counts` の**残数**を減らす形で持つ——ヒストグラムをそのまま持つと状態が組合せ的に爆発するため。
+  頂点がフロンティアから退場するとき、その頂点の確定次数 `d` について残数 `remaining[d]` を 1 減らし、
+  負になったら ⊥（この判定が「残ヒストグラムが負になったら枝刈り」に当たる）。次数の上限は
+  `counts.Length - 1`（それを超える次数にはバケツが無いため、辺を採る時点で即座に ⊥）。受理条件は
+  全辺を決め終えた時点で全ての `remaining[d] == 0`——ただし `counts` の合計が頂点数と一致していて
+  かつ一度も負にならなければ、頂点は 1 度だけ退場するので算数的に自動的に満たされる（このチェックは
+  仕様書どおりの安全網として残した）。`counts` の合計が頂点数と一致しない場合は例外にせず空族を返す
+  （`KnapsackSpec` が負の容量を空族として扱うのと同じ選択）。`IArrayDdSpec` として実装したので
+  M3-2 の bit-packing にそのまま乗る。素朴な総当たり・独立実装した素朴 DP との一致、`K4` と
+  Petersen グラフの既知の 3 正則部分グラフ（いずれも自分自身 1 個だけ）との照合、`counts` の合計が
+  頂点数と食い違う場合の空族、残ヒストグラムが負になるケースの枝刈り、6×6 格子での代表的なフロン
+  ティア幅の実測、`GetChild` が無割り当てであることを確認済み。
 
 ## [0.5.0] - 2026-09-04
 

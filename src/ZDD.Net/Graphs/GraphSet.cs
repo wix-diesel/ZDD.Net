@@ -475,6 +475,40 @@ namespace ZDD.Net.Graphs
             return Generate<KnapsackSpec, long>(graph, new KnapsackSpec(weights, capacity));
         }
 
+        /// <summary>
+        /// The family of edge sets in which every vertex's degree is exactly <paramref name="k"/> &#8212;
+        /// Graphillion's <c>regular_graphs</c>. A plain alias for
+        /// <see cref="DegreeConstrained(Graph, int, int)"/> with <c>lo</c> and <c>hi</c> both <c>k</c>: a
+        /// <c>k</c>-regular edge set is exactly one where every degree lies in the single-point range
+        /// <c>[k, k]</c>, so no separate spec exists for it. See <see cref="Specs.DegreeConstraintSpec"/>.
+        /// </summary>
+        /// <param name="graph">The graph to search.</param>
+        /// <param name="k">The required degree, applied to every vertex.</param>
+        /// <example><code>GraphSet threeRegular = GraphSet.RegularGraphs(Graph.Complete(4), k: 3);</code></example>
+        /// <exception cref="ArgumentNullException"><paramref name="graph"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="k"/> is negative.</exception>
+        public static GraphSet RegularGraphs(Graph graph, int k)
+        {
+            ArgumentNullException.ThrowIfNull(graph);
+            return Generate(graph, new DegreeConstraintSpec(graph, lo: k, hi: k));
+        }
+
+        /// <summary>
+        /// The family of edge sets whose degree sequence matches <paramref name="counts"/> exactly:
+        /// <c>counts[d]</c> vertices end up with degree exactly <c>d</c> &#8212; Graphillion's
+        /// <c>degree_distribution_graphs</c>. See <see cref="Specs.DegreeDistributionSpec"/>.
+        /// </summary>
+        /// <param name="graph">The graph to search.</param>
+        /// <param name="counts">The required number of vertices at each degree; <c>counts[d]</c> for degree <c>d</c>.</param>
+        /// <example><code>GraphSet distribution = GraphSet.DegreeDistributions(Graph.Complete(4), counts: new[] { 0, 0, 0, 4 });</code></example>
+        /// <exception cref="ArgumentNullException"><paramref name="graph"/> or <paramref name="counts"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Some <c>counts[d]</c> is negative.</exception>
+        public static GraphSet DegreeDistributions(Graph graph, int[] counts)
+        {
+            ArgumentNullException.ThrowIfNull(graph);
+            return Generate(graph, new DegreeDistributionSpec(graph, counts));
+        }
+
         // ==================== 1-item variants (M6-7) ====================
 
         /// <summary>Removes one contained edge from each edge set, using every edge of <see cref="Graph"/>. See <see cref="Zdd.RemoveSomeItem()"/>.</summary>
