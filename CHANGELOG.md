@@ -8,6 +8,25 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
 
 ## [Unreleased]
 
+### Added
+
+- `DirectedEdge` / `DirectedGraph`: 有向グラフのデータ構造（M7-1、issue #152、
+  [docs/design/m7-directed-graphs.md](docs/design/m7-directed-graphs.md) §2）。既存の `Edge` は
+  `GetHashCode` を `HashCode.Combine(Math.Min(U,V), Math.Max(U,V))` で組んでおり、`Graph` は自己ループと
+  多重辺を拒否するため、一方通行のある道路網や依存関係グラフの経路列挙が原理的に書けなかった
+  （D1「主用途 = 経路列挙・数え上げ」の半分が欠けている状態）。`DirectedEdge` は `Edge` と違い
+  `GetHashCode` が `HashCode.Combine(From, To)` で**向きを区別する**（`DirectedEdge(0,1) != DirectedEdge(1,0)`）
+  ——これが `Edge` と型を分ける唯一かつ十分な理由で、`Edge` に `IsDirected` フラグを足す案は採らなかった
+  （等価性の意味がフラグで変わる型は事故のもと）。`DirectedGraph` は逆平行辺 `u→v` / `v→u` の共存を
+  許可しつつ、自己ループと多重辺は無向側と揃えて拒否する。`ToUndirected()` は逆平行辺が 1 本に潰れる
+  ため辺数が変わりうるので、辺 index の対応が壊れないよう戻り値の `Graph.SourceOrder` は必ず
+  `null` にしてある（`GraphSet.ToEdgeOrder`（M6-6）を誤って通せないようにするため）。生成ショートカット
+  `Grid`（= `Bidirected(Graph.Grid(...))`）/ `Complete`（全順序対）/ `Cycle`（一方向の閉路、`n = 2` の
+  逆平行 2-閉路も許容——無向版の `Graph.Cycle` は `n < 3` を拒否するのに対しここは `n < 2` が下限）/
+  `Path` を用意。`Bidirected(g).ToUndirected()` が `g` と（辺順序を除いて）一致することを検証済み。
+  `Graph` と同じ辺順序 API（`WithEdgeOrder` / `Optimize` / `EstimateMaxFrontierSize`）は
+  `EdgeOrdering` / `FrontierManager` を有向対応させる M7-2 で繋ぐため、このリリースにはまだ無い。
+
 ## [0.6.0] - 2026-09-05
 
 M6「API 拡充と相互運用」マイルストーン（[docs/PLAN.md](docs/PLAN.md) §12）の完了リリース。
