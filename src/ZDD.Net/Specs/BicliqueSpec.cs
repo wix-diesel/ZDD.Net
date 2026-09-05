@@ -35,10 +35,14 @@ namespace ZDD.Net.Specs
     /// first becomes its own new single-member group, then <see cref="BicliqueVertexState.TryMerge"/> forces
     /// <c>u</c> and <c>v</c> onto opposite sides of what becomes one group (rejecting if that is impossible —
     /// see that method's remarks), and the distinct-group count drops by one whenever this actually joins two
-    /// previously-separate groups. When not taken: reject only if <c>u</c> and <c>v</c> are already in the
-    /// <i>same</i> group and already on different sides (a complete bipartite graph would have to include
-    /// this edge); otherwise the decision is deferred exactly as <see cref="InducedSubgraphSpec"/> defers its
-    /// own not-taken case.
+    /// previously-separate groups. When not taken: if <c>u</c> and <c>v</c> are <i>both already grouped</i>,
+    /// <see cref="BicliqueVertexState.TryMerge"/> is called immediately too, this time requiring the
+    /// <i>same</i> side (rejecting if that is impossible — a complete bipartite graph would have had to
+    /// include this edge); this cannot wait the way a still-<see cref="BicliqueVertexState.Free"/> endpoint's
+    /// case can, since deferring it risks losing the ability to check it at all (see that method's remarks).
+    /// If either endpoint is still free, the decision is deferred exactly as <see cref="InducedSubgraphSpec"/>
+    /// defers its own not-taken case — a free vertex may never join a group at all, so nothing may be forced
+    /// on it yet.
     /// </para>
     /// <para>
     /// <b>Connectivity</b>: a non-empty biclique is one connected piece, so the family only accepts branches
@@ -179,6 +183,8 @@ namespace ZDD.Net.Specs
             int su = _frontierManager.MateIndex(edgeIndex, edge.U);
             int sv = _frontierManager.MateIndex(edgeIndex, edge.V);
 
+            int maxSideSize = _sizeFixed ? Math.Max(_a, _b) : int.MaxValue;
+
             if (value == 1)
             {
                 int distinctGroupCount = state[DistinctGroupCountSlot];
@@ -195,10 +201,9 @@ namespace ZDD.Net.Specs
                     distinctGroupCount++;
                 }
 
-                int maxSideSize = _sizeFixed ? Math.Max(_a, _b) : int.MaxValue;
                 if (!BicliqueVertexState.TryMerge(
                         code, vertexOfSlot, flags, countA, countB, frontierLength, su, sv, edgeIndex, _edgeIndexOf,
-                        maxSideSize, out bool groupsReduced))
+                        desiredRelativeParity: 1, maxSideSize, out bool groupsReduced))
                 {
                     return DdResult.False;
                 }
@@ -210,11 +215,22 @@ namespace ZDD.Net.Specs
 
                 state[DistinctGroupCountSlot] = distinctGroupCount;
             }
-            else if (BicliqueVertexState.IsGrouped(code, su) && BicliqueVertexState.IsGrouped(code, sv) &&
-                     BicliqueVertexState.Representative(code, su) == BicliqueVertexState.Representative(code, sv) &&
-                     BicliqueVertexState.RelativeSide(code, su) != BicliqueVertexState.RelativeSide(code, sv))
+            else if (BicliqueVertexState.IsGrouped(code, su) && BicliqueVertexState.IsGrouped(code, sv))
             {
-                return DdResult.False; // a complete bipartite graph would have had to include this cross edge
+                // Both sides of a not-taken edge are already grouped: this specific pair must be folded in as
+                // "same side" right now, while both are still guaranteed present — deferring further risks
+                // losing the ability to check them once either is forgotten (see BicliqueVertexState's remarks).
+                if (!BicliqueVertexState.TryMerge(
+                        code, vertexOfSlot, flags, countA, countB, frontierLength, su, sv, edgeIndex, _edgeIndexOf,
+                        desiredRelativeParity: 0, maxSideSize, out bool groupsReduced))
+                {
+                    return DdResult.False; // a complete bipartite graph would have had to include this cross edge
+                }
+
+                if (groupsReduced)
+                {
+                    state[DistinctGroupCountSlot]--;
+                }
             }
 
             IReadOnlyList<int> forgottenVertices = _frontierManager.ForgottenVertices(edgeIndex);

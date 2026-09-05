@@ -44,7 +44,23 @@ namespace ZDD.Net.Specs
     /// member forgotten — once one has, the other side can never validly gain <i>another</i> member (that
     /// member could never be verified adjacent to the vertex that already left); <see cref="TryMerge"/>
     /// rejects a merge that would do that, using flags folded in from both sides' history (with whichever
-    /// side flips, if either group's relative parity has to flip to align them).
+    /// side flips, if either group's relative parity has to flip to align them). Those flags are only ever
+    /// set, never cleared: a side that currently has zero <i>present</i> members can still have had one
+    /// forgotten earlier, and that departed vertex's own adjacency requirements do not expire with it.
+    /// </para>
+    /// <para>
+    /// <b>Why a not-taken edge between two already-grouped vertices cannot be deferred like the
+    /// still-<see cref="Free"/> case</b>: <see cref="BicliqueSpec"/> defers a not-taken edge when either
+    /// endpoint is still free, since it might never join a group at all, and folding in a "must be same"
+    /// requirement early would wrongly force it to participate. But once <i>both</i> endpoints are already
+    /// grouped, deferring further is unsafe — if their two groups are still separate, this specific pair may
+    /// never be checked again: should both vertices individually be forgotten before their groups happen to
+    /// merge through some unrelated connecting edge, no state remains to tell <see cref="TryMerge"/> those two
+    /// particular vertices were ever adjacent, and the merge's cross-pair scan (which only sees vertices still
+    /// present) could wrongly allow them onto opposite sides. So <see cref="BicliqueSpec"/> calls
+    /// <see cref="TryMerge"/> immediately whenever a not-taken edge's two endpoints are both already grouped,
+    /// with <c>desiredRelativeParity: 0</c> — folding the same-side requirement in on the spot, while both are
+    /// still guaranteed present, exactly mirroring how a taken edge folds in the opposite-side requirement.
     /// </para>
     /// </remarks>
     internal static class BicliqueVertexState
@@ -85,10 +101,13 @@ namespace ZDD.Net.Specs
 
         /// <summary>
         /// Requires the vertices at <paramref name="su"/> and <paramref name="sv"/> (both already grouped) to
-        /// end up on opposite sides. If they are already in the same group, this is a plain parity check;
-        /// otherwise their two groups are merged, after verifying every currently-present cross pair the
-        /// merge newly puts on opposite sides is graph-adjacent by an edge not already decided (see the type
-        /// remarks), and that neither side about to gain members has already had the opposite side lose one.
+        /// end up on the same or opposite sides, per <paramref name="desiredRelativeParity"/> — a taken edge
+        /// needing opposite sides, or a not-taken one between two already-grouped endpoints needing the same
+        /// side (see the type remarks for why the latter cannot be deferred). If they are already in the same
+        /// group, this is a plain parity check; otherwise their two groups are merged, after verifying every
+        /// currently-present cross pair the merge newly puts on opposite sides is graph-adjacent by an edge
+        /// not already decided (see the type remarks), and that neither side about to gain members has already
+        /// had the opposite side lose one.
         /// </summary>
         /// <param name="code">The per-slot group/parity code array.</param>
         /// <param name="vertexOfSlot">Which graph vertex currently occupies each slot.</param>
@@ -100,6 +119,12 @@ namespace ZDD.Net.Specs
         /// <param name="sv">The other edge endpoint's slot.</param>
         /// <param name="currentEdgeIndex">The edge index currently being decided.</param>
         /// <param name="edgeIndexOf">Every graph edge's index, keyed by its (order-independent) endpoints.</param>
+        /// <param name="desiredRelativeParity">
+        /// <c>1</c> if <paramref name="su"/> and <paramref name="sv"/> must end up on opposite sides (a taken
+        /// edge), <c>0</c> if they must end up on the <i>same</i> side (a not-taken edge — see the type
+        /// remarks on why this must be folded in eagerly, while both are still grouped and present, rather
+        /// than deferred the way one still-<see cref="Free"/> endpoint is).
+        /// </param>
         /// <param name="maxSideSize">The size-fixed overload's cap on either side's running count; ignored when not size-fixed.</param>
         /// <param name="groupsReduced">
         /// <see langword="true"/> if two previously-separate groups were merged into one (the caller should
@@ -116,6 +141,7 @@ namespace ZDD.Net.Specs
             int sv,
             int currentEdgeIndex,
             Dictionary<Edge, int> edgeIndexOf,
+            int desiredRelativeParity,
             int maxSideSize,
             out bool groupsReduced)
         {
@@ -127,11 +153,11 @@ namespace ZDD.Net.Specs
 
             if (repU == repV)
             {
-                return (parityU ^ parityV) == 1; // must already be on opposite sides; same side is a contradiction
+                return (parityU ^ parityV) == desiredRelativeParity;
             }
 
             bool sizeFixed = !countSideA.IsEmpty;
-            int flip = parityU ^ parityV ^ 1;
+            int flip = parityU ^ parityV ^ desiredRelativeParity;
             int keep = Math.Min(repU, repV);
             int drop = Math.Max(repU, repV);
 

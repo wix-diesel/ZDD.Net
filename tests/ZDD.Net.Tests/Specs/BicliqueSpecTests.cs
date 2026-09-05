@@ -42,6 +42,28 @@ namespace ZDD.Net.Tests.Specs
             AssertMatchesBruteForce($"seed={seed}", graph, new BicliqueSpec(graph), BruteForceBicliques(graph, sizeFixed: null));
         }
 
+        /// <summary>
+        /// A wider sweep than <see cref="MatchesBruteForceEnumerationOnRandomGraphs"/>, at a size and density
+        /// deliberately chosen to make it likely that some biclique candidate splits into two temporarily
+        /// separate groups (each with its own arbitrary relative-parity origin) before a later edge joins
+        /// them — exactly the scenario <see cref="Specs.BicliqueVertexState"/>'s remarks describe as needing
+        /// the parity union-find and the eager same-side merge on a not-taken edge between two already-grouped
+        /// endpoints, rather than a single global side label.
+        /// </summary>
+        [Theory]
+        [InlineData(9, 0.15)]
+        [InlineData(9, 0.25)]
+        [InlineData(9, 0.4)]
+        [InlineData(8, 0.15)]
+        public void StressMatchesBruteForceEnumerationAcrossManySeeds(int vertexCount, double extraEdgeProbability)
+        {
+            for (int seed = 100; seed < 120; seed++)
+            {
+                Graph graph = SpanningTreeSpecTests.RandomConnectedGraph(vertexCount, extraEdgeProbability, seed);
+                AssertMatchesBruteForce($"v={vertexCount} p={extraEdgeProbability} seed={seed}", graph, new BicliqueSpec(graph), BruteForceBicliques(graph, sizeFixed: null));
+            }
+        }
+
         [Fact]
         public void MatchesBruteForceEnumerationWithIsolatedVertex()
         {
@@ -307,7 +329,15 @@ namespace ZDD.Net.Tests.Specs
             if (vertexCount > 9)
             {
                 throw new ArgumentException(
-                    $"BruteForceBicliques enumerates all 3^vertexCount assignments and cannot handle {vertexCount} vertices.",
+                    $"BruteForceBicliques enumerates all 3^{vertexCount} vertex assignments, which is too many for {vertexCount} vertices.",
+                    nameof(graph));
+            }
+
+            if (edgeCount > BruteForceFamily.MaxVariableCount)
+            {
+                throw new ArgumentException(
+                    $"BruteForceBicliques masks edges into an int (BruteForceFamily.MaxVariableCount = " +
+                    $"{BruteForceFamily.MaxVariableCount}) and cannot handle {edgeCount} edges, even with only {vertexCount} vertices.",
                     nameof(graph));
             }
 
@@ -398,7 +428,8 @@ namespace ZDD.Net.Tests.Specs
         /// <summary>Derives each touched vertex's side by propagating through <paramref name="edgeSet"/>'s edges, as <see cref="IsBiclique"/> needs.</summary>
         private static (int CountA, int CountB) SideCounts(Graph graph, IReadOnlyList<int> edgeSet)
         {
-            TryAssignSides(graph, edgeSet, out Dictionary<int, int> assigned);
+            bool assignable = TryAssignSides(graph, edgeSet, out Dictionary<int, int> assigned);
+            Assert.True(assignable, $"[{string.Join(",", edgeSet)}] is not even a valid 2-coloring, let alone a biclique");
             return (assigned.Values.Count(s => s == 1), assigned.Values.Count(s => s == 2));
         }
 
