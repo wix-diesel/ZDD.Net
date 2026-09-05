@@ -220,6 +220,56 @@ namespace ZDD.Net.Sets
         /// <exception cref="ArgumentException"><paramref name="other"/> does not share this family's <see cref="Universe"/>.</exception>
         public SetSet<T> SubsetsOf(SetSet<T> other) => Combine(other, static (f, g) => f.SubsetsOf(g));
 
+        /// <summary>
+        /// Moves this family onto <paramref name="target"/>: every member set stays the same set of
+        /// elements, but is rebuilt with item indices looked up in <paramref name="target"/> instead of
+        /// <see cref="Universe"/> (M6-6, issue #141). <see cref="Union"/> and the other binary operations
+        /// require both operands to share the exact same <see cref="Universe"/> instance (B18, no implicit
+        /// promotion); <see cref="ToUniverse"/> is the explicit way around that &#8212; typically paired
+        /// with <see cref="SetUniverse{T}.Extend"/> to combine two families that started life on separate
+        /// universes.
+        /// </summary>
+        /// <param name="target">
+        /// The universe to move onto; must contain every element of this family's <see cref="Universe"/>
+        /// (extra elements in <paramref name="target"/> that this family never uses are fine).
+        /// </param>
+        /// <returns>The same family of sets, expressed over <paramref name="target"/>.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="target"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="target"/> is missing one or more of this family's <see cref="Universe"/>'s
+        /// elements &#8212; named in the message.
+        /// </exception>
+        public SetSet<T> ToUniverse(SetUniverse<T> target)
+        {
+            ArgumentNullException.ThrowIfNull(target);
+
+            var itemMap = new int[Universe.Count];
+            List<T>? missing = null;
+
+            for (int i = 0; i < Universe.Count; i++)
+            {
+                T element = Universe.ElementAt(i);
+
+                if (!target.Contains(element))
+                {
+                    (missing ??= new List<T>()).Add(element);
+                    continue;
+                }
+
+                itemMap[i] = target.IndexOf(element);
+            }
+
+            if (missing is not null)
+            {
+                ThrowHelper.ThrowArgumentException(
+                    nameof(target),
+                    $"'{nameof(target)}' is missing {missing.Count} element(s) present in this family's universe: " +
+                    $"{string.Join(", ", missing)}.");
+            }
+
+            return new SetSet<T>(target, Zdd.MapItemsTo(target.Manager, itemMap));
+        }
+
         /// <summary>Keeps only the member sets that are maximal under inclusion.</summary>
         public SetSet<T> Maximal() => new SetSet<T>(Universe, Zdd.Maximal());
 
@@ -438,7 +488,12 @@ namespace ZDD.Net.Sets
 
             if (!ReferenceEquals(Universe, other.Universe))
             {
-                ThrowHelper.ThrowArgumentException(nameof(other), "The two SetSet<T> instances do not share the same SetUniverse<T>; only families built over the same universe can be combined.");
+                ThrowHelper.ThrowArgumentException(
+                    nameof(other),
+                    "The two SetSet<T> instances do not share the same SetUniverse<T>; only families built over the same universe can be combined (B18: no implicit promotion). " +
+                    $"Neither universe need be a superset of the other: build one that covers both with " +
+                    $"'{nameof(SetUniverse<object>.Extend)}' (e.g. 'combined = {nameof(Universe)}.{nameof(SetUniverse<object>.Extend)}({nameof(other)}.{nameof(Universe)}.{nameof(SetUniverse<object>.Elements)})'), " +
+                    $"then move each operand onto it with '{nameof(ToUniverse)}(combined)'.");
             }
 
             return new SetSet<T>(Universe, operation(Zdd, other.Zdd));

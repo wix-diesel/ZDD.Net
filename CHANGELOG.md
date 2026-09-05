@@ -106,6 +106,23 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
   `Excluding` / `Larger` / `Smaller` と同じフィルタ連鎖に組み込める。`SetSet<T>` にも同名の
   ラッパを追加した。負の係数、`bound` が到達可能な最小値／最大値ちょうどの境界、3 演算子すべてで
   事後フィルタ・`LinearConstraintSpec` を直接 `Subset` した結果との一致を確認済み。
+- `SetUniverse<T>.Extend` / `SetSet<T>.ToUniverse` / `GraphSet.ToEdgeOrder`: ユニバース／辺順序を
+  またぐ族の移送（M6-6、issue #141）。`SetSet<T>` の二項演算は `ReferenceEquals(Universe,
+  other.Universe)` を要求する（B18: 暗黙昇格はしない——メモリ使用量が予測不能になるため）ので、
+  別々に作った 2 つの族はこれまで合成不可能だった。`Extend(additionalElements)` は要素を追加した
+  新しい `SetUniverse<T>` を返す——`ZddManager` の変数数は固定（B7）なので既存のマネージャは
+  広げられず、新しいマネージャを作る（元のユニバースと族はそのまま生き続ける）。`ToUniverse(target)`
+  は `Universe.Elements` の各要素を `target.IndexOf` で引いて `itemMap` を作り、
+  `Zdd.MapItemsTo(target.Manager, itemMap)` を呼ぶだけ（M6-5 の土台の上）——`target` に無い要素が
+  あれば、足りない要素名を列挙した `ArgumentException`。二項演算のユニバース不一致の例外メッセージも
+  `ToUniverse` を案内するよう更新した。`GraphSet.ToEdgeOrder(target)` は `Graph.SourceOrder`
+  （`WithEdgeOrder` / `Optimize` が残す辺の対応）から `itemMap` を作る——「`Optimize()` した順序で
+  構築し、結果を元の順序で扱う」という実運用で最も多いパターンを 1 行にする。`Graph` に
+  `SourceOrder` が無ければ `InvalidOperationException`、`target` の辺が対応関係と食い違えば
+  （辺数不一致も含め）どこが食い違うかを添えた `ArgumentException`。別々に作った 2 つの
+  `SetSet<T>` が `Extend` + `ToUniverse` 経由で合成できること、`Extend` 後の族を `ToUniverse` で
+  戻すと元と同じ集合を表すこと、`Optimize()` した族を `ToEdgeOrder` で元の辺順序に戻すと辺集合が
+  完全に一致することを確認済み。
 - `GraphSet.ConnectedSubgraphs` / `SteinerTrees` / `Cuts` / `DegreeConstrained`（`int[]` 版と
   一様な `int` 版）/ `EdgeCovers` / `Knapsacks`: `Specs/` の 22 スペックのうち高レベル API から
   一切触れなかった辺の族を露出（M6-9、issue #144）。いずれも既存の `ConnectedSubgraphSpec` /
