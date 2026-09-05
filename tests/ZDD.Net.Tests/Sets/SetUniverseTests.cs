@@ -1,5 +1,6 @@
 using System;
 using Xunit;
+using ZDD.Net.Core;
 using ZDD.Net.Sets;
 
 namespace ZDD.Net.Tests.Sets
@@ -57,6 +58,66 @@ namespace ZDD.Net.Tests.Sets
 
             Assert.Equal(0, universe.Count);
             Assert.Equal(0, universe.Manager.VariableCount);
+        }
+
+        // ---- Extend（M6-6, issue #141）----
+
+        [Fact]
+        public void ExtendAppendsNewElementsAfterTheExistingOnesKeepingTheirIndices()
+        {
+            var universe = new SetUniverse<string>(new[] { "a", "b" });
+
+            SetUniverse<string> extended = universe.Extend(new[] { "c", "d" });
+
+            Assert.Equal(new[] { "a", "b", "c", "d" }, extended.Elements);
+            Assert.Equal(0, extended.IndexOf("a"));
+            Assert.Equal(1, extended.IndexOf("b"));
+            Assert.Equal(2, extended.IndexOf("c"));
+            Assert.Equal(3, extended.IndexOf("d"));
+            Assert.Equal(4, extended.Manager.VariableCount);
+        }
+
+        [Fact]
+        public void ExtendDropsElementsAlreadyPresentAndDuplicatesAmongThemselves()
+        {
+            var universe = new SetUniverse<string>(new[] { "a", "b" });
+
+            SetUniverse<string> extended = universe.Extend(new[] { "b", "c", "c" });
+
+            Assert.Equal(new[] { "a", "b", "c" }, extended.Elements);
+        }
+
+        [Fact]
+        public void ExtendLeavesTheOriginalUniverseAndItsManagerUntouched()
+        {
+            var universe = new SetUniverse<string>(new[] { "a", "b" });
+            ZddManager originalManager = universe.Manager;
+
+            SetUniverse<string> extended = universe.Extend(new[] { "c" });
+
+            Assert.Equal(2, universe.Count);
+            Assert.Same(originalManager, universe.Manager);
+            Assert.NotSame(originalManager, extended.Manager);
+            Assert.Equal(3, extended.Count);
+        }
+
+        [Fact]
+        public void ExtendWithNoNewElementsStillAllocatesAFreshManager()
+        {
+            var universe = new SetUniverse<string>(new[] { "a", "b" });
+
+            SetUniverse<string> extended = universe.Extend(Array.Empty<string>());
+
+            Assert.Equal(universe.Elements, extended.Elements);
+            Assert.NotSame(universe.Manager, extended.Manager);
+        }
+
+        [Fact]
+        public void ExtendThrowsForNullAdditionalElements()
+        {
+            var universe = new SetUniverse<string>(new[] { "a" });
+
+            Assert.Throws<ArgumentNullException>(() => universe.Extend(null!));
         }
     }
 }

@@ -135,8 +135,72 @@ namespace ZDD.Net.Tests.Sets
 
             var ex = Assert.Throws<ArgumentException>(() => f.Union(g));
             Assert.Equal("other", ex.ParamName);
+            Assert.Contains("ToUniverse", ex.Message, StringComparison.Ordinal);
+
+            // The message must not suggest moving just one operand onto the other's universe: neither is
+            // a superset of the other in general (a primary M6-6 use case), so that advice would just
+            // throw again. It should point at Extend to build a universe covering both instead.
+            Assert.Contains("Extend", ex.Message, StringComparison.Ordinal);
+
             Assert.Throws<ArgumentException>(() => f.Product(g));
             Assert.Throws<ArgumentException>(() => f.SupersetsOf(g));
+        }
+
+        // ---- ToUniverse / SetUniverse.Extend（M6-6, issue #141）----
+
+        [Fact]
+        public void ToUniverseLetsTwoSeparatelyBuiltFamiliesBeCombined()
+        {
+            // The primary completion criterion for M6-6: two SetSet<T> built on entirely separate
+            // SetUniverse<T> instances cannot be combined directly (B18), but can once one is moved onto
+            // a universe that covers both, via SetUniverse<T>.Extend + SetSet<T>.ToUniverse.
+            var universeF = new SetUniverse<string>(new[] { "a", "b" });
+            var universeG = new SetUniverse<string>(new[] { "b", "c" });
+
+            SetSet<string> f = SetSet<string>.FromSets(universeF, new[] { new[] { "a" }, new[] { "a", "b" } });
+            SetSet<string> g = SetSet<string>.FromSets(universeG, new[] { new[] { "b" }, new[] { "b", "c" } });
+
+            SetUniverse<string> combinedUniverse = universeF.Extend(universeG.Elements);
+            SetSet<string> fOnCombined = f.ToUniverse(combinedUniverse);
+            SetSet<string> gOnCombined = g.ToUniverse(combinedUniverse);
+
+            SetSet<string> union = fOnCombined.Union(gOnCombined);
+
+            AssertSameFamily(union, new[] { "a" }, new[] { "a", "b" }, new[] { "b" }, new[] { "b", "c" });
+        }
+
+        [Fact]
+        public void ToUniverseRepresentsTheSameSetsAsTheOriginalFamily()
+        {
+            var original = new SetUniverse<string>(new[] { "a", "b" });
+            SetSet<string> family = SetSet<string>.FromSets(original, new[] { new[] { "a" }, new[] { "a", "b" } });
+
+            SetUniverse<string> extended = original.Extend(new[] { "c" });
+            SetSet<string> moved = family.ToUniverse(extended);
+
+            Assert.Same(extended, moved.Universe);
+            AssertSameFamily(moved, new[] { "a" }, new[] { "a", "b" });
+        }
+
+        [Fact]
+        public void ToUniverseThrowsWhenTargetIsMissingAnElementAndNamesIt()
+        {
+            var universe = new SetUniverse<string>(new[] { "a", "b", "c" });
+            SetSet<string> family = SetSet<string>.FromSets(universe, new[] { new[] { "a", "c" } });
+
+            var target = new SetUniverse<string>(new[] { "a", "b" });
+
+            ArgumentException ex = Assert.Throws<ArgumentException>(() => family.ToUniverse(target));
+            Assert.Equal("target", ex.ParamName);
+            Assert.Contains("c", ex.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ToUniverseThrowsForANullTarget()
+        {
+            SetSet<string> family = SetSet<string>.FromSets(new[] { new[] { "a" } });
+
+            Assert.Throws<ArgumentNullException>(() => family.ToUniverse(null!));
         }
 
         [Fact]
