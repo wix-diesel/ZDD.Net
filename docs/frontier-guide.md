@@ -106,6 +106,10 @@ Graph optimized = grid.Optimize(EdgeOrderStrategy.Bfs);
 | `CutSpec` | `s`–`t` カット（`MinimalOnly` で極小カットだけに絞れる） | フロンティア頂点ごとの成分番号 + `s`/`t` 側フラグ | `IArrayDdSpec` |
 | `ColoringSpec` | グラフの `k` 彩色（隣接頂点が同色にならない）。`RepresentativesOnly` で色の付け替えで同一視できるものを 1 つに絞れる | フロンティア頂点ごとの色 | `IArrayDdSpec`（**変数は頂点 × 色**） |
 | `DfaSpec` | 長さ固定の 2 値文字列のうち、与えた DFA が受理するものの族（グラフに限らない汎用の制約記述。PLAN.md §7.2） | DFA の現在状態 | `IDdSpec<int>` |
+| `DegreeDistributionSpec` | 次数 `d` の頂点がちょうど `counts[d]` 個の辺集合（Graphillion の `degree_distribution_graphs`。M6-11） | フロンティア頂点ごとの現在次数 + 次数ヒストグラムの残数 | `IArrayDdSpec` |
+| `InducedSubgraphSpec` | ある頂点部分集合が誘導する辺集合（Graphillion の `induced_graphs`。連結性は要求しない。M6-12） | フロンティア頂点ごとの `Unknown`/`In`/`Out` の3値（判定は忘却時まで遅延） | `IArrayDdSpec` |
+| `BicliqueSpec` | 完全二部部分グラフ（biclique）。`(a, b)` を渡すとサイズ固定版になる（Graphillion の `bicliques`。M6-13） | フロンティア頂点ごとの所属グループ + 相対サイド（パリティ付き union-find） | `IArrayDdSpec` |
+| `VertexGroupSpec` | 頂点グループごとに互いに素な連結成分へ分ける辺集合（Graphillion の `graphs(vertex_groups=...)`。M6-14） | フロンティア頂点ごとの成分番号 + 所属グループ（未定を含む） | `IArrayDdSpec` |
 
 ```csharp
 using ZddManager manager = new ZddManager(variableCount: 5);
@@ -225,6 +229,36 @@ using ZddManager dfaManager = new ZddManager(variableCount: 6);
 Zdd accepted = FrontierBuilder.Build<DfaSpec, int>(
     dfaManager, new DfaSpec(transitions, initialState: 0, acceptStates: new[] { 0 }, length: 6));
 ```
+
+M6 で追加した 4 つの新規スペック（いずれも辺の族。`variableCount == graph.EdgeCount`）:
+
+```csharp
+Graph grid = Graph.Grid(3, 3);
+int s = 0;
+int t = grid.VertexCount - 1;
+using ZddManager manager = new ZddManager(grid.EdgeCount);
+
+// DegreeDistributionSpec: 次数の上限を 0（counts.Length - 1）にすると、辺を 1 本でも取った時点で
+// どちらかの端点の次数が上限を超えるため、満たせるのは空の辺集合だけになる（Count == 1）。
+Zdd degreeDistributions = FrontierBuilder.Build<DegreeDistributionSpec>(
+    manager, new DegreeDistributionSpec(grid, new[] { grid.VertexCount }));
+
+// InducedSubgraphSpec: 頂点部分集合が誘導する辺集合（連結性は要求しない）。全頂点が誘導する
+// 辺集合はグラフの全辺そのもの。
+Zdd induced = FrontierBuilder.Build<InducedSubgraphSpec>(manager, new InducedSubgraphSpec(grid));
+
+// BicliqueSpec: 完全二部部分グラフ。サイズ固定版（a, b）は非固定版の部分族になる。
+Zdd bicliques = FrontierBuilder.Build<BicliqueSpec>(manager, new BicliqueSpec(grid));
+Zdd fixedSizeBicliques = FrontierBuilder.Build<BicliqueSpec>(manager, new BicliqueSpec(grid, a: 2, b: 2));
+
+// VertexGroupSpec: グループが 1 個のときは ConnectedSubgraphSpec(そのグループ) と一致する。
+Zdd vertexGroups = FrontierBuilder.Build<VertexGroupSpec>(manager, new VertexGroupSpec(grid, new[] { new[] { s, t } }));
+```
+
+`DegreeDistributionSpec` は素朴な DP と既知の正則グラフ数、`InducedSubgraphSpec`/`BicliqueSpec` は
+頂点 8 以下の総当たり照合、`VertexGroupSpec` はグループが 1 個のときの `ConnectedSubgraphSpec` との
+一致（上の `vertexGroups` が `ConnectedSubgraphSpec(grid, {s, t})` と一致する）と、実際の
+Graphillion（`vertex_groups`）との結果一致で、それぞれ正しさを確認している。
 
 ## 4. 構築前の見積り（`EstimateMaxFrontierSize` / `FrontierManager`）
 
@@ -603,6 +637,55 @@ GraphSet cuts = GraphSet.Cuts(grid, s: 0, t: 8, minimalOnly: true);
 GraphSet degreeConstrained = GraphSet.DegreeConstrained(grid, lo: 0, hi: 2);
 GraphSet edgeCovers = GraphSet.EdgeCovers(grid); // DegreeConstrained(grid, lo: 1, hi: grid.EdgeCount) の別名
 GraphSet knapsacks = GraphSet.Knapsacks(grid, weights: new[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 }, capacity: 20);
+```
+
+M6-10〜M6-14 で追加した生成メソッドも同じ流儀。`VertexCovers` / `DominatingSets` は
+`Cliques` / `IndependentSets` と同じ**頂点**の族（`SetSet<int>`）、`Colorings` は
+**(頂点, 色)** の族（`SetSet<(int Vertex, int Color)>`）を返す:
+
+```csharp
+GraphSet regularGraphs = GraphSet.RegularGraphs(grid, k: 2); // DegreeConstrained(grid, lo: 2, hi: 2) の別名
+GraphSet degreeDistributions = GraphSet.DegreeDistributions(grid, new[] { 5, 4 }); // 次数 0 が5個、次数 1 が4個
+GraphSet inducedSubgraphs = GraphSet.InducedSubgraphs(grid);
+GraphSet bicliques = GraphSet.Bicliques(grid, a: 2, b: 2);
+GraphSet vertexGroups = GraphSet.VertexGroups(grid, new[] { new[] { 0, 4 }, new[] { 2, 6 } });
+
+SetSet<int> vertexCovers = GraphSet.VertexCovers(grid);
+SetSet<int> dominatingSets = GraphSet.DominatingSets(grid);
+GraphSet partitions = GraphSet.Partitions(grid, k: 3, minBlockSize: 1, maxBlockSize: 9);
+GraphSet balancedPartitions = GraphSet.BalancedPartitions(grid, k: 3, tolerance: 0.2);
+
+SetSet<(int Vertex, int Color)> colorings = GraphSet.Colorings(Graph.Complete(4), k: 4);
+foreach (var coloring in colorings)
+{
+    foreach (var (v, c) in coloring) { /* 頂点 v の色は c */ }
+}
+```
+
+Graphillion の単一入口 `graphs(degree_constraints=, num_edges=, num_comps=, no_loop=,
+vertex_groups=, graphset=, ...)` 相当が `GraphConstraints` / `GraphSet.Graphs` / `gs.Where`
+（M6-15、issue #150）。今までも `spec.And(other)` で個別に合成できたが、制約をまとめて 1 箇所
+から指定できる:
+
+```csharp
+var constraints = new GraphConstraints
+{
+    DegreeConstraints = new Dictionary<int, (int Lo, int Hi)> { [0] = (0, 2) }, // 頂点ごとの次数レンジ
+    EdgeCount = (Min: 4, Max: 8),
+    NoLoop = true,
+};
+
+GraphSet constrained = GraphSet.Graphs(grid, constraints);   // 母集合から新規に構築
+GraphSet filtered = paths.Where(constraints);                // 既存の族を絞り込む（事後フィルタより中間 ZDD が小さい）
+```
+
+異なるユニバース／辺順序の族どうしを合成したいときは、`SetUniverse<T>.Extend` /
+`SetSet<T>.ToUniverse` / `GraphSet.ToEdgeOrder`（M6-6、issue #141）を使う。`SetSet<T>` の
+二項演算は同じ `Universe` インスタンスを要求するため、別々に作った族はこれで揃えてから合成する:
+
+```csharp
+GraphSet optimized = GraphSet.Paths(grid.Optimize(), from: 0, to: 8); // Optimize() した辺順序で構築
+GraphSet backToOriginal = optimized.ToEdgeOrder(grid);                // 元の辺順序に戻して他の族と合成できる
 ```
 
 任意の要素型（グラフの辺以外）の族を同じ流儀で扱いたいときは `ZDD.Net.Sets.SetSet<T>` を使う。

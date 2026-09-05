@@ -21,6 +21,7 @@ namespace ZDD.Net.Samples.FrontierGuide
             BuiltInSpecs();
             GraphAndFrontierManager();
             M4Specs();
+            M6Specs();
             EdgeOrderOptimization();
             BuildOptionsLimits();
             CustomSpecNoThreeConsecutive();
@@ -199,6 +200,42 @@ namespace ZDD.Net.Samples.FrontierGuide
             Zdd accepted = FrontierBuilder.Build<DfaSpec, int>(
                 dfaManager, new DfaSpec(transitions, initialState: 0, acceptStates: new[] { 0 }, length: 6));
             Assert(accepted.Count == 32, "DfaSpec: length-6 strings with an even number of 1s number 2^5 = 32");
+        }
+
+        /// <summary>「組み込みスペック」節: M6 で追加した 4 つの新規スペック。</summary>
+        private static void M6Specs()
+        {
+            Graph grid = Graph.Grid(3, 3);
+            int s = 0;
+            int t = grid.VertexCount - 1;
+            using ZddManager manager = new ZddManager(grid.EdgeCount);
+
+            // DegreeDistributionSpec: 次数の上限を 0（counts.Length - 1）にすると、辺を 1 本でも取った
+            // 時点でどちらかの端点の次数が上限を超えるため、満たせるのは空の辺集合だけになる。
+            Zdd degreeDistributions = FrontierBuilder.Build<DegreeDistributionSpec>(
+                manager, new DegreeDistributionSpec(grid, new[] { grid.VertexCount }));
+            Assert(degreeDistributions.Count == 1, "DegreeDistributionSpec: only the empty edge set has every vertex at degree 0");
+
+            // InducedSubgraphSpec: 頂点部分集合が誘導する辺集合（連結性は要求しない）。全頂点が誘導する
+            // 辺集合はグラフの全辺そのもの。
+            int[] allEdges = new int[grid.EdgeCount];
+            for (int i = 0; i < allEdges.Length; i++)
+            {
+                allEdges[i] = i;
+            }
+
+            Zdd induced = FrontierBuilder.Build<InducedSubgraphSpec>(manager, new InducedSubgraphSpec(grid));
+            Assert(induced.Contains(allEdges), "InducedSubgraphSpec: the full vertex set induces every edge");
+
+            // BicliqueSpec: 完全二部部分グラフ。サイズ固定版（a, b）は非固定版の部分族になる。
+            Zdd bicliques = FrontierBuilder.Build<BicliqueSpec>(manager, new BicliqueSpec(grid));
+            Zdd fixedSizeBicliques = FrontierBuilder.Build<BicliqueSpec>(manager, new BicliqueSpec(grid, a: 2, b: 2));
+            Assert(fixedSizeBicliques.IsSubsetOf(bicliques), "BicliqueSpec(a, b) is a subset of the unconstrained family");
+
+            // VertexGroupSpec: グループが 1 個のときは ConnectedSubgraphSpec(そのグループ) と一致する。
+            Zdd connected = FrontierBuilder.Build<ConnectedSubgraphSpec>(manager, new ConnectedSubgraphSpec(grid, new[] { s, t }));
+            Zdd vertexGroups = FrontierBuilder.Build<VertexGroupSpec>(manager, new VertexGroupSpec(grid, new[] { new[] { s, t } }));
+            Assert(vertexGroups == connected, "VertexGroupSpec with 1 group matches ConnectedSubgraphSpec(that group)");
         }
 
         /// <summary>

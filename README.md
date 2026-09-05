@@ -11,7 +11,7 @@ C# ネイティブ実装の ZDD（Zero-suppressed Decision Diagram）／フロ�
 比例する手間で行える。.NET にはこれのネイティブ実装が事実上存在しない（CUDD の P/Invoke ラッパ
 しか選択肢がない）ことが、このライブラリの動機になっている。
 
-## 到達点（v0.5 = v0.4 + I/O・メモリ管理）
+## 到達点（v0.6 = v0.5 + API 拡充と相互運用）
 
 - **Core レイヤ（ZDD エンジン）**: `ZddManager` / `Zdd` によるノード表・一意化表・演算キャッシュと、
   家族代数の全演算（和・積・差・対称差・積(`*`)・商・剰余・Meet・`SupersetsOf`/`SubsetsOf` などの
@@ -31,7 +31,8 @@ C# ネイティブ実装の ZDD（Zero-suppressed Decision Diagram）／フロ�
   `IndependentSetSpec` / `CliqueSpec` / `VertexCoverSpec` / `DominatingSetSpec` /
   `DegreeConstraintSpec` / `ConnectedSubgraphSpec` / `SteinerTreeSpec` / `GraphPartitionSpec` /
   `CutSpec` / `ColoringSpec` / `DfaSpec` / `PowerSetSpec` / `CardinalitySpec` /
-  `LinearConstraintSpec` / `KnapsackSpec`）。いずれも正しさを検証済み（OEIS A007764・Kirchhoff の
+  `LinearConstraintSpec` / `KnapsackSpec` / `InducedSubgraphSpec` / `BicliqueSpec` /
+  `DegreeDistributionSpec` / `VertexGroupSpec`）。いずれも正しさを検証済み（OEIS A007764・Kirchhoff の
   行列木定理・パーマネント照合・彩色多項式・最大流最小カット定理・完全グラフとPetersenグラフの
   既知値など。[docs/benchmarks.md](docs/benchmarks.md) に実行時間・フロンティア幅の基準値）
 - **数千辺への対応**: 辺順序の自動最適化（`Graph.Optimize`。BFS/DFS/格子専用/ビームサーチの
@@ -61,6 +62,18 @@ C# ネイティブ実装の ZDD（Zero-suppressed Decision Diagram）／フロ�
   壊れた結果を返さない
 - **DOT 出力の拡張（v0.5）**: `DotOptions` で状態ラベル・レベルラベル・部分表示（`MaxLevels` /
   `MaxNodes` / `FocusNodeId`）・スタイルを指定できる。既定は今までの `ToDot()` と完全に同じ出力
+- **API 拡充と相互運用（v0.6）**: 他ライブラリとの比較で見つかった穴を埋めた——部分ユニバースでの
+  補集合（`Zdd.ComplementWithin` / `ZddManager.PowerSetOf`）、アロケーションなしの集合列挙
+  （`Zdd.EnumerateInto`）、上限超過を例外にしない構築（`FrontierBuilder.TryBuild`）、項目写像と
+  マネージャ間転送（`Zdd.MapItems` / `MapItemsTo` / `TransferTo`）、ユニバース／辺順序をまたぐ族の
+  移送（`SetUniverse.Extend` / `SetSet.ToUniverse` / `GraphSet.ToEdgeOrder`）、Graphillion 由来の
+  族操作（`AddSomeItem` / `RemoveSomeItem` / `RemoveAddSomeItems`、`CostAtMost` / `CostAtLeast` /
+  `CostEquals`）。**`GraphSet` の露出**により `ConnectedSubgraphs` / `SteinerTrees` / `Cuts` /
+  `DegreeConstrained` / `EdgeCovers` / `Knapsacks` / `VertexCovers` / `DominatingSets` /
+  `Partitions` / `BalancedPartitions` / `Colorings` / `RegularGraphs` / `DegreeDistributions` /
+  `InducedSubgraphs` / `Bicliques` / `VertexGroups` が高レベル API から使えるようになり、
+  Graphillion の単一入口 `graphs(...)` 相当の統合ビルダ `GraphSet.Graphs(graph, constraints)` /
+  `gs.Where(constraints)` も加わった
 
 `GraphSet` を使った 5 行サンプル（5×5 格子の対角 s–t 単純パスを 1 本も展開せずに数える）:
 
@@ -80,7 +93,7 @@ Console.WriteLine(paths.Count); // 8512（OEIS A007764）
 
 ## インストール
 
-NuGet パッケージは `v0.5.0-preview.1` のようなプレリリースタグから生成される
+NuGet パッケージは `v0.6.0-preview.1` のようなプレリリースタグから生成される
 （v1.0 に達するまではプレリリース版として `--prerelease` が要る）。
 
 ```sh
@@ -141,6 +154,9 @@ push ごとに再公開する。M5-6、issue #58）。以下は同じ内容を�
   項目写像・マネージャ間転送・ユニバースをまたぐ族の移送・統合ビルダ `Graphs()`・追加スペック）
 - **[docs/design/m7-directed-graphs.md](docs/design/m7-directed-graphs.md)** — v0.7 設計書（有向グラフ対応:
   `DirectedGraph`・有向パス/閉路/arborescence・`DirectedGraphSet`）
+- **[docs/graphillion-mapping.md](docs/graphillion-mapping.md)** — Graphillion 対応表（暫定版。本番の
+  移行ガイドは M8-4）
+- **[docs/release-notes](docs/release-notes/v0.6.0.md)** — バージョンごとのリリースノート
 - **[CHANGELOG.md](CHANGELOG.md)** — 変更履歴
 
 ## ライセンス

@@ -12,7 +12,8 @@
 dotnet run --project samples/Zdd.ApiGuide
 ```
 
-- 対象バージョン: v0.4（Core エンジン。以下の演算・API 自体は M1 完成時点から変わっていない。
+- 対象バージョン: v0.6（Core エンジン。演算の大半は M1 完成時点から変わっていないが、
+  `ComplementWithin` / `EnumerateInto` / `MapItems` 系 / `AddSomeItem` 系は M6 で追加された。
   フロンティア法・グラフ API は [docs/frontier-guide.md](frontier-guide.md)、
   「格子グラフの s–t パスを数える」から始まる一本道の入門は [docs/tutorial.md](tutorial.md) を参照）
 
@@ -70,6 +71,7 @@ Console.WriteLine(containingItem0.Count); // 4
 | `manager.Empty` | 空の族 ∅（要素を 1 つも持たない） |
 | `manager.Base` | `{∅}`（空集合だけを要素に持つ族） |
 | `manager.Singleton(item)` | 1 要素集合 `{{item}}` だけを持つ族 |
+| `manager.PowerSetOf(items)` | `2^items`（`items` の冪集合。全変数の冪集合が欲しいなら `manager.Empty.Complement()`） |
 | `manager.VariableCount` | この manager が扱う item の個数 |
 | `manager.NodeCount` | manager 全体で共有している非終端ノードの総数 |
 | `manager.GetStatistics()` | ノード表・一意化表・演算キャッシュの統計（`ZddStatistics`） |
@@ -99,6 +101,7 @@ Zdd b = manager.Singleton(1) | manager.Singleton(2); // {{1}, {2}}
 | `F.Difference(G)` | `F - G` | 差 `F ∖ G`（族としての差） |
 | `F.SymmetricDifference(G)` | `F ^ G` | 対称差 `F △ G` |
 | `F.Complement()` | `~F` | 補 `2^U ∖ F`（`U` は manager の全変数） |
+| `F.ComplementWithin(items)` | — | 部分ユニバースでの補 `2^items ∖ F`。`Complement()` は `ComplementWithin(全変数)` と一致する |
 | `F.IsSubsetOf(G)` | — | `F` のすべての集合が `G` にも属するか |
 | `F.Overlaps(G)` | — | `F` と `G` に共通の集合があるか |
 
@@ -149,6 +152,22 @@ Zdd reconstructed = quotient * b | remainder;
 | `F.CountBySize()` | 要素数ごとの個数分布 | O(ノード数 × 最大要素数) |
 | `F.Support()` | 族が実際に使っている item の一覧 | 族の走査 |
 | `F.NodeCount` | この族から到達できる非終端ノード数 | 族の走査 |
+
+### 3.4 局所探索: 1 要素だけ動かす
+
+Graphillion の `add_some_element` / `remove_some_element` / `remove_add_some_elements` 相当。
+新しい演算は追加しておらず、既存の単項演算の合成として実装されている（`items` を省略すると
+manager の全変数を対象にする）。
+
+| メソッド | 意味 | 計算量 |
+|---|---|---|
+| `F.RemoveSomeItem(items?)` | `⋃_{e∈items} F.OnSet(e)`。`items` のどれか 1 つを取り除いた集合の和 | O(\|items\|) 回の族演算 |
+| `F.AddSomeItem(items?)` | `⋃_{e∈items} F.OffSet(e).Change(e)`。`items` のどれか 1 つを足した集合の和 | O(\|items\|) 回の族演算 |
+| `F.RemoveAddSomeItems(items?)` | `e ≠ e'` の組ごとに `e` を外し `e'` を足す。「1 手違いの解」を数える用途 | O(\|items\|²) 回の族演算 |
+
+数千要素の manager では、既定の引数なし版（全変数が対象）を避け、`items` 版で対象を絞ることを
+推奨する（`RemoveAddSomeItems` は特に `items` の個数の 2 乗で効いてくる）。`SetSet<T>` と
+`GraphSet` にも同名のラッパがある。
 
 ## 4. `Count` / 列挙 / `ElementAt` / `Sample` / `MaxWeight` の実例
 

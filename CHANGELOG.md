@@ -8,6 +8,20 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-05
+
+M6「API 拡充と相互運用」マイルストーン（[docs/PLAN.md](docs/PLAN.md) §12）の完了リリース。
+v1.0 に向けたプレリリースとして公開する。他ライブラリ（Graphillion / TdZdd / SAPPOROBDD /
+CUDD+EXTRA）との比較で見つかった、「エンジンはあるのに入口が無い」類の欠落を埋めた:
+決定済み未実装 API の穴埋め（`ComplementWithin` / `EnumerateInto` / `TryBuild`）、項目写像と
+マネージャ間転送（`MapItems` / `MapItemsTo` / `TransferTo`）、ユニバース／辺順序をまたぐ族の移送
+（`SetUniverse.Extend` / `SetSet.ToUniverse` / `GraphSet.ToEdgeOrder`）、Graphillion 由来の族操作
+（`AddSomeItem` ほか、`CostAtMost` ほか）、**`GraphSet` の露出**（`Specs/` のうち高レベル API から
+一切触れていなかった 13 スペックが使えるようになった）、新規スペック 4 つ（`InducedSubgraphSpec` /
+`BicliqueSpec` / `DegreeDistributionSpec` / `VertexGroupSpec`）、統合ビルダ `GraphSet.Graphs()`。
+Graphillion からの移行者向けに、対応表の暫定版を [docs/graphillion-mapping.md](docs/graphillion-mapping.md)
+に用意した（本番の移行ガイドは M8-4）。次の M7 は有向グラフ対応（v0.7）。
+
 ### Added
 
 - `Zdd.ComplementWithin(items)` / `ZddManager.PowerSetOf(items)`: 部分ユニバースでの補集合
@@ -137,6 +151,27 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
   ものと一致）、`SteinerTrees` の `MinWeight` が M4-5 の既知の最小シュタイナー木と、`Cuts` の
   `MinWeight` が M4-6 の最大流最小カット定理による照合とそれぞれ一致すること、
   `Including` / `Excluding` / `Larger` / `Smaller` / `CostAtMost` と連鎖できることを確認済み。
+- `GraphSet.VertexCovers` / `DominatingSets` / `Partitions` / `BalancedPartitions` / `Colorings`:
+  `GraphSet` 露出②（M6-10、issue #145）。M6-9 の続きで、頂点の族と彩色を高レベル API から使える
+  ようにした。`VertexCovers` / `DominatingSets` は `Cliques` / `IndependentSets` と同じ
+  `GenerateVertexFamily` に流すだけの薄いラッパー（既存の `VertexCoverSpec` / `DominatingSetSpec`）。
+  `Partitions(graph, k, minBlockSize, maxBlockSize)` は既存の `GraphPartitionSpec`（M4-6）をそのまま
+  `Generate` に渡すだけ。`BalancedPartitions(graph, k, tolerance)` は `Partitions` の糖衣で、
+  Graphillion の `balanced_partitions` 相当——`minBlockSize = floor(n/k · (1-tolerance))`、
+  `maxBlockSize = ceil(n/k · (1+tolerance))`（`n` は頂点数）を計算して `Partitions` に委譲する。
+  `minBlockSize` は 1 未満に丸まっても 1 に切り上げる（`tolerance` が大きいときの退化を防ぐ）。
+  `tolerance` は非負かつ有限でなければ `ArgumentOutOfRangeException`。`Colorings(graph, k,
+  representativesOnly)` は既存の `ColoringSpec`（M4-7）を使うが、`ColoringSpec` の変数エンコーディング
+  が「頂点 × 色」（変数 index = `v * k + c`、vertex-major・color-minor）であるため、`SetSet<int>` で
+  そのまま返すと利用者が復号しなければならない——そこで `SetUniverse<(int Vertex, int Color)>` を
+  組んで返し、`foreach (var coloring in colorings) foreach (var (v, c) in coloring)` と自然に書ける
+  ようにした。`VertexCovers` / `DominatingSets` は対応するスペックを直接 `FrontierBuilder.Build` した
+  結果と `Count` が一致すること、`Partitions` は M4-6 の `GraphPartitionSpec` を直接構築した結果と
+  一致すること、`BalancedPartitions` の境界計算（`n` が `k` で割り切れる／割り切れない、
+  `tolerance = 0`、丸めが上下双方に効くケース、`minBlockSize` が 1 に切り上がるケース）と非負・有限で
+  ない `tolerance` の例外を単体テストで固定したこと、`Colorings` の復号が「頂点ごとにちょうど 1 色」
+  「隣接頂点が同色でない」正しい彩色になっていること（小グラフの総当たりと一致）、完全グラフでの
+  彩色数が彩色多項式（下降階乗冪）と一致することを確認済み。
 - `DegreeDistributionSpec` / `GraphSet.RegularGraphs` / `GraphSet.DegreeDistributions`: 次数系スペックの
   拡充（M6-11、issue #146）。`RegularGraphs(graph, k)` は専用スペックを新設せず
   `DegreeConstrained(graph, lo: k, hi: k)` の別名にした——k 正則は「全頂点の次数がちょうど k」であり
@@ -155,6 +190,51 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
   Petersen グラフの既知の 3 正則部分グラフ（いずれも自分自身 1 個だけ）との照合、`counts` の合計が
   頂点数と食い違う場合の空族、残ヒストグラムが負になるケースの枝刈り、6×6 格子での代表的なフロン
   ティア幅の実測、`GetChild` が無割り当てであることを確認済み。
+- `InducedSubgraphSpec` / `GraphSet.InducedSubgraphs`: 頂点誘導部分グラフ（M6-12、issue #147）。
+  Graphillion の `induced_graphs` 相当——頂点部分集合 `S` を選んだとき、`S` 内の両端点を持つ辺は
+  **すべて**選ばれていなければならない族（普通の部分グラフと違い「`S` 内に辺があるのに選ばない」を
+  許さない）。`S` 自体はパラメータではなく、族は辺集合 `F` として一意に定まる——`F` が触れる頂点の
+  集合が唯一あり得る `S` で、`F` に触れられない孤立頂点は `S` のどちら側にあっても結果は変わらない
+  ため実質的に「圏外（`Out`）」扱いになる。連結性は要求しない（Graphillion 同様）——連結な誘導部分
+  グラフが欲しければ `ConnectedSubgraphs` を別に構築して `Zdd.Intersect` で合成する。状態はフロン
+  ティア頂点ごとに `InducedVertexState`（`Unknown` / `In` / `Out` の 3 値、bit-packing に乗る
+  2 ビット）。辺を選ぶ場合は両端点を `In` に確定（すでに `Out` なら ⊥）。選ばない場合、両端点が
+  ともに `In` になることだけが禁止だが、この判定を即座に行うと `Unknown` の内訳で状態が分岐して
+  しまうため、判定を頂点が忘却されるまで遅延させる——忘却時に `Unknown` のままなら `Out` として
+  確定させる。頂点 8 以下の総当たり照合（全頂点部分集合の誘導辺集合と一致）、遅延判定が正しいこと
+  （選ばない辺の両端が後から `In` になるケースを含む）、孤立頂点・辺を持たないグラフの境界、
+  `ConnectedSubgraphs` との `And` 合成が事後 `Intersect` と一致すること、`IArrayDdSpec` として
+  反復実装であることを確認済み。
+- `BicliqueSpec` / `GraphSet.Bicliques`（無指定版とサイズ固定 `(a, b)` 版）: 完全二部部分グラフ
+  （M6-13、issue #148）。Graphillion の `bicliques` 相当——頂点を `SideA` / `SideB` / 未使用の
+  3 値に分け、両側の**全ての**頂点対の間に辺があり、それが全て選ばれていることを要求する族。
+  `InducedSubgraphSpec`（M6-12）と同じ 3 値状態の構造を再利用し、判定を忘却時まで遅延させる方針も
+  共通（辺を選ぶ場合は両端点が異なる側でなければ ⊥、選ばない場合は両端点が異なる側に確定した時点で
+  ⊥）。状態はパリティ付きの union-find（`BicliqueVertexState`）で頂点ごとの所属グループと相対サイド、
+  連結性チェック用のグループ数を持つ。空の辺集合（両側 0 頂点の自明な biclique）は族に含まれる——
+  `CliqueSpec` / `IndependentSetSpec` が空の頂点集合を含むのと同じ扱い。サイズ固定オーバーロード
+  `BicliqueSpec(graph, a, b)` はグループごとの両側の残り人数を追加でカウントし、非固定版より状態・
+  フロンティア幅が小さい（`a`/`b` の入れ替えはどちらの割り当ても受理する——2 つの側はラベル自体に
+  意味がないため）。小グラフでの総当たり照合、完全二部グラフ `K_{a,b}` の既知値との照合、サイズ固定
+  版が非固定版の部分族になっていること、`IArrayDdSpec` として反復実装であることを確認済み。
+- `VertexGroupSpec` / `GraphSet.VertexGroups`: 頂点グループ連結制約（M6-14、issue #149）。
+  Graphillion の `graphs(vertex_groups=...)` 相当——同じグループの頂点は必ず同じ連結成分に入り、
+  違うグループの頂点は決して同じ連結成分に入らない、という制約。`ConnectedSubgraphSpec` の単一終端
+  集合を複数の互いに排他な終端集合へ一般化したもので、複数端子対の同時配線や、各地区が分断されず
+  かつ他地区と混ざらない地域割り制約に使う。どのグループにも属さない頂点は自由——単独でも、どれか
+  1 つのグループの成分に加わってもよいが、2 つの異なるグループを橋渡しすることだけは禁止
+  （Graphillion の `vertex_groups` の挙動に合わせた）。状態は `GraphPartitionSpec` と同系の comp
+  配列に、各成分が確定しているグループ（未定を含む）を持たせたもの（`VertexGroupComponentState`）に
+  加え、グループごとに「フロンティアに導入済みのメンバ数」と「現在そのグループに束縛されている独立
+  した成分数」の 2 つのカウンタを持つ。2 つの成分が併合されるとき、異なるグループに確定した者同士
+  なら ⊥、片方だけ確定していれば併合後の成分がそのグループを引き継ぐ。頂点が忘却されて成分が閉じる
+  とき、その成分がグループに束縛されていれば、そのグループの全メンバがすでに登場済みかつこれが唯一
+  の開いた成分でない限り ⊥ にする（そうでなければグループの誰かが二度と辿り着けない成分に取り残
+  される）。グループが 0 個または全て空なら全部分グラフ（`PowerSetSpec` と同じ族）に、グループが
+  1 個だけなら `ConnectedSubgraphSpec`（その終端集合）と一致する。小グラフでの総当たり照合、
+  Graphillion の `vertex_groups` との結果一致（M5-2 の Graphillion 互換 I/O 経由で族そのものを突き
+  合わせ）、グループが 1 個のときの `ConnectedSubgraphSpec` との一致、空グループ・1 頂点だけの
+  グループの境界、`IArrayDdSpec` として反復実装であることを確認済み。
 - `GraphConstraints` / `GraphSet.Graphs(graph, constraints)` / `GraphSet.Where(constraints)`: 統合ビルダ
   （M6-15、issue #150）。Graphillion の単一入口 `graphs(degree_constraints=, num_edges=, num_comps=,
   no_loop=, vertex_groups=, graphset=, ...)` 相当——今までも `spec.And(other)` で書けたが、Graphillion
