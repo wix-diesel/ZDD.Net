@@ -178,6 +178,123 @@ namespace ZDD.Net.Tests.Graphs
         }
 
         [Fact]
+        public void VertexCoversAndDominatingSetsAreVertexFamiliesMatchingDirectSpecBuild()
+        {
+            Graph graph = Graph.Complete(5);
+
+            SetSet<int> covers = GraphSet.VertexCovers(graph);
+            using (ZddManager manager = new ZddManager(graph.VertexCount))
+            {
+                Zdd expected = FrontierBuilder.Build<VertexCoverSpec>(manager, new VertexCoverSpec(graph));
+                Assert.Equal(expected.Count, covers.Count);
+            }
+
+            SetSet<int> dominatingSets = GraphSet.DominatingSets(graph);
+            using (ZddManager manager = new ZddManager(graph.VertexCount))
+            {
+                Zdd expected = FrontierBuilder.Build<DominatingSetSpec>(manager, new DominatingSetSpec(graph));
+                Assert.Equal(expected.Count, dominatingSets.Count);
+            }
+        }
+
+        [Fact]
+        public void PartitionsMatchesDirectGraphPartitionSpecBuild()
+        {
+            Graph graph = Graph.Grid(3, 3);
+            GraphSet actual = GraphSet.Partitions(graph, k: 3, minBlockSize: 1, maxBlockSize: 9);
+
+            using ZddManager manager = new ZddManager(graph.EdgeCount);
+            Zdd expected = FrontierBuilder.Build<GraphPartitionSpec>(manager, new GraphPartitionSpec(graph, k: 3, minBlockSize: 1, maxBlockSize: 9));
+
+            AssertSameEdgeSets(graph, actual, expected);
+        }
+
+        // M6-10 completion criteria: BalancedPartitions's boundary calculation
+        // (minBlockSize = floor(n/k * (1 - tolerance)), maxBlockSize = ceil(n/k * (1 + tolerance)))
+        // pinned exactly, for both evenly- and unevenly-divisible (n, k), tolerance = 0, and rounding on
+        // both sides.
+        [Theory]
+        [InlineData(3, 3, 3, 0.0)]   // n=9, evenly divisible, tolerance 0: [3, 3]
+        [InlineData(2, 4, 3, 0.0)]   // n=8, not evenly divisible, tolerance 0: [2, 3]
+        [InlineData(2, 3, 4, 0.0)]   // n=6, not evenly divisible, tolerance 0: [1, 2]
+        [InlineData(2, 3, 3, 0.5)]   // n=6, evenly divisible, wide tolerance: [1, 3]
+        [InlineData(2, 4, 2, 0.25)]  // n=8, evenly divisible, tolerance rounds both ways: [3, 5]
+        public void BalancedPartitionsMatchesPartitionsWithDocumentedBoundaryFormula(int rows, int cols, int k, double tolerance)
+        {
+            Graph graph = Graph.Grid(rows, cols);
+            double average = (double)graph.VertexCount / k;
+            int expectedMin = Math.Max(1, (int)Math.Floor(average * (1.0 - tolerance)));
+            int expectedMax = (int)Math.Ceiling(average * (1.0 + tolerance));
+
+            GraphSet actual = GraphSet.BalancedPartitions(graph, k, tolerance);
+            GraphSet expected = GraphSet.Partitions(graph, k, expectedMin, expectedMax);
+
+            AssertSameEdgeSetContent(expected, actual);
+        }
+
+        [Fact]
+        public void BalancedPartitionsClampsMinBlockSizeToAtLeastOne()
+        {
+            // n=4, k=4, tolerance=1.0: average * (1 - tolerance) == 0, which must clamp up to 1.
+            Graph graph = Graph.Grid(2, 2);
+            GraphSet actual = GraphSet.BalancedPartitions(graph, k: 4, tolerance: 1.0);
+            GraphSet expected = GraphSet.Partitions(graph, k: 4, minBlockSize: 1, maxBlockSize: 2);
+
+            AssertSameEdgeSetContent(expected, actual);
+        }
+
+        [Theory]
+        [InlineData("path4", 2)]
+        [InlineData("path4", 3)]
+        [InlineData("cycle5", 3)]
+        [InlineData("complete5", 5)]
+        public void ColoringsDecodeToProperColoringsMatchingBruteForce(string graphName, int k)
+        {
+            Graph graph = NamedGraph(graphName);
+            SetSet<(int Vertex, int Color)> colorings = GraphSet.Colorings(graph, k);
+
+            var actualKeys = new HashSet<string>();
+            foreach (IReadOnlySet<(int Vertex, int Color)> coloring in colorings)
+            {
+                var colorOf = new int[graph.VertexCount];
+                Array.Fill(colorOf, -1);
+
+                foreach ((int vertex, int color) in coloring)
+                {
+                    Assert.Equal(-1, colorOf[vertex]); // exactly one (v, c) pair per vertex
+                    colorOf[vertex] = color;
+                }
+
+                Assert.All(colorOf, c => Assert.NotEqual(-1, c)); // every vertex got a color
+
+                for (int e = 0; e < graph.EdgeCount; e++)
+                {
+                    Edge edge = graph.GetEdge(e);
+                    Assert.NotEqual(colorOf[edge.U], colorOf[edge.V]); // no adjacent same-colored vertices
+                }
+
+                actualKeys.Add(string.Join(";", colorOf));
+            }
+
+            HashSet<string> expectedKeys = BruteForceProperColorings(graph, k);
+            Assert.Equal(expectedKeys, actualKeys);
+        }
+
+        [Theory]
+        [InlineData(1, 1)]
+        [InlineData(2, 2)]
+        [InlineData(3, 3)]
+        [InlineData(4, 3)]
+        [InlineData(4, 4)]
+        public void ColoringsCountMatchesChromaticPolynomialOfCompleteGraphs(int n, int k)
+        {
+            Graph graph = Graph.Complete(n);
+            SetSet<(int Vertex, int Color)> colorings = GraphSet.Colorings(graph, k);
+
+            Assert.Equal(FallingFactorial(k, n), colorings.Count);
+        }
+
+        [Fact]
         public void IncludingExcludingMatchPostHocFilteringExactly()
         {
             Graph grid = Graph.Grid(4, 4);
@@ -1026,6 +1143,72 @@ namespace ZDD.Net.Tests.Graphs
 
         private static string EdgeSetKey(IEnumerable<Edge> set) =>
             string.Join(";", set.Select(e => $"{Math.Min(e.U, e.V)}-{Math.Max(e.U, e.V)}").OrderBy(s => s, StringComparer.Ordinal));
+
+        /// <summary>
+        /// Compares two <see cref="GraphSet"/>s by their member edge sets rather than by
+        /// <see cref="GraphSet.Equals(GraphSet)"/>, which additionally requires the exact same
+        /// <see cref="GraphSet.Universe"/> instance &#8212; too strict when <paramref name="expected"/> and
+        /// <paramref name="actual"/> come from independent generator calls, each building its own universe.
+        /// </summary>
+        private static void AssertSameEdgeSetContent(GraphSet expected, GraphSet actual)
+        {
+            HashSet<string> expectedKeys = expected.Select(EdgeSetKey).ToHashSet();
+            HashSet<string> actualKeys = actual.Select(EdgeSetKey).ToHashSet();
+            Assert.Equal(expectedKeys, actualKeys);
+        }
+
+        /// <summary>Every proper <c>k</c>-coloring of <paramref name="graph"/>, by trying all <c>k^n</c> assignments.</summary>
+        private static HashSet<string> BruteForceProperColorings(Graph graph, int k)
+        {
+            var result = new HashSet<string>();
+            var colorOf = new int[graph.VertexCount];
+            BruteForceProperColoringsCore(graph, k, colorOf, vertex: 0, result);
+            return result;
+        }
+
+        private static void BruteForceProperColoringsCore(Graph graph, int k, int[] colorOf, int vertex, HashSet<string> result)
+        {
+            if (vertex == graph.VertexCount)
+            {
+                result.Add(string.Join(";", colorOf));
+                return;
+            }
+
+            for (int c = 0; c < k; c++)
+            {
+                bool ok = true;
+                for (int e = 0; e < graph.EdgeCount && ok; e++)
+                {
+                    Edge edge = graph.GetEdge(e);
+                    int other = edge.U == vertex ? edge.V : edge.V == vertex ? edge.U : -1;
+
+                    if (other >= 0 && other < vertex && colorOf[other] == c)
+                    {
+                        ok = false; // an already-colored neighbor has this same color
+                    }
+                }
+
+                if (!ok)
+                {
+                    continue;
+                }
+
+                colorOf[vertex] = c;
+                BruteForceProperColoringsCore(graph, k, colorOf, vertex + 1, result);
+            }
+        }
+
+        /// <summary><c>k * (k - 1) * ... * (k - n + 1)</c>, the chromatic polynomial of <see cref="Graph.Complete"/>.</summary>
+        private static BigInteger FallingFactorial(int k, int n)
+        {
+            BigInteger result = BigInteger.One;
+            for (int i = 0; i < n; i++)
+            {
+                result *= k - i;
+            }
+
+            return result;
+        }
 
         private static void AssertIsSimplePath(Graph graph, int s, int t, IReadOnlySet<Edge> edgeSet)
         {

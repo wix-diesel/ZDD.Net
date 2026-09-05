@@ -202,6 +202,144 @@ namespace ZDD.Net.Graphs
             return GenerateVertexFamily(graph, new IndependentSetSpec(graph));
         }
 
+        // ==================== Vertex-family generators (M6-10) ====================
+
+        /// <summary>
+        /// The family of vertex covers of <paramref name="graph"/>: <b>vertex</b> sets that include at
+        /// least one endpoint of every edge. Like <see cref="Cliques"/>, returned as a
+        /// <see cref="SetSet{T}"/> of <see cref="int"/> (vertex index) &#8212; see
+        /// <see cref="Specs.VertexCoverSpec"/>.
+        /// </summary>
+        /// <param name="graph">The graph to search.</param>
+        /// <example><code>SetSet&lt;int&gt; covers = GraphSet.VertexCovers(Graph.Complete(6));</code></example>
+        /// <exception cref="ArgumentNullException"><paramref name="graph"/> is <see langword="null"/>.</exception>
+        public static SetSet<int> VertexCovers(Graph graph)
+        {
+            ArgumentNullException.ThrowIfNull(graph);
+            return GenerateVertexFamily(graph, new VertexCoverSpec(graph));
+        }
+
+        /// <summary>
+        /// The family of dominating sets of <paramref name="graph"/>: <b>vertex</b> sets in which every
+        /// vertex is either in the set itself or adjacent to a vertex that is. Like <see cref="Cliques"/>,
+        /// returned as a <see cref="SetSet{T}"/> of <see cref="int"/> &#8212; see
+        /// <see cref="Specs.DominatingSetSpec"/>.
+        /// </summary>
+        /// <param name="graph">The graph to search.</param>
+        /// <example><code>SetSet&lt;int&gt; sets = GraphSet.DominatingSets(Graph.Complete(6));</code></example>
+        /// <exception cref="ArgumentNullException"><paramref name="graph"/> is <see langword="null"/>.</exception>
+        public static SetSet<int> DominatingSets(Graph graph)
+        {
+            ArgumentNullException.ThrowIfNull(graph);
+            return GenerateVertexFamily(graph, new DominatingSetSpec(graph));
+        }
+
+        /// <summary>
+        /// The family of edge sets whose kept edges split <paramref name="graph"/> into exactly
+        /// <paramref name="k"/> connected blocks, each sized between <paramref name="minBlockSize"/> and
+        /// <paramref name="maxBlockSize"/> vertices &#8212; Graphillion's <c>graph_partitions</c>. See
+        /// <see cref="Specs.GraphPartitionSpec"/>.
+        /// </summary>
+        /// <param name="graph">The graph to partition.</param>
+        /// <param name="k">The required number of blocks.</param>
+        /// <param name="minBlockSize">The minimum number of vertices a block may have.</param>
+        /// <param name="maxBlockSize">The maximum number of vertices a block may have.</param>
+        /// <example><code>GraphSet parts = GraphSet.Partitions(Graph.Grid(3, 3), k: 3, minBlockSize: 1, maxBlockSize: 9);</code></example>
+        /// <exception cref="ArgumentNullException"><paramref name="graph"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// <paramref name="k"/> or <paramref name="minBlockSize"/> is not positive, or <paramref name="maxBlockSize"/>
+        /// is less than <paramref name="minBlockSize"/>.
+        /// </exception>
+        public static GraphSet Partitions(Graph graph, int k, int minBlockSize, int maxBlockSize)
+        {
+            ArgumentNullException.ThrowIfNull(graph);
+            return Generate(graph, new GraphPartitionSpec(graph, k, minBlockSize, maxBlockSize));
+        }
+
+        /// <summary>
+        /// The family of edge sets splitting <paramref name="graph"/> into exactly <paramref name="k"/>
+        /// connected blocks of near-equal size &#8212; Graphillion's <c>balanced_partitions</c>, a
+        /// convenience over <see cref="Partitions"/> that derives the block-size range from
+        /// <paramref name="tolerance"/>: with <c>n</c> = <paramref name="graph"/>'s vertex count,
+        /// <c>minBlockSize = floor(n / k * (1 - tolerance))</c> and
+        /// <c>maxBlockSize = ceil(n / k * (1 + tolerance))</c>.
+        /// </summary>
+        /// <param name="graph">The graph to partition.</param>
+        /// <param name="k">The required number of blocks.</param>
+        /// <param name="tolerance">
+        /// The fraction by which a block's size may deviate from the exact average <c>n / k</c>;
+        /// <c>0.0</c> (the default) allows only the tightest range that still rounds to a valid partition.
+        /// </param>
+        /// <example><code>GraphSet parts = GraphSet.BalancedPartitions(Graph.Grid(3, 3), k: 3, tolerance: 0.2);</code></example>
+        /// <exception cref="ArgumentNullException"><paramref name="graph"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// <paramref name="k"/> is not positive, or <paramref name="tolerance"/> is negative.
+        /// </exception>
+        public static GraphSet BalancedPartitions(Graph graph, int k, double tolerance = 0.0)
+        {
+            ArgumentNullException.ThrowIfNull(graph);
+
+            if (k <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(k), k, "Must be positive.");
+            }
+
+            if (tolerance < 0.0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(tolerance), tolerance, "Must be non-negative.");
+            }
+
+            double average = (double)graph.VertexCount / k;
+            int minBlockSize = Math.Max(1, (int)Math.Floor(average * (1.0 - tolerance)));
+            int maxBlockSize = (int)Math.Ceiling(average * (1.0 + tolerance));
+
+            return Partitions(graph, k, minBlockSize, maxBlockSize);
+        }
+
+        /// <summary>
+        /// The family of proper <paramref name="k"/>-colorings of <paramref name="graph"/>: assignments of
+        /// one color to every vertex such that no edge joins two same-colored vertices. Returned as a
+        /// <see cref="SetSet{T}"/> of <c>(int Vertex, int Color)</c> pairs rather than the raw
+        /// <c>(vertex, color)</c>-variable encoding <see cref="Specs.ColoringSpec"/> builds internally, so a
+        /// coloring can be read directly: <c>foreach (var (v, c) in coloring)</c>.
+        /// </summary>
+        /// <param name="graph">The graph to color.</param>
+        /// <param name="k">The number of available colors; must be positive.</param>
+        /// <param name="representativesOnly">
+        /// When <see langword="true"/>, keeps only one representative coloring per color-relabeling class
+        /// &#8212; see <see cref="Specs.ColoringSpec"/>'s remarks. Defaults to <see langword="false"/>
+        /// (every proper coloring), which is what matches the chromatic polynomial.
+        /// </param>
+        /// <example>
+        /// <code>
+        /// SetSet&lt;(int Vertex, int Color)&gt; colorings = GraphSet.Colorings(Graph.Complete(4), k: 4);
+        /// foreach (var coloring in colorings)
+        /// {
+        ///     foreach (var (v, c) in coloring) { /* vertex v has color c */ }
+        /// }
+        /// </code>
+        /// </example>
+        /// <exception cref="ArgumentNullException"><paramref name="graph"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="k"/> is not positive.</exception>
+        public static SetSet<(int Vertex, int Color)> Colorings(Graph graph, int k, bool representativesOnly = false)
+        {
+            ArgumentNullException.ThrowIfNull(graph);
+
+            var spec = new ColoringSpec(graph, k, representativesOnly);
+            var elements = new (int Vertex, int Color)[spec.VariableCount];
+            for (int v = 0; v < graph.VertexCount; v++)
+            {
+                for (int c = 0; c < k; c++)
+                {
+                    elements[v * k + c] = (v, c);
+                }
+            }
+
+            var universe = new SetUniverse<(int Vertex, int Color)>(elements);
+            Zdd zdd = FrontierBuilder.Build<ColoringSpec>(universe.Manager, spec);
+            return new SetSet<(int Vertex, int Color)>(universe, zdd);
+        }
+
         // ==================== Edge-family generators (M6-9) ====================
 
         /// <summary>
