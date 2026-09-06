@@ -488,7 +488,9 @@ namespace ZDD.Net.Benchmarks
             Zdd result = build(manager, options);
             stopwatch.Stop();
 
-            return new BuildStats(stopwatch.Elapsed.TotalMilliseconds, sampler.PeakWidth, sampler.PeakBytes, manager.NodeCount, result.Count);
+            BuildStats stats = new BuildStats(stopwatch.Elapsed.TotalMilliseconds, sampler.PeakWidth, sampler.PeakBytes, manager.NodeCount, result.Count);
+            GC.KeepAlive(result);
+            return stats;
         }
 
         private static long Collect()
@@ -498,7 +500,7 @@ namespace ZDD.Net.Benchmarks
             return GC.GetTotalMemory(forceFullCollection: true);
         }
 
-        private static string Bytes(long bytes) => $"{bytes / (1024.0 * 1024.0):N1}MB";
+        private static string Bytes(long bytes) => $"{bytes / (1024.0 * 1024.0):N1} MB";
 
         private readonly struct BuildStats
         {
