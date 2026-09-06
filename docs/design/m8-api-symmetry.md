@@ -29,7 +29,7 @@ Core・Frontier・Graphs の 3 レイヤと 30 個超のスペック、無向・
    「意図した破壊的変更」として major バージョンを上げる話になる
 
 M6・M7 を差し込んだときと同じ判断基準（**凍結後に足すと破壊的変更になるものだけを前倒しする**）を
-適用した。性能改善・新形式の追加など「後からでも足せるもの」は §9 の v1.1 バックログに落とした。
+適用した。性能改善・新形式の追加など「後からでも足せるもの」は §10 の v1.1 バックログに落とした。
 
 ---
 
@@ -58,7 +58,7 @@ M6・M7 を差し込んだときと同じ判断基準（**凍結後に足すと�
 
 ---
 
-## 2. `GraphSet` / `DirectedGraphSet` の生成 API（M8-1）
+## 2. `GraphSet` / `DirectedGraphSet` の生成 API（M8-1、issue #187）
 
 ### 2.1 API
 
@@ -113,7 +113,7 @@ return new GraphSet(graph, universe, zdd, new PrecomputedZddSpec(zdd));
 
 ---
 
-## 3. `GraphSet` / `DirectedGraphSet` の族代数演算（M8-2）
+## 3. `GraphSet` / `DirectedGraphSet` の族代数演算（M8-2、issue #188）
 
 ### 3.1 API
 
@@ -169,7 +169,7 @@ GraphSet cycles = GraphSet.Cycles(g);
 
 | 案 | 却下の理由 |
 |---|---|
-| (a) `Graph` インスタンスごとにユニバースを `ConditionalWeakTable` で共有する | `paths \| cycles` がそのまま書けるようになり、**マネージャが 1 個で済むのでメモリも減る**という強い利点がある。しかし 1 つのマネージャに全ての族のノードが溜まるため `Collect()`（M5-3）の意味が変わり、「1 問題ごとにマネージャを捨てる」使い方（B14）が効かなくなる。挙動の変化が大きく、凍結直前に入れるには検証コストが高い。**v1.1 で改めて検討する**（§9） |
+| (a) `Graph` インスタンスごとにユニバースを `ConditionalWeakTable` で共有する | `paths \| cycles` がそのまま書けるようになり、**マネージャが 1 個で済むのでメモリも減る**という強い利点がある。しかし 1 つのマネージャに全ての族のノードが溜まるため `Collect()`（M5-3）の意味が変わり、「1 問題ごとにマネージャを捨てる」使い方（B14）が効かなくなる。挙動の変化が大きく、凍結直前に入れるには検証コストが高い。**v1.1 で改めて検討する**（§10、issue #199） |
 | (b) 二項演算の中で暗黙に `TransferTo` する | B18 が明示的に否定した「暗黙昇格」そのもの。メモリ使用量が予測できなくなる |
 | (c) `GraphSet` を `SetUniverse<Edge>` を受け取る生成 API に作り替える | 全ジェネレータ（20 個超）にオーバーロードが増え、公開 API の面が倍近くになる |
 
@@ -178,7 +178,7 @@ GraphSet cycles = GraphSet.Cycles(g);
 
 ---
 
-## 4. `SetSet<T>` のサイズフィルタと遅延列挙（M8-3）
+## 4. `SetSet<T>` のサイズフィルタと遅延列挙（M8-3、issue #189）
 
 ```csharp
 public sealed class SetSet<T>
@@ -208,7 +208,7 @@ public sealed class SetSet<T>
 
 ---
 
-## 5. 残りの層間ギャップ（M8-4）
+## 5. 残りの層間ギャップ（M8-4、issue #190）
 
 | 追加するもの | 置き場所 | 実装 |
 |---|---|---|
@@ -222,7 +222,7 @@ public sealed class SetSet<T>
 
 ---
 
-## 6. 配列パラメータの `ReadOnlySpan<T>` 化（M8-5）
+## 6. 配列パラメータの `ReadOnlySpan<T>` 化（M8-5、issue #191）
 
 `Zdd` 層は `params ReadOnlySpan<int>` で統一されているのに、スペックとグラフ層だけ
 `int[]` を受けている。**凍結後は完全に破壊的変更**になるため今回で揃える。
@@ -254,7 +254,7 @@ public sealed class SetSet<T>
 
 ---
 
-## 7. `IHybridDdSpec<TScalar>` の決着（M8-6）
+## 7. `IHybridDdSpec<TScalar>` の決着（M8-6、issue #192）
 
 `ZDD.Net.Frontier.IHybridDdSpec<TScalar>`（スカラ値 + `int[]` の複合状態）は M2 から public だが、
 `FrontierBuilder.Build` に受けるオーバーロードが無い。**public なのに実装しても構築できない型**で、
@@ -268,11 +268,11 @@ CHANGELOG の M0〜M4 で毎回「未対応」と書かれ続けている（`api
 | (b) `[Experimental]` を付けて public のまま残す | 「呼べるが動かない」型が v1.0 の API 表面に残る。利用者から見て価値が無い |
 | (c) **`internal` に戻す**（推奨） | 実装が追いついた時点（v1.1 以降）で改めて public にすればよい。プレリリース期間中なので破壊的変更のコストは最小。`LevelStateTablePair` などの内部実装はそのまま残せる |
 
-(c) を採る場合、v1.1 でハイブリッド版 `Build` を実装するタスクを §9 のバックログに残す。
+(c) を採る場合、v1.1 でハイブリッド版 `Build` を実装するタスクを §10 のバックログに残す（issue #200）。
 
 ---
 
-## 8. 別名 4 組の去就（M8-7）
+## 8. 別名 4 組の去就（M8-7、issue #193）
 
 `Zdd` に、同一操作を指す public メソッドが 4 組ある（`api-review-notes.md` §1）。
 
@@ -299,7 +299,7 @@ CHANGELOG の M0〜M4 で毎回「未対応」と書かれ続けている（`api
 
 ---
 
-## 9. `GraphSet` / `SetSet<T>` の永続化（M8-8）
+## 9. `GraphSet` / `SetSet<T>` の永続化（M8-8、issue #194）
 
 現在 `ZddBinaryFormat` は `Zdd` 単体しか読み書きできない。数分かけて構築した経路族を保存して
 翌日読み直すには、利用者が「同じ辺順序の `Graph` を再現する」ことを自力でやる必要がある。
@@ -333,14 +333,13 @@ public static class GraphSetBinaryFormat
 
 以下は**後から足しても破壊的にならない**ので v1.0 には含めない。個別 issue として登録済み。
 
-| 項目 | 理由 |
-|---|---|
-| Core 演算のキャンセルとノード上限 | `CancellationToken` と上限は Frontier 構築にしか無く、`Union` / `Product` は巨大 ZDD で OOM しても止められない。`ZddManagerOptions` にプロパティを足すだけなので非破壊 |
-| 確率に比例した重み付きサンプリング | `Probability`（M1-15）の対になる操作。新規メソッドの追加のみ |
-| `ForestSpec(roots)` | Graphillion の `forests(roots)` は現状「成分数指定」でしか代替できていない（対応表 §1 に記載済み）。新規オーバーロード |
-| `Graph` / `DirectedGraph` の値等価性 | 現在は参照等価。`IEquatable<T>` の追加は非破壊 |
-| `Graph` インスタンス単位のユニバース共有（§3.2 案 (a)） | メモリ削減効果が大きいが `Collect()` の意味が変わる。単独で検証する価値がある |
-| ハイブリッド版 `FrontierBuilder.Build`（§7 案 (a)） | `IHybridDdSpec` を `internal` に戻した後、実装が追いついた時点で再公開する |
+| issue | 項目 | 理由 |
+|---|---|---|
+| #196 | Core 演算のキャンセルとノード上限 | `CancellationToken` と上限は Frontier 構築にしか無く、`Union` / `Product` は巨大 ZDD で OOM しても止められない。`ZddManagerOptions` にプロパティを足すだけなので非破壊 |
+| #197 | 確率に比例した重み付きサンプリング | `Probability`（M1-15）の対になる操作。新規メソッドの追加のみ |
+| #198 | `ForestSpec(roots)` | Graphillion の `forests(roots)` は現状「成分数指定」でしか代替できていない（対応表 §1 に記載済み）。新規オーバーロード |
+| #199 | `Graph` / `DirectedGraph` の値等価性と、`Graph` 単位のユニバース共有（§3.2 案 (a)） | 前者は `IEquatable<T>` の追加で非破壊。後者はメモリ削減効果が大きいが `Collect()` の意味が変わるので単独で検証する |
+| #200 | ハイブリッド版 `FrontierBuilder.Build`（§7 案 (a)） | `IHybridDdSpec` を `internal` に戻した後、実装が追いついた時点で再公開する |
 
 ## 11. 破壊的変更の有無
 
