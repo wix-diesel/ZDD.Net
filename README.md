@@ -9,9 +9,11 @@ C# ネイティブ実装の ZDD（Zero-suppressed Decision Diagram）／フロ�
 集合の族（family of sets）を 1 つの DAG に圧縮して表す ZDD を使うと、「10^24 個の解を数える」
 「一様ランダムに 1 つ選ぶ」「重みが最大の集合を求める」といった操作を、族を展開せずノード数に
 比例する手間で行える。.NET にはこれのネイティブ実装が事実上存在しない（CUDD の P/Invoke ラッパ
-しか選択肢がない）ことが、このライブラリの動機になっている。
+しか選択肢がない）ことが、このライブラリの動機になっている。無向グラフに加えて**有向グラフ**
+（一方通行のある道路網・依存関係グラフの経路列挙、有向閉路・有向ハミルトンパス／閉路・
+arborescence など）も扱える。
 
-## 到達点（v0.6 = v0.5 + API 拡充と相互運用）
+## 到達点（v0.7 = v0.6 + 有向グラフ対応）
 
 - **Core レイヤ（ZDD エンジン）**: `ZddManager` / `Zdd` によるノード表・一意化表・演算キャッシュと、
   家族代数の全演算（和・積・差・対称差・積(`*`)・商・剰余・Meet・`SupersetsOf`/`SubsetsOf` などの
@@ -74,6 +76,14 @@ C# ネイティブ実装の ZDD（Zero-suppressed Decision Diagram）／フロ�
   `InducedSubgraphs` / `Bicliques` / `VertexGroups` が高レベル API から使えるようになり、
   Graphillion の単一入口 `graphs(...)` 相当の統合ビルダ `GraphSet.Graphs(graph, constraints)` /
   `gs.Where(constraints)` も加わった
+- **有向グラフ対応（v0.7）**: `DirectedEdge` / `DirectedGraph`（逆平行辺 `u→v`/`v→u` の共存を許容、
+  `Bidirected`/`ToUndirected` で無向グラフと相互変換）と、その上の有向スペック
+  （`DirectedPathSpec` / `DirectedCycleSpec` / `DirectedHamiltonianPathSpec` /
+  `DirectedHamiltonianCycleSpec` / `DirectedDegreeConstraintSpec` / `ArborescenceSpec`（根つき
+  有向全域木））、高レベル API `DirectedGraphSet`、有向グラフ I/O（エッジリスト / 簡易テキスト /
+  DIMACS の `directed` 拡張）。フロンティア基盤（`FrontierManager`/`EdgeOrdering`）を有向・無向で
+  共有する形に一般化した上での追加で、**既存 API に破壊的変更は無い**
+  （[docs/design/m7-directed-graphs.md](docs/design/m7-directed-graphs.md)）
 
 `GraphSet` を使った 5 行サンプル（5×5 格子の対角 s–t 単純パスを 1 本も展開せずに数える）:
 
@@ -93,7 +103,7 @@ Console.WriteLine(paths.Count); // 8512（OEIS A007764）
 
 ## インストール
 
-NuGet パッケージは `v0.6.0-preview.1` のようなプレリリースタグから生成される
+NuGet パッケージは `v0.7.0-preview.1` のようなプレリリースタグから生成される
 （v1.0 に達するまではプレリリース版として `--prerelease` が要る）。
 
 ```sh
@@ -156,7 +166,7 @@ push ごとに再公開する。M5-6、issue #58）。以下は同じ内容を�
   `DirectedGraph`・有向パス/閉路/arborescence・`DirectedGraphSet`）
 - **[docs/graphillion-mapping.md](docs/graphillion-mapping.md)** — Graphillion 対応表（暫定版。本番の
   移行ガイドは M8-4）
-- **[docs/release-notes](docs/release-notes/v0.6.0.md)** — バージョンごとのリリースノート
+- **[docs/release-notes](docs/release-notes/v0.7.0.md)** — バージョンごとのリリースノート
 - **[CHANGELOG.md](CHANGELOG.md)** — 変更履歴
 
 ## ライセンス

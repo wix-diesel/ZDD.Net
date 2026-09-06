@@ -22,6 +22,7 @@ namespace ZDD.Net.Samples.Tutorial
             FilteringAndSampling();
             LoadingARealGraph();
             FrontierWidthGuidance();
+            DirectedOneWayRoadNetwork();
 
             Console.Out.WriteLine("all tutorial samples passed");
             return 0;
@@ -166,6 +167,46 @@ namespace ZDD.Net.Samples.Tutorial
             //   3. Count（総数）ではなく MinWeight/TopK など、数え上げより軽い問いに切り替える。
             var shortest = GraphSet.Paths(grid, from: 0, to: grid.VertexCount - 1).MinWeight(_ => 1);
             Assert(shortest.Weight == 10, "a 6x6 grid's shortest corner-to-corner path has 10 edges");
+        }
+
+        /// <summary>
+        /// 「有向グラフ: 一方通行のある道路網」節: DirectedEdge/DirectedGraph で一方通行と両方向通行が
+        /// 混在する道路網を表し、DirectedGraphSet.Paths で有向 s-t パスを数える。
+        /// </summary>
+        private static void DirectedOneWayRoadNetwork()
+        {
+            // 交差点 0..4。0->1, 1->2, 2->4, 0->3 は一方通行。交差点 2-3 間だけ両方向通行
+            // (2->3 と 3->2 の両方の弧を持つ)。
+            DirectedEdge[] roads =
+            {
+                new DirectedEdge(0, 1),
+                new DirectedEdge(1, 2),
+                new DirectedEdge(2, 4),
+                new DirectedEdge(0, 3),
+                new DirectedEdge(2, 3),
+                new DirectedEdge(3, 2),
+            };
+            DirectedGraph roadNetwork = new DirectedGraph(vertexCount: 5, roads);
+
+            DirectedGraphSet paths = DirectedGraphSet.Paths(roadNetwork, from: 0, to: 4);
+            Assert(paths.Count == 2, "the road network has 2 directed s-t paths, one using the reverse 3->2 arc");
+
+            // 3->2 を取り除く(交差点 2-3 間を 2->3 の一方通行だけにする)と、交差点 3 は行き止まりになり
+            // s-t パスは 1 本だけになる。
+            DirectedGraph oneWayOnly = new DirectedGraph(vertexCount: 5, new[]
+            {
+                new DirectedEdge(0, 1),
+                new DirectedEdge(1, 2),
+                new DirectedEdge(2, 4),
+                new DirectedEdge(0, 3),
+                new DirectedEdge(2, 3),
+            });
+            Assert(DirectedGraphSet.Paths(oneWayOnly, from: 0, to: 4).Count == 1,
+                "removing the reverse 3->2 arc strands intersection 3, leaving only 1 path");
+
+            // ToUndirected: 逆平行の 2 本 (2->3 / 3->2) は無向辺 1 本に潰れるので、弧 6 本が辺 5 本になる。
+            Graph undirected = roadNetwork.ToUndirected();
+            Assert(undirected.EdgeCount == 5, "ToUndirected collapses the antiparallel 2<->3 pair into 1 edge");
         }
 
         private static void Assert(bool condition, string message)

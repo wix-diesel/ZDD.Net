@@ -110,6 +110,12 @@ Graph optimized = grid.Optimize(EdgeOrderStrategy.Bfs);
 | `InducedSubgraphSpec` | ある頂点部分集合が誘導する辺集合（Graphillion の `induced_graphs`。連結性は要求しない。M6-12） | フロンティア頂点ごとの `Unknown`/`In`/`Out` の3値（判定は忘却時まで遅延） | `IArrayDdSpec` |
 | `BicliqueSpec` | 完全二部部分グラフ（biclique）。`(a, b)` を渡すとサイズ固定版になる（Graphillion の `bicliques`。M6-13） | フロンティア頂点ごとの所属グループ + 相対サイド（パリティ付き union-find） | `IArrayDdSpec` |
 | `VertexGroupSpec` | 頂点グループごとに互いに素な連結成分へ分ける辺集合（Graphillion の `graphs(vertex_groups=...)`。M6-14） | フロンティア頂点ごとの成分番号 + 所属グループ（未定を含む） | `IArrayDdSpec` |
+| `DirectedPathSpec` | `DirectedGraph` 上の有向 `s`–`t` 単純パス（`AllowAnyEndpoints` で任意の 2 頂点間。M7-3） | フロンティア頂点ごとの mate + 向きビット | `IArrayDdSpec` |
+| `DirectedCycleSpec` | 有向単純サイクルの族（`single: true`（既定）は単一サイクルのみ。逆平行 2 本による "digon" は除外する。M7-4） | フロンティア頂点ごとの mate + 向きビット + 鮮度ビット | `IArrayDdSpec` |
+| `DirectedHamiltonianPathSpec` | 全頂点を通る有向 `s`–`t` 単純パス（M7-4） | 同上（鮮度ビットは不要） | `IArrayDdSpec` |
+| `DirectedHamiltonianCycleSpec` | 全頂点を通る単一の有向単純サイクル（M7-4） | 同上 | `IArrayDdSpec` |
+| `DirectedDegreeConstraintSpec` | 各頂点の入次数・出次数がそれぞれ `[inLo[v], inHi[v]]` / `[outLo[v], outHi[v]]` に収まる弧集合（M7-5） | フロンティア頂点ごとの（入次数, 出次数） | `IArrayDdSpec` |
+| `ArborescenceSpec` | 根つき有向全域木（out-arborescence）。`root` から全頂点へ到達可能で、`root` 以外の入次数がちょうど 1（`spanning: false` で森に緩められる。M7-5） | フロンティア頂点ごとの成分番号 + 入次数フラグ | `IArrayDdSpec` |
 
 ```csharp
 using ZddManager manager = new ZddManager(variableCount: 5);
@@ -259,6 +265,46 @@ Zdd vertexGroups = FrontierBuilder.Build<VertexGroupSpec>(manager, new VertexGro
 頂点 8 以下の総当たり照合、`VertexGroupSpec` はグループが 1 個のときの `ConnectedSubgraphSpec` との
 一致（上の `vertexGroups` が `ConnectedSubgraphSpec(grid, {s, t})` と一致する）と、実際の
 Graphillion（`vertex_groups`）との結果一致で、それぞれ正しさを確認している。
+
+M7 で追加した有向スペック（`ZDD.Net.Graphs.DirectedGraph` を受け取る。`variableCount` は
+無向側と同じく `graph.EdgeCount`——ここでは弧の本数）:
+
+```csharp
+DirectedGraph directedGrid = DirectedGraph.Bidirected(Graph.Grid(3, 3));
+using ZddManager manager = new ZddManager(directedGrid.EdgeCount);
+
+Zdd directedPaths = FrontierBuilder.Build<DirectedPathSpec>(
+    manager, new DirectedPathSpec(directedGrid, from: 0, to: directedGrid.VertexCount - 1));
+
+Zdd directedCycles = FrontierBuilder.Build<DirectedCycleSpec>(
+    manager, new DirectedCycleSpec(directedGrid, single: true));
+
+Zdd hamiltonianCycles = FrontierBuilder.Build<DirectedHamiltonianCycleSpec>(
+    manager, new DirectedHamiltonianCycleSpec(DirectedGraph.Complete(4)));
+
+DirectedGraph small = DirectedGraph.Complete(3);
+using ZddManager smallManager = new ZddManager(small.EdgeCount);
+
+// 各頂点の入次数・出次数をそれぞれ [0, 1] に収める(有向マッチングに相当)。
+int[] inLo = { 0, 0, 0 }, inHi = { 1, 1, 1 }, outLo = { 0, 0, 0 }, outHi = { 1, 1, 1 };
+Zdd degreeConstrained = FrontierBuilder.Build<DirectedDegreeConstraintSpec>(
+    smallManager, new DirectedDegreeConstraintSpec(small, inLo, inHi, outLo, outHi));
+
+// root = 0 からの根つき有向全域木(out-arborescence)。
+Zdd arborescences = FrontierBuilder.Build<ArborescenceSpec>(smallManager, new ArborescenceSpec(small, root: 0));
+```
+
+`DirectedGraph.Bidirected(g)` 上の有向 s–t パス数は `g` 上の無向パス数と厳密に一致する
+（無向パスは s→t 向きに一意に定まるため。OEIS A007764 の検証をそのまま流用できる）ことと、
+有向単純サイクル数は `g` の無向単純サイクル数のちょうど 2 倍（各サイクルに 2 通りの向きがある）
+であること、`DirectedHamiltonianCycleSpec` は `Complete(n)` で `(n-1)!` と一致すること、
+`ArborescenceSpec` は有向版行列木定理（有向ラプラシアンの余因子）と一致することを、それぞれ
+CI のテストで確認している。頂点 8 以下のランダム有向グラフでの総当たり照合、無向版との対応
+（`Bidirected(g)` 上の arborescence 数が root の選び方によらず `g` の全域木数と一致する、等）も
+テスト済み。逆平行辺（`u→v` と `v→u` の両方）を持つ `DirectedGraph` は `Graph` と違ってコンストラクタ
+で拒否されない——一方通行と両方向通行が混在する道路網の例は
+[docs/tutorial.md](tutorial.md) §5 を参照。詳しい設計の背景（状態表現の指針・受け入れ条件）は
+[docs/design/m7-directed-graphs.md](design/m7-directed-graphs.md) にまとめてある。
 
 ## 4. 構築前の見積り（`EstimateMaxFrontierSize` / `FrontierManager`）
 
@@ -696,6 +742,22 @@ GraphSet backToOriginal = optimized.ToEdgeOrder(grid);                // 元の�
 `SimpleTextGraph`）を使う。`GraphSet` と組み合わせた「実グラフを読み込んで解く」エンドツーエンドの
 例、および `Graph.Optimize` を組み合わせた実践的な指針は [docs/tutorial.md](tutorial.md) を参照
 ——このガイドより短い一本道の入門としてはそちらの方が向いている。
+
+有向グラフには `GraphSet` と同じ使い心地の `ZDD.Net.Graphs.DirectedGraphSet` がある
+（`SetSet<DirectedEdge>` の上に立つ薄いラッパーで、`GraphSet` と共通の基底クラスは持たない
+——理由は [docs/design/m7-directed-graphs.md](design/m7-directed-graphs.md) §3.5）:
+
+```csharp
+DirectedGraphSet directedPaths = DirectedGraphSet.Paths(DirectedGraph.Bidirected(grid), from: 0, to: 8);
+DirectedGraphSet arborescences = DirectedGraphSet.Arborescences(DirectedGraph.Complete(4), root: 0);
+DirectedGraphSet through = directedPaths.Including(new DirectedEdge(0, 1)); // 弧の向きを区別するフィルタ
+```
+
+有向グラフの読み書きも `ZDD.Net.Io` にある——`SimpleTextGraph.ReadDirected` /
+`DimacsGraph.ReadDirected`（無向専用の `Read` とはメソッドを分けてあり、ヘッダと呼んだメソッドが
+食い違うと行番号つきの `GraphFormatException` になる）と、新設の `DirectedEdgeListGraph`。
+`ZDD.Net.Graphs.DirectedGraph` を一方通行と両方向通行が混在するグラフとして作る例は
+[docs/tutorial.md](tutorial.md) §5 を参照。
 
 ## 10. 性能チューニングの指針
 
