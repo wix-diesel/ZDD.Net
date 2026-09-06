@@ -7,7 +7,9 @@ namespace ZDD.Net.Tests.Harness
     /// Counts a graph's spanning trees via Kirchhoff's matrix-tree theorem, entirely independently of the
     /// ZDD machinery: build the Laplacian, delete any one row/column, and take the determinant of what's
     /// left. Used by <c>SpanningTreeSpecTests</c> as an external cross-check (docs/PLAN.md §11-4) that
-    /// owes nothing to the frontier-method code it is verifying.
+    /// owes nothing to the frontier-method code it is verifying. <see cref="CountArborescences"/> is the
+    /// directed generalization (Tutte's matrix-tree theorem), used the same way by
+    /// <c>ArborescenceSpecTests</c> (docs/design/m7-directed-graphs.md §3.4).
     /// </summary>
     internal static class Kirchhoff
     {
@@ -38,6 +40,56 @@ namespace ZDD.Net.Tests.Harness
                 {
                     minor[i - 1, j - 1] = laplacian[i, j];
                 }
+            }
+
+            return BigInteger.Abs(Determinant(minor));
+        }
+
+        /// <summary>
+        /// The number of out-arborescences of <paramref name="graph"/> rooted at <paramref name="root"/> —
+        /// spanning directed trees in which every arc points away from <paramref name="root"/> — via the
+        /// directed matrix-tree theorem: build the in-degree Laplacian <c>L = D_in - A^T</c> (for each arc
+        /// <c>u -&gt; v</c>, <c>L[v,v] += 1</c> and <c>L[v,u] -= 1</c>), delete <paramref name="root"/>'s row
+        /// and column, and take the determinant of what's left. Unlike the undirected case, <em>which</em>
+        /// row/column is deleted matters — it must be <paramref name="root"/>'s.
+        /// </summary>
+        public static BigInteger CountArborescences(DirectedGraph graph, int root)
+        {
+            int n = graph.VertexCount;
+            if (n == 1)
+            {
+                return BigInteger.One; // the empty arc set, trivially
+            }
+
+            var laplacian = new BigInteger[n, n];
+            foreach (DirectedEdge arc in graph.Edges)
+            {
+                laplacian[arc.To, arc.To] += 1;
+                laplacian[arc.To, arc.From] -= 1;
+            }
+
+            var minor = new BigInteger[n - 1, n - 1];
+            int mi = 0;
+            for (int i = 0; i < n; i++)
+            {
+                if (i == root)
+                {
+                    continue;
+                }
+
+                int mj = 0;
+                for (int j = 0; j < n; j++)
+                {
+                    if (j == root)
+                    {
+                        continue;
+                    }
+
+                    minor[mi, mj] = laplacian[i, j];
+                    mj++;
+                }
+
+                mi++;
             }
 
             return BigInteger.Abs(Determinant(minor));
