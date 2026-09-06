@@ -192,7 +192,63 @@ catch (BuildLimitExceededException)
 生の実測（幅が狭くても完走しないケースを含む）は
 [docs/benchmarks.md](benchmarks.md) の M3-11 節に記録してある。
 
-## 5. さらに詳しく
+## 5. 有向グラフ: 一方通行のある道路網
+
+ここまでは無向グラフ（`Graph`）だけを扱ってきたが、実際の道路網には一方通行の道がある。
+ZDD.Net はこれを `ZDD.Net.Graphs.DirectedEdge` / `DirectedGraph` で表す。`Edge` と違い
+`DirectedEdge(u, v)` は向きを区別する（`DirectedEdge(0, 1) != DirectedEdge(1, 0)`）ため、
+逆平行の 2 本 `u→v` / `v→u` を両方持たせれば「両方向通行」の道も表せる——一方通行の道は
+片方の弧だけを、両方向の道は両方の弧を用意すればよい。
+
+次の 5 つの交差点（頂点 0〜4）からなる道路網を考える: `0→1`・`1→2`・`2→4`・`0→3` は
+一方通行、**交差点 2 と 3 の間だけは両方向通行**（`2→3` と `3→2` の両方の弧を持つ）。
+
+```csharp
+using ZDD.Net.Graphs;
+
+DirectedEdge[] roads =
+{
+    new DirectedEdge(0, 1),
+    new DirectedEdge(1, 2),
+    new DirectedEdge(2, 4),
+    new DirectedEdge(0, 3),
+    new DirectedEdge(2, 3), // 交差点 2-3 間の両方向通行のうち 2->3 側
+    new DirectedEdge(3, 2), // 同じく 3->2 側
+};
+DirectedGraph roadNetwork = new DirectedGraph(vertexCount: 5, roads);
+
+DirectedGraphSet paths = DirectedGraphSet.Paths(roadNetwork, from: 0, to: 4);
+Console.WriteLine(paths.Count); // 2
+```
+
+`DirectedGraphSet` は `GraphSet` と同じ使い心地の高レベル API で、`Including`/`Excluding`/
+`Count`/`Sample` などが揃っている（低レベル API は `FrontierBuilder.Build<DirectedPathSpec>`）。
+2 本のパスのうち 1 本（`0→3→2→4`）は、両方向通行の**逆向き**の弧 `3→2` を通らないと
+存在しない——この弧が無ければ交差点 3 は行き止まりになる:
+
+```csharp
+DirectedGraph oneWayOnly = new DirectedGraph(vertexCount: 5, new[]
+{
+    new DirectedEdge(0, 1),
+    new DirectedEdge(1, 2),
+    new DirectedEdge(2, 4),
+    new DirectedEdge(0, 3),
+    new DirectedEdge(2, 3), // 3->2 が無いので、交差点 3 は行き止まり
+});
+Console.WriteLine(DirectedGraphSet.Paths(oneWayOnly, from: 0, to: 4).Count); // 1
+```
+
+`DirectedGraph.ToUndirected()` は弧の向きを無視して無向グラフに変換する（逆平行の 2 本は
+無向辺 1 本に潰れるため辺数が減りうる——`roadNetwork` は弧 6 本だが `ToUndirected()` の結果は
+辺 5 本になる）。デバッグや辺順序計算の下請け以外の用途は想定していない。
+
+有向グラフでも `PathSpec` 以外の組み込みスペックが一通り揃っている
+（`DirectedCycleSpec` / `DirectedHamiltonianPathSpec` / `DirectedHamiltonianCycleSpec` /
+`DirectedDegreeConstraintSpec` / `ArborescenceSpec`（根つき有向全域木））。一覧と使い方は
+[docs/frontier-guide.md](frontier-guide.md) §3 の組み込みスペック表、設計の背景は
+[docs/design/m7-directed-graphs.md](design/m7-directed-graphs.md) を参照。
+
+## 6. さらに詳しく
 
 - 型・メンバ単位の詳しいリファレンス（全 public API の XML doc から自動生成）:
   [wix-diesel.github.io/ZDD.Net](https://wix-diesel.github.io/ZDD.Net/)

@@ -78,7 +78,7 @@ public sealed class DirectedGraph
     public DirectedGraph WithEdgeOrder(IReadOnlyList<int> edgeOrder);
     public DirectedGraph Optimize(EdgeOrderStrategy strategy = EdgeOrderStrategy.Bfs, EdgeOrderOptions options = default);
     public int EstimateMaxFrontierSize();
-    public EdgeOrderMapping? SourceOrder { get; }
+    public DirectedEdgeOrderMapping? SourceOrder { get; }   // Graph 版 EdgeOrderMapping の薄い複製（Source の型を DirectedGraph にするため）
 
     // 相互変換
     public Graph ToUndirected();                  // 逆平行辺は 1 本に潰れる（辺数が減りうる）
