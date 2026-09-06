@@ -90,6 +90,101 @@ namespace ZDD.Net.Graphs
         /// <summary>Whether this family has no member edge sets.</summary>
         public bool IsEmpty => _family.IsEmpty;
 
+        // ==================== Factories (M8-1) ====================
+
+        /// <summary>
+        /// The family of exactly <paramref name="edgeSets"/> &#8212; Graphillion's
+        /// <c>GraphSet([[(1,2),(2,3)], [(0,1)]])</c>, the starting point for a family that no generator
+        /// produces. Duplicate edges within one set, and duplicate sets, are collapsed.
+        /// </summary>
+        /// <param name="graph">The graph whose edges the sets are drawn from.</param>
+        /// <param name="edgeSets">The member edge sets; every edge must be one of <paramref name="graph"/>'s.</param>
+        /// <example><code>GraphSet gs = GraphSet.FromSets(graph, new[] { new[] { new Edge(1, 2), new Edge(2, 3) }, new[] { new Edge(0, 1) } });</code></example>
+        /// <exception cref="ArgumentNullException"><paramref name="graph"/>, <paramref name="edgeSets"/>, or one of its sets is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException">An edge is not part of <paramref name="graph"/> (the message names it).</exception>
+        public static GraphSet FromSets(Graph graph, IEnumerable<IEnumerable<Edge>> edgeSets)
+        {
+            ArgumentNullException.ThrowIfNull(graph);
+            ArgumentNullException.ThrowIfNull(edgeSets);
+
+            var universe = new SetUniverse<Edge>(graph.Edges);
+            var materialized = new List<Edge[]>();
+
+            foreach (IEnumerable<Edge> edgeSet in edgeSets)
+            {
+                if (edgeSet is null)
+                {
+                    throw new ArgumentNullException(nameof(edgeSets), $"'{nameof(edgeSets)}' contains a null set.");
+                }
+
+                Edge[] edges = edgeSet as Edge[] ?? edgeSet.ToArray();
+
+                foreach (Edge edge in edges)
+                {
+                    if (!universe.Contains(edge))
+                    {
+                        throw new ArgumentException($"Edge {edge} is not part of the given graph.", nameof(edgeSets));
+                    }
+                }
+
+                materialized.Add(edges);
+            }
+
+            return FromPrecomputed(graph, universe, SetSet<Edge>.FromSets(universe, materialized).Zdd);
+        }
+
+        /// <summary>The family with no member edge sets at all &#8212; the identity for <c>Union</c>, and what every filter narrows toward.</summary>
+        /// <param name="graph">The graph whose edges the (absent) sets would be drawn from.</param>
+        /// <example><code>GraphSet none = GraphSet.Empty(graph);</code></example>
+        /// <exception cref="ArgumentNullException"><paramref name="graph"/> is <see langword="null"/>.</exception>
+        public static GraphSet Empty(Graph graph)
+        {
+            ArgumentNullException.ThrowIfNull(graph);
+
+            var universe = new SetUniverse<Edge>(graph.Edges);
+            return FromPrecomputed(graph, universe, universe.Manager.Empty);
+        }
+
+        /// <summary>The family of every edge subset of <paramref name="graph"/> (2^E), the unconstrained starting point <see cref="Graphs(Graph, GraphConstraints)"/> narrows.</summary>
+        /// <param name="graph">The graph whose edges are the universe.</param>
+        /// <example><code>GraphSet all = GraphSet.PowerSet(graph); // Count == 2^graph.EdgeCount</code></example>
+        /// <exception cref="ArgumentNullException"><paramref name="graph"/> is <see langword="null"/>.</exception>
+        public static GraphSet PowerSet(Graph graph)
+        {
+            ArgumentNullException.ThrowIfNull(graph);
+
+            var universe = new SetUniverse<Edge>(graph.Edges);
+            return FromPrecomputed(graph, universe, universe.Manager.PowerSetOf(GraphSetFactory.AllItems(graph.EdgeCount)));
+        }
+
+        /// <summary>
+        /// Reads a <see cref="Core.Zdd"/> built with the low-level API back as a family of
+        /// <paramref name="graph"/>'s edge sets, taking item index <c>i</c> to be edge index <c>i</c>.
+        /// </summary>
+        /// <param name="graph">The graph to read <paramref name="zdd"/> against.</param>
+        /// <param name="zdd">The family, over a manager with at least <paramref name="graph"/>'s edge count of variables.</param>
+        /// <example><code>GraphSet gs = GraphSet.FromZdd(graph, FrontierBuilder.Build&lt;MySpec&gt;(manager, spec));</code></example>
+        /// <remarks>
+        /// <b>The caller guarantees the correspondence.</b> That <paramref name="zdd"/> was really built
+        /// over <paramref name="graph"/>'s edge order cannot be checked &#8212; only that its manager has
+        /// enough variables and that no set uses an item outside <paramref name="graph"/>'s edges. Reading
+        /// a family built over a different edge order silently reinterprets every member set.
+        /// </remarks>
+        /// <exception cref="ArgumentNullException"><paramref name="graph"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="zdd"/>'s manager has fewer variables than <paramref name="graph"/> has edges,
+        /// or some member set uses an item index that is not an edge index of <paramref name="graph"/>.
+        /// </exception>
+        public static GraphSet FromZdd(Graph graph, Zdd zdd)
+        {
+            ArgumentNullException.ThrowIfNull(graph);
+
+            int levelOffset = GraphSetFactory.ValidateZddOver(zdd, graph.EdgeCount, nameof(zdd));
+            var universe = new SetUniverse<Edge>(graph.Edges);
+            Zdd rebuilt = Build(universe.Manager, new PrecomputedZddSpec(zdd, levelOffset));
+            return FromPrecomputed(graph, universe, rebuilt);
+        }
+
         // ==================== Generators ====================
 
         /// <summary>The family of simple <c>from</c>&#8211;<c>to</c> paths of <paramref name="graph"/> (Knuth's <c>SIMPATH</c>).</summary>
@@ -1041,6 +1136,14 @@ namespace ZDD.Net.Graphs
         }
 
         // ==================== Internals ====================
+
+        /// <summary>
+        /// Wraps a <see cref="Zdd"/> built without a frontier walk (M8-1's factories) as a family over a
+        /// fresh universe, using <see cref="PrecomputedZddSpec"/> so <see cref="Filter"/> still composes
+        /// &#8212; the static counterpart of <see cref="WrapPrecomputed"/>.
+        /// </summary>
+        private static GraphSet FromPrecomputed(Graph graph, SetUniverse<Edge> universe, Zdd zdd) =>
+            new GraphSet(graph, universe, zdd, new PrecomputedZddSpec(zdd));
 
         private static GraphSet Generate<TSpec>(Graph graph, TSpec spec)
             where TSpec : struct, IArrayDdSpec

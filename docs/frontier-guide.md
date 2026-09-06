@@ -672,6 +672,31 @@ GraphSet shortPaths = paths.Smaller(20);
 var shortest = paths.MinWeight(edge => 1);
 ```
 
+スペックを起点にしない生成 API も 4 つある（M8-1、issue #187）。`SetSet<T>` の
+`FromSets` / `Empty` / `PowerSet` に対応するもので、明示的な辺集合のリスト・空の族・
+全辺部分集合・低レベル API で組んだ ZDD を、そのまま `GraphSet` として読める:
+
+```csharp
+Graph g = Graph.Grid(3, 3);
+
+// Graphillion の GraphSet([[(1,2),(2,3)], [(0,1)]]) 相当
+GraphSet fromSets = GraphSet.FromSets(g, new[]
+{
+    new[] { new Edge(1, 2), new Edge(2, 3) },
+    new[] { new Edge(0, 1) },
+});
+
+GraphSet empty = GraphSet.Empty(g);        // メンバーが 1 つも無い族
+GraphSet all = GraphSet.PowerSet(g);       // 全辺部分集合 2^E
+GraphSet fromZdd = GraphSet.FromZdd(g, FrontierBuilder.Build<MySpec>(manager, spec));
+```
+
+これらの族にも `Including` / `Excluding` / `Larger` / `Smaller` / `LenEquals` は
+従来どおり効く。`FromZdd` だけは「その `Zdd` が本当に `g` の辺順序で作られたか」を
+原理的に検証できない**利用者が保証する低レベルの入口**で、検査するのは変数の個数と
+「辺 index の範囲を外れた item を使っていないこと」だけ。`DirectedGraphSet` にも
+`DirectedGraph` / `DirectedEdge` 版の同じ 4 つがある。
+
 M6-9 で追加した辺の族の生成メソッドも同じ流儀:
 
 ```csharp

@@ -256,18 +256,37 @@ namespace ZDD.Net.Graphs
     /// from one.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// State is the current node id (boxed <see cref="int"/>). Both <see cref="Graph"/>'s edge
     /// numbering and this library's ZDD variable numbering already agree that edge index <c>i</c> is
     /// item index <c>i</c> (see <see cref="GraphSet"/>'s class remarks), and a ZDD node's own
     /// <c>Level</c> uses that same numbering (<see cref="ZddManager.LevelOf"/>), so no translation is
     /// needed between the level this spec reports and the level <see cref="AndErasedSpec"/> or
     /// <see cref="FrontierBuilder"/> drives it at.
+    /// </para>
+    /// <para>
+    /// The exception is a source manager with <i>more</i> variables than the family being built
+    /// (<see cref="GraphSet.FromZdd"/>), where <c>level = VariableCount - item</c> puts the same item
+    /// at a higher level: <c>levelOffset</c> is the difference, subtracted so item <c>i</c> is reported
+    /// at the level the target manager gives it. Callers must have checked that no node uses an item
+    /// beyond the target's variables, since such a node's shifted level would not be a level at all.
+    /// </para>
     /// </remarks>
     internal sealed class PrecomputedZddSpec : IErasedGraphSpec
     {
         private readonly Zdd _zdd;
+        private readonly int _levelOffset;
 
-        public PrecomputedZddSpec(Zdd zdd) => _zdd = zdd;
+        public PrecomputedZddSpec(Zdd zdd)
+            : this(zdd, levelOffset: 0)
+        {
+        }
+
+        public PrecomputedZddSpec(Zdd zdd, int levelOffset)
+        {
+            _zdd = zdd;
+            _levelOffset = levelOffset;
+        }
 
         public int GetRoot(out object? state)
         {
@@ -293,11 +312,11 @@ namespace ZDD.Net.Graphs
 
         public int StateHashCode(object? state) => (int)state!;
 
-        private static int LevelOf(ZddManager manager, int id) => id switch
+        private int LevelOf(ZddManager manager, int id) => id switch
         {
             NodeTable.Bottom => DdResult.False,
             NodeTable.Top => DdResult.True,
-            _ => manager.Table.Nodes[id].Level,
+            _ => manager.Table.Nodes[id].Level - _levelOffset,
         };
     }
 

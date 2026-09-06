@@ -15,6 +15,10 @@ API 対応表の暫定版（v0.6、issue #151）。**本番の移行ガイドは
 
 | Graphillion | ZDD.Net | 備考 |
 |---|---|---|
+| `GraphSet([[(1,2),(2,3)], [(0,1)]])` | `GraphSet.FromSets(graph, edgeSets)` | 明示的な辺集合のリストから族を作る。重複する辺集合は畳まれる（M8-1） |
+| `GraphSet([])` | `GraphSet.Empty(graph)` | メンバーが 1 つも無い族（M8-1） |
+| `GraphSet({})` | `GraphSet.PowerSet(graph)` | 全辺部分集合 2^E（M8-1） |
+| — | `GraphSet.FromZdd(graph, zdd)` | 低レベル API（`FrontierBuilder` / `Zdd`）で組んだ族を読み直す。辺順序の対応は利用者が保証する（M8-1） |
 | `GraphSet.graphs(...)` | `GraphSet.Graphs(graph, constraints)` | 単一入口。下の §2 を参照（M6-15） |
 | `GraphSet.paths(s, t)` | `GraphSet.Paths(graph, from: s, to: t)` | |
 | `GraphSet.cycles()` | `GraphSet.Cycles(graph, single: true)` | `single: false` で互いに素なサイクルの和 |

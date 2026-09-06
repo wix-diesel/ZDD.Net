@@ -8,6 +8,29 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
 
 ## [Unreleased]
 
+### Added
+
+- `GraphSet.FromSets` / `Empty` / `PowerSet` / `FromZdd` と、`DirectedGraphSet` の同じ 4 つ
+  （M8-1、issue #187）。`GraphSet` / `DirectedGraphSet` はコンストラクタが `private` のみで、
+  スペックを起点とするジェネレータ（`Paths` / `Cycles` / …）からしか作れなかったため、
+  Graphillion で最も基本的な `GraphSet([[(1,2),(2,3)], [(0,1)]])`（明示的な辺集合のリストから
+  族を作る）が書けず、低レベル API（`FrontierBuilder` / `Zdd`）で自分で組んだ族を `GraphSet`
+  として読み直すこともできなかった。`SetSet<T>` には `FromSets` / `Empty` / `PowerSet` が既にあり、
+  土台にあるものが上物に無い状態だった。新しい内部機構は要らず、全て「既存 ZDD をなぞる
+  `PrecomputedZddSpec` で包む」——`AddSomeItem` などが使っている経路——に帰着する。
+  `FromSets` の ZDD 組み立ては `SetSet<Edge>.FromSets` にそのまま委譲し、`PowerSet` は
+  `ZddManager.PowerSetOf`（M6-1）を使う。`FromSets` は重複する辺集合を畳み、`graph` に属さない辺が
+  現れたら**その辺を名指しした** `ArgumentException` を投げる。`FromZdd` は「その `Zdd` が本当に
+  その辺順序で作られたか」を原理的に検証できないので、**利用者が保証する低レベルの入口**である旨を
+  XML doc に明記した上で、変数の個数（`zdd.Manager.VariableCount >= graph.EdgeCount`）と
+  「辺 index の範囲を外れた item を使っていないこと」だけを検査する。変数の多いマネージャで組んだ族も
+  受け付けるため（`level = VariableCount - item` なので同じ item がその差だけ上の水準に来る）、
+  `PrecomputedZddSpec` に水準のオフセットを足し、読み直す側のマネージャの水準に合わせて解釈する。
+  生成した族に `Including` / `Excluding` / `Larger` / `Smaller` / `LenEquals` が従来どおり効くこと
+  （`PrecomputedZddSpec` との `And` 合成が正しく働くこと）、`FromSets` の結果が
+  `SetSet<Edge>.FromSets` と一致することを、3 辺のグラフの全族（2^(2^3) 通り）で総当たり照合済み。
+  `Empty` / `PowerSet` は既存ジェネレータと同じく毎回新しいユニバースを作る。
+
 ## [0.7.0] - 2026-09-06
 
 M7「有向グラフ対応」マイルストーン（[docs/PLAN.md](docs/PLAN.md) §12、
