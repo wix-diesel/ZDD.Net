@@ -40,6 +40,7 @@ v0.5 到達後に他ライブラリ（Graphillion / TdZdd / SAPPOROBDD / CUDD+EX
 | **B20** | `EnumerateInto` のバッファ長 | `MaxSetSize` 以上を要求し、不足なら `ArgumentException` | 切り詰めて黙って壊れるのが最悪。`MaxSetSize` は新しい `IDdEval<int>` として 30 行程度で足せる |
 | **B21** | `TryBuild` が `false` を返す条件 | **`BuildLimit` 超過のときだけ**。キャンセルとスペック自身の例外は飲み込まない。`false` のときマネージャの状態は不変 | .NET の慣行では `Try` パターンはキャンセルを飲み込まない。状態不変は「トップダウン展開中は一時ノード表にしか書かない」ことから成立する |
 | **B22** | `GraphSet` と `DirectedGraphSet` の共通化 | **共通基底クラスは作らない**。どちらも `SetSet<T>` の上に載る薄いラッパにする | 「`Including` が自分自身の型を返す」ために自己参照型引数（CRTP）が必要になり、公開 API の可読性が大きく落ちる。重複するのは各 30 行程度のラッパだけ |
+| **B23** | 同じ `Graph` から作った `GraphSet` 同士がユニバースを共有しない件（`GraphSet.Generate` は毎回 `new SetUniverse<Edge>` を作る） | **B18 を維持**し、`GraphSet` / `DirectedGraphSet` にも明示的な載せ替えの入口 `ToUniverseOf(other)` を置く。二項演算はユニバース不一致で `ArgumentException` にし、メッセージで `ToUniverseOf` を名指しする（M8-2） | `Graph` インスタンスごとに `ConditionalWeakTable` でユニバースを共有すれば `paths \| cycles` がそのまま書けてマネージャも 1 個で済む（メモリが減る）が、1 つのマネージャに全族のノードが溜まるため `Collect()` の意味が変わり、「1 問題ごとにマネージャを捨てる」使い方（B14）が効かなくなる。**v1.1 で単独検証する**。二項演算の中で暗黙に `TransferTo` するのは B18 が否定した暗黙昇格そのもの。全ジェネレータに `SetUniverse<Edge>` 版のオーバーロードを足す案は、20 個超のジェネレータが倍になり公開 API が膨らむ |
 
 ---
 

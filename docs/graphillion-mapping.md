@@ -90,16 +90,18 @@ GraphSet gs = GraphSet.Graphs(grid, constraints);
 | （暗黙のユニバース拡張。制限なし） | `SetUniverse<T>.Extend(additionalElements)` | ZDD.Net は要素追加ごとに新しいユニバース/マネージャを作る（M6-6） |
 | — | `SetSet<T>.ToUniverse(target)` | 別々に作った 2 つの族を同じユニバースに揃えて合成できるようにする（M6-6） |
 | `GraphSet.converters`（辺順序の付け替え相当の処理） | `GraphSet.ToEdgeOrder(target)` | `Optimize()` した辺順序で構築し、元の辺順序に戻して読む（M6-6） |
+| — | `GraphSet.ToUniverseOf(other)` / `DirectedGraphSet.ToUniverseOf(other)` | 同じ `Graph` から作った族でもジェネレータごとに別のユニバースになるので、族操作の前にこれで揃える（M8-2、OPEN-QUESTIONS B23） |
 | （`setset` は 1 つの universe に固定） | `Zdd.MapItems` / `MapItemsTo` / `TransferTo` | item の張り替え・別マネージャへの複製（M6-4、M6-5） |
 
 ## 4. 族操作・フィルタ
 
 | Graphillion | ZDD.Net | 備考 |
 |---|---|---|
-| `gs.union(other)` / `gs | other` | `F.Union(G)` / `F \| G` | |
-| `gs.intersection(other)` / `gs & other` | `F.Intersect(G)` / `F & G` | |
-| `gs.difference(other)` / `gs - other` | `F.Difference(G)` / `F - G` | |
-| `gs.symmetric_difference(other)` | `F.SymmetricDifference(G)` / `F ^ G` | |
+| `gs.union(other)` / `gs | other` | `F.Union(G)` / `F \| G`、`gs.Union(gs2)` / `gs \| gs2` | `GraphSet` / `DirectedGraphSet` 版は M8-2。ユニバースが違うと `ArgumentException`（`ToUniverseOf` で揃える） |
+| `gs.intersection(other)` / `gs & other` | `F.Intersect(G)` / `F & G`、`gs.Intersect(gs2)` / `gs & gs2` | 同上 |
+| `gs.difference(other)` / `gs - other` | `F.Difference(G)` / `F - G`、`gs.Difference(gs2)` / `gs - gs2` | 同上 |
+| `gs.symmetric_difference(other)` | `F.SymmetricDifference(G)` / `F ^ G`、`gs.SymmetricDifference(gs2)` / `gs ^ gs2` | 同上 |
+| `gs.maximal()` / `gs.minimal()` | `F.Maximal()` / `F.Minimal()`、`gs.Maximal()` / `gs.Minimal()` | 包含関係で極大／極小なメンバーだけ残す（`GraphSet` 版は M8-2） |
 | `gs.complement()` | `F.Complement()` | ZDD.Net には部分ユニバース版 `F.ComplementWithin(items)` もある（M6-1） |
 | `gs.cost_le(costs, cost)` | `gs.CostAtMost(costs, bound)` | `cost_ge`/`cost_eq` は `CostAtLeast`/`CostEquals`（M6-8） |
 | `gs.larger_than(size)` / `smaller_than(size)` | `gs.Larger(size)` / `gs.Smaller(size)` | |

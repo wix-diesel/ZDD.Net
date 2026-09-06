@@ -269,6 +269,113 @@ namespace ZDD.Net.Graphs
             return Generate(graph, new DirectedDegreeConstraintSpec(graph, inLo, inHi, outLo, outHi));
         }
 
+        // ==================== Family algebra (M8-2) ====================
+
+        /// <summary>Union: arc sets belonging to either family.</summary>
+        /// <param name="other">The other family; must share this family's <see cref="Universe"/>.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="other"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="other"/> does not share this family's <see cref="Universe"/>; the message names <see cref="ToUniverseOf"/>.</exception>
+        public DirectedGraphSet Union(DirectedGraphSet other) => Combine(other, static (f, g) => f.Union(g));
+
+        /// <summary>Intersection: arc sets belonging to both families.</summary>
+        /// <param name="other">The other family; must share this family's <see cref="Universe"/>.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="other"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="other"/> does not share this family's <see cref="Universe"/>; the message names <see cref="ToUniverseOf"/>.</exception>
+        public DirectedGraphSet Intersect(DirectedGraphSet other) => Combine(other, static (f, g) => f.Intersect(g));
+
+        /// <summary>Difference: arc sets in this family that are not in <paramref name="other"/>.</summary>
+        /// <param name="other">The other family; must share this family's <see cref="Universe"/>.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="other"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="other"/> does not share this family's <see cref="Universe"/>; the message names <see cref="ToUniverseOf"/>.</exception>
+        public DirectedGraphSet Difference(DirectedGraphSet other) => Combine(other, static (f, g) => f.Difference(g));
+
+        /// <summary>Symmetric difference: arc sets belonging to exactly one of the two families.</summary>
+        /// <param name="other">The other family; must share this family's <see cref="Universe"/>.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="other"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="other"/> does not share this family's <see cref="Universe"/>; the message names <see cref="ToUniverseOf"/>.</exception>
+        public DirectedGraphSet SymmetricDifference(DirectedGraphSet other) => Combine(other, static (f, g) => f.SymmetricDifference(g));
+
+        /// <summary>Union. Same as <see cref="Union"/>.</summary>
+        public static DirectedGraphSet operator |(DirectedGraphSet left, DirectedGraphSet right) => left.Union(right);
+
+        /// <summary>Intersection. Same as <see cref="Intersect"/>.</summary>
+        public static DirectedGraphSet operator &(DirectedGraphSet left, DirectedGraphSet right) => left.Intersect(right);
+
+        /// <summary>Difference. Same as <see cref="Difference"/>.</summary>
+        public static DirectedGraphSet operator -(DirectedGraphSet left, DirectedGraphSet right) => left.Difference(right);
+
+        /// <summary>Symmetric difference. Same as <see cref="SymmetricDifference"/>.</summary>
+        public static DirectedGraphSet operator ^(DirectedGraphSet left, DirectedGraphSet right) => left.SymmetricDifference(right);
+
+        /// <summary>Keeps only the arc sets that are maximal under inclusion.</summary>
+        public DirectedGraphSet Maximal() => WrapPrecomputed(Zdd.Maximal());
+
+        /// <summary>Keeps only the arc sets that are minimal under inclusion.</summary>
+        public DirectedGraphSet Minimal() => WrapPrecomputed(Zdd.Minimal());
+
+        // ==================== Universe transfer (M8-2) ====================
+
+        /// <summary>
+        /// Moves this family onto <paramref name="other"/>'s <see cref="Universe"/> so the two can be
+        /// combined (M8-2, issue #188): every generator builds its own universe and <see cref="ZddManager"/>,
+        /// so even two families of the same <see cref="Graphs.DirectedGraph"/> need this before
+        /// <see cref="Union"/> and friends will accept them.
+        /// </summary>
+        /// <param name="other">The family to move onto; its <see cref="Graphs.DirectedGraph"/> must have the same arcs at the same indices.</param>
+        /// <returns>The same family of arc sets over <paramref name="other"/>'s <see cref="Universe"/>, or this same instance when the two already share one.</returns>
+        /// <remarks>
+        /// B18 keeps this promotion explicit instead of hiding a <see cref="Zdd.TransferTo"/> inside every
+        /// binary operation, where its memory cost would be invisible. Since the arc orders must already
+        /// agree, the transfer is the identity map.
+        /// </remarks>
+        /// <exception cref="ArgumentNullException"><paramref name="other"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="other"/>'s graph has a different vertex count, arc count, or arc order
+        /// (the message names the first differing index).
+        /// </exception>
+        public DirectedGraphSet ToUniverseOf(DirectedGraphSet other)
+        {
+            ArgumentNullException.ThrowIfNull(other);
+
+            if (ReferenceEquals(Universe, other.Universe))
+            {
+                return this;
+            }
+
+            EnsureSameEdgeOrder(other.Graph);
+
+            Zdd transferred = Zdd.TransferTo(other.Universe.Manager);
+            return new DirectedGraphSet(other.Graph, other.Universe, transferred, new PrecomputedZddSpec(transferred));
+        }
+
+        /// <summary>Validates that <paramref name="target"/> has this family's graph's arcs at the very same indices.</summary>
+        private void EnsureSameEdgeOrder(DirectedGraph target)
+        {
+            if (target.VertexCount != Graph.VertexCount || target.EdgeCount != Graph.EdgeCount)
+            {
+                throw new ArgumentException(
+                    $"'other' is a family of a different graph ({target.VertexCount} vertices / {target.EdgeCount} arc(s) " +
+                    $"against this family's {Graph.VertexCount} / {Graph.EdgeCount}); {nameof(ToUniverseOf)} only moves a " +
+                    $"family between universes built over the very same arcs.",
+                    "other");
+            }
+
+            for (int i = 0; i < Graph.EdgeCount; i++)
+            {
+                DirectedEdge mine = Graph.GetEdge(i);
+                DirectedEdge theirs = target.GetEdge(i);
+
+                if (mine != theirs)
+                {
+                    throw new ArgumentException(
+                        $"'other' is a family of a different arc order: arc index {i} is {mine} here but {theirs} there. " +
+                        $"{nameof(ToUniverseOf)} moves a family between universes, not between arc orders: rebuild one of the " +
+                        $"two over the other's arc order (see '{nameof(DirectedGraph)}.{nameof(DirectedGraph.WithEdgeOrder)}') first.",
+                        "other");
+                }
+            }
+        }
+
         // ==================== Filters (applied at construction time) ====================
 
         /// <summary>Keeps only arc sets that include <paramref name="edge"/>.</summary>
@@ -555,6 +662,34 @@ namespace ZDD.Net.Graphs
         /// </summary>
         private static DirectedGraphSet FromPrecomputed(DirectedGraph graph, SetUniverse<DirectedEdge> universe, Zdd zdd) =>
             new DirectedGraphSet(graph, universe, zdd, new PrecomputedZddSpec(zdd));
+
+        /// <summary>
+        /// The instance counterpart of <see cref="FromPrecomputed"/>: wraps a <see cref="Zdd"/> built by
+        /// direct algebra over this family's own universe, so a later <see cref="Filter"/> call still
+        /// composes correctly.
+        /// </summary>
+        private DirectedGraphSet WrapPrecomputed(Zdd zdd) => new DirectedGraphSet(Graph, Universe, zdd, new PrecomputedZddSpec(zdd));
+
+        /// <summary>
+        /// Applies a binary ZDD operation after checking that both families are expressed over the very
+        /// same <see cref="SetUniverse{T}"/> instance (B18: no implicit promotion), pointing a caller who
+        /// hit the mismatch at <see cref="ToUniverseOf"/>.
+        /// </summary>
+        private DirectedGraphSet Combine(DirectedGraphSet other, Func<Zdd, Zdd, Zdd> operation)
+        {
+            ArgumentNullException.ThrowIfNull(other);
+
+            if (!ReferenceEquals(Universe, other.Universe))
+            {
+                throw new ArgumentException(
+                    "The two DirectedGraphSet instances do not share the same SetUniverse<DirectedEdge>; only families built over the same universe can be combined (B18: no implicit promotion). " +
+                    "Every generator builds a fresh universe, so even two families of the very same DirectedGraph have separate ones: " +
+                    $"move the right operand onto the left one first with '{nameof(ToUniverseOf)}' (e.g. 'left | right.{nameof(ToUniverseOf)}(left)').",
+                    nameof(other));
+            }
+
+            return WrapPrecomputed(operation(Zdd, other.Zdd));
+        }
 
         private static DirectedGraphSet Generate<TSpec>(DirectedGraph graph, TSpec spec)
             where TSpec : struct, IArrayDdSpec

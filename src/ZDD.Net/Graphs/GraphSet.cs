@@ -774,6 +774,50 @@ namespace ZDD.Net.Graphs
         /// <exception cref="ArgumentException">An edge of <paramref name="edges"/> is not part of <see cref="Graph"/>.</exception>
         public GraphSet RemoveAddSomeItems(params ReadOnlySpan<Edge> edges) => WrapPrecomputed(Zdd.RemoveAddSomeItems(ResolveEdgeIndices(edges)));
 
+        // ==================== Family algebra (M8-2) ====================
+
+        /// <summary>Union: edge sets belonging to either family.</summary>
+        /// <param name="other">The other family; must share this family's <see cref="Universe"/>.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="other"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="other"/> does not share this family's <see cref="Universe"/>; the message names <see cref="ToUniverseOf"/>.</exception>
+        public GraphSet Union(GraphSet other) => Combine(other, static (f, g) => f.Union(g));
+
+        /// <summary>Intersection: edge sets belonging to both families.</summary>
+        /// <param name="other">The other family; must share this family's <see cref="Universe"/>.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="other"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="other"/> does not share this family's <see cref="Universe"/>; the message names <see cref="ToUniverseOf"/>.</exception>
+        public GraphSet Intersect(GraphSet other) => Combine(other, static (f, g) => f.Intersect(g));
+
+        /// <summary>Difference: edge sets in this family that are not in <paramref name="other"/>.</summary>
+        /// <param name="other">The other family; must share this family's <see cref="Universe"/>.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="other"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="other"/> does not share this family's <see cref="Universe"/>; the message names <see cref="ToUniverseOf"/>.</exception>
+        public GraphSet Difference(GraphSet other) => Combine(other, static (f, g) => f.Difference(g));
+
+        /// <summary>Symmetric difference: edge sets belonging to exactly one of the two families.</summary>
+        /// <param name="other">The other family; must share this family's <see cref="Universe"/>.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="other"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="other"/> does not share this family's <see cref="Universe"/>; the message names <see cref="ToUniverseOf"/>.</exception>
+        public GraphSet SymmetricDifference(GraphSet other) => Combine(other, static (f, g) => f.SymmetricDifference(g));
+
+        /// <summary>Union. Same as <see cref="Union"/>.</summary>
+        public static GraphSet operator |(GraphSet left, GraphSet right) => left.Union(right);
+
+        /// <summary>Intersection. Same as <see cref="Intersect"/>.</summary>
+        public static GraphSet operator &(GraphSet left, GraphSet right) => left.Intersect(right);
+
+        /// <summary>Difference. Same as <see cref="Difference"/>.</summary>
+        public static GraphSet operator -(GraphSet left, GraphSet right) => left.Difference(right);
+
+        /// <summary>Symmetric difference. Same as <see cref="SymmetricDifference"/>.</summary>
+        public static GraphSet operator ^(GraphSet left, GraphSet right) => left.SymmetricDifference(right);
+
+        /// <summary>Keeps only the edge sets that are maximal under inclusion.</summary>
+        public GraphSet Maximal() => WrapPrecomputed(Zdd.Maximal());
+
+        /// <summary>Keeps only the edge sets that are minimal under inclusion.</summary>
+        public GraphSet Minimal() => WrapPrecomputed(Zdd.Minimal());
+
         // ==================== Filters (applied at construction time) ====================
 
         /// <summary>Keeps only edge sets that include <paramref name="edge"/>.</summary>
@@ -857,7 +901,7 @@ namespace ZDD.Net.Graphs
         public GraphSet CostEquals(Func<Edge, long> cost, long value) =>
             Filter(new StructSpecErased<LinearConstraintSpec, long>(new LinearConstraintSpec(BuildWeights(cost), LinearConstraintOperator.Equal, value)));
 
-        // ==================== Universe / edge-order transfer (M6-6) ====================
+        // ==================== Universe / edge-order transfer (M6-6, M8-2) ====================
 
         /// <summary>
         /// Moves this family onto <paramref name="target"/>, a graph that differs from <see cref="Graph"/>
@@ -935,6 +979,68 @@ namespace ZDD.Net.Graphs
             var universe = new SetUniverse<Edge>(target.Edges);
             Zdd mapped = Zdd.MapItemsTo(universe.Manager, itemMap);
             return new GraphSet(target, universe, mapped, new PrecomputedZddSpec(mapped));
+        }
+
+        /// <summary>
+        /// Moves this family onto <paramref name="other"/>'s <see cref="Universe"/> so the two can be
+        /// combined (M8-2, issue #188): every generator builds its own universe and <see cref="ZddManager"/>,
+        /// so even two families of the same <see cref="Graphs.Graph"/> need this before <see cref="Union"/>
+        /// and friends will accept them.
+        /// </summary>
+        /// <param name="other">The family to move onto; its <see cref="Graphs.Graph"/> must have the same edges at the same indices.</param>
+        /// <returns>The same family of edge sets over <paramref name="other"/>'s <see cref="Universe"/>, or this same instance when the two already share one.</returns>
+        /// <remarks>
+        /// B18 keeps this promotion explicit instead of hiding a <see cref="Zdd.TransferTo"/> inside every
+        /// binary operation, where its memory cost would be invisible. Since the edge orders must already
+        /// agree, the transfer is the identity map &#8212; use <see cref="ToEdgeOrder"/> for the rest.
+        /// </remarks>
+        /// <exception cref="ArgumentNullException"><paramref name="other"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="other"/>'s graph has a different vertex count, edge count, or edge order
+        /// (the message names the first differing index, and <see cref="ToEdgeOrder"/>).
+        /// </exception>
+        public GraphSet ToUniverseOf(GraphSet other)
+        {
+            ArgumentNullException.ThrowIfNull(other);
+
+            if (ReferenceEquals(Universe, other.Universe))
+            {
+                return this;
+            }
+
+            EnsureSameEdgeOrder(other.Graph);
+
+            Zdd transferred = Zdd.TransferTo(other.Universe.Manager);
+            return new GraphSet(other.Graph, other.Universe, transferred, new PrecomputedZddSpec(transferred));
+        }
+
+        /// <summary>Validates that <paramref name="target"/> has this family's graph's edges at the very same indices.</summary>
+        private void EnsureSameEdgeOrder(Graph target)
+        {
+            if (target.VertexCount != Graph.VertexCount || target.EdgeCount != Graph.EdgeCount)
+            {
+                throw new ArgumentException(
+                    $"'other' is a family of a different graph ({target.VertexCount} vertices / {target.EdgeCount} edge(s) " +
+                    $"against this family's {Graph.VertexCount} / {Graph.EdgeCount}); {nameof(ToUniverseOf)} only moves a " +
+                    $"family between universes built over the very same edges.",
+                    "other");
+            }
+
+            for (int i = 0; i < Graph.EdgeCount; i++)
+            {
+                Edge mine = Graph.GetEdge(i);
+                Edge theirs = target.GetEdge(i);
+
+                if (mine != theirs)
+                {
+                    throw new ArgumentException(
+                        $"'other' is a family of a different edge order: edge index {i} is {mine} here but {theirs} there. " +
+                        $"{nameof(ToUniverseOf)} moves a family between universes, not between edge orders: align the " +
+                        $"orders first with '{nameof(ToEdgeOrder)}(other.{nameof(Graph)})' (available when this family's graph " +
+                        $"came from {nameof(Graph.Optimize)} / {nameof(Graph.WithEdgeOrder)}), then move the result onto 'other'.",
+                        "other");
+                }
+            }
         }
 
         // ==================== Enumeration ====================
@@ -1320,6 +1426,27 @@ namespace ZDD.Net.Graphs
         /// call (<see cref="Including(Edge)"/>, <see cref="Larger"/>, ...) still composes correctly.
         /// </summary>
         private GraphSet WrapPrecomputed(Zdd zdd) => new GraphSet(Graph, Universe, zdd, new PrecomputedZddSpec(zdd));
+
+        /// <summary>
+        /// Applies a binary ZDD operation after checking that both families are expressed over the very
+        /// same <see cref="SetUniverse{T}"/> instance (B18: no implicit promotion), pointing a caller who
+        /// hit the mismatch at <see cref="ToUniverseOf"/>.
+        /// </summary>
+        private GraphSet Combine(GraphSet other, Func<Zdd, Zdd, Zdd> operation)
+        {
+            ArgumentNullException.ThrowIfNull(other);
+
+            if (!ReferenceEquals(Universe, other.Universe))
+            {
+                throw new ArgumentException(
+                    "The two GraphSet instances do not share the same SetUniverse<Edge>; only families built over the same universe can be combined (B18: no implicit promotion). " +
+                    "Every generator builds a fresh universe, so even two families of the very same Graph have separate ones: " +
+                    $"move the right operand onto the left one first with '{nameof(ToUniverseOf)}' (e.g. 'left | right.{nameof(ToUniverseOf)}(left)').",
+                    nameof(other));
+            }
+
+            return WrapPrecomputed(operation(Zdd, other.Zdd));
+        }
 
         private IEnumerable<IReadOnlySet<Edge>> IterCore<TWeight, TOps>(Func<Edge, TWeight> weight, bool maximize)
             where TOps : struct, IWeightOps<TWeight>
