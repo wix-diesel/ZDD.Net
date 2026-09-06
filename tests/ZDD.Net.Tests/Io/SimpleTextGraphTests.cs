@@ -159,6 +159,109 @@ namespace ZDD.Net.Tests.Io
                 Assert.Throws<ArgumentException>(() => SimpleTextGraph.Write(graph, new StringWriter(), new[] { "only-one" })).ParamName);
         }
 
+        // ---- directed (M7-7, issue #158) ----
+
+        [Fact]
+        public void WriteDirectedThenReadDirectedReproducesGraphAndLabels()
+        {
+            DirectedGraph original = new DirectedGraph(4, new[]
+            {
+                new DirectedEdge(0, 1), new DirectedEdge(1, 2), new DirectedEdge(2, 3), new DirectedEdge(3, 0),
+            });
+            string[] labels = { "Alice", "Bob", "Carol", "Dave" };
+
+            string text = SimpleTextGraph.WriteDirected(original, labels);
+            LabeledDirectedGraph roundTripped = SimpleTextGraph.ReadDirected(text);
+
+            AssertSameGraph(original, roundTripped.Graph);
+            Assert.Equal(labels, roundTripped.VertexLabels);
+        }
+
+        [Fact]
+        public void WriteDirectedThenReadDirectedPreservesAntiParallelArcs()
+        {
+            DirectedGraph original = new DirectedGraph(2, new[] { new DirectedEdge(0, 1), new DirectedEdge(1, 0) });
+
+            string text = SimpleTextGraph.WriteDirected(original);
+            LabeledDirectedGraph roundTripped = SimpleTextGraph.ReadDirected(text);
+
+            AssertSameGraph(original, roundTripped.Graph);
+        }
+
+        [Fact]
+        public void WriteDirectedWithoutLabelsDefaultsEachVertexToItsOwnIndex()
+        {
+            DirectedGraph original = DirectedGraph.Path(4);
+
+            string text = SimpleTextGraph.WriteDirected(original);
+            LabeledDirectedGraph roundTripped = SimpleTextGraph.ReadDirected(text);
+
+            Assert.Equal(new[] { "0", "1", "2", "3" }, roundTripped.VertexLabels);
+        }
+
+        [Fact]
+        public void ExistingUndirectedFilesStillReadAsUndirectedThroughRead()
+        {
+            // Backward compatibility: a header with no trailing "directed" token is exactly the
+            // pre-M7-7 format and must keep working through Read, unchanged.
+            LabeledGraph result = SimpleTextGraph.Read("graph 3 2\nedge 0 1\nedge 1 2\n");
+
+            Assert.Equal(3, result.Graph.VertexCount);
+            Assert.Equal(new[] { new Edge(0, 1), new Edge(1, 2) }, result.Graph.Edges);
+        }
+
+        [Fact]
+        public void ReadRejectsADirectedHeaderPointingAtReadDirected()
+        {
+            var ex = Assert.Throws<GraphFormatException>(() => SimpleTextGraph.Read("graph 2 1 directed\nedge 0 1\n"));
+            Assert.Equal(1, ex.LineNumber);
+            Assert.Contains("ReadDirected", ex.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ReadDirectedRejectsAnUndirectedHeaderPointingAtRead()
+        {
+            var ex = Assert.Throws<GraphFormatException>(() => SimpleTextGraph.ReadDirected("graph 2 1\nedge 0 1\n"));
+            Assert.Equal(1, ex.LineNumber);
+            Assert.Contains("SimpleTextGraph.Read", ex.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ReadDirectedRejectsASelfLoopWithTheOffendingLineNumber()
+        {
+            var ex = Assert.Throws<GraphFormatException>(
+                () => SimpleTextGraph.ReadDirected("graph 2 1 directed\nedge 0 0\n"));
+
+            Assert.Equal(2, ex.LineNumber);
+            Assert.Contains("self-loop", ex.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ReadDirectedRejectsADuplicateArcWithTheOffendingLineNumber()
+        {
+            var ex = Assert.Throws<GraphFormatException>(
+                () => SimpleTextGraph.ReadDirected("graph 2 2 directed\nedge 0 1\nedge 0 1\n"));
+
+            Assert.Equal(3, ex.LineNumber);
+            Assert.Contains("duplicates", ex.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ReadDirectedDoesNotRejectAnAntiParallelArcAsADuplicate()
+        {
+            LabeledDirectedGraph result = SimpleTextGraph.ReadDirected("graph 2 2 directed\nedge 0 1\nedge 1 0\n");
+            Assert.Equal(2, result.Graph.EdgeCount);
+        }
+
+        [Fact]
+        public void WriteDirectedRejectsANullGraphOrWriter()
+        {
+            DirectedGraph graph = DirectedGraph.Path(3);
+
+            Assert.Equal("graph", Assert.Throws<ArgumentNullException>(() => SimpleTextGraph.WriteDirected(null!, new StringWriter())).ParamName);
+            Assert.Equal("writer", Assert.Throws<ArgumentNullException>(() => SimpleTextGraph.WriteDirected(graph, (TextWriter)null!)).ParamName);
+        }
+
         // ---- helpers ----
 
         private static void AssertSameGraph(Graph expected, Graph actual)
@@ -170,6 +273,18 @@ namespace ZDD.Net.Tests.Io
             {
                 Assert.Equal(expected.GetEdge(i).U, actual.GetEdge(i).U);
                 Assert.Equal(expected.GetEdge(i).V, actual.GetEdge(i).V);
+            }
+        }
+
+        private static void AssertSameGraph(DirectedGraph expected, DirectedGraph actual)
+        {
+            Assert.Equal(expected.VertexCount, actual.VertexCount);
+            Assert.Equal(expected.EdgeCount, actual.EdgeCount);
+
+            for (int i = 0; i < expected.EdgeCount; i++)
+            {
+                Assert.Equal(expected.GetEdge(i).From, actual.GetEdge(i).From);
+                Assert.Equal(expected.GetEdge(i).To, actual.GetEdge(i).To);
             }
         }
     }

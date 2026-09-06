@@ -207,7 +207,7 @@ M6-4→M6-5→M6-6 は直列。M6-9 以降は M6-8 の後に一列。
 | [x] | **M7-4** | 有向閉路・有向ハミルトン | `DirectedCycleSpec` / `DirectedHamiltonianPathSpec` / `DirectedHamiltonianCycleSpec` | `Bidirected(g)` の有向単純閉路数が無向単純閉路数の**ちょうど 2 倍**。`K_n` の有向ハミルトン閉路が `(n-1)!` | 〜350 | M7-3 |
 | [x] | **M7-5** | 有向次数制約・arborescence | `DirectedDegreeConstraintSpec`、`ArborescenceSpec`（根つき有向全域木） | **有向行列木定理**（有向ラプラシアンの余因子）で独立計算した値と一致 | 〜350 | M7-4 |
 | [x] | **M7-6** | `DirectedGraphSet` | `SetSet<DirectedEdge>` の上に載せる薄いラッパ。`GraphSet` と同じフィルタ・列挙・重み API | `GraphSet` と同じシナリオが有向で再現できる | 〜350 | M7-5 |
-| [ ] | **M7-7** | 有向グラフ I/O | 有向エッジリスト、簡易テキストの `directed` ヘッダ（後方互換）、DIMACS の `p arc`、DOT の `digraph` 出力 | ラウンドトリップ。既存の無向ファイルがそのまま読めること | 〜250 | M7-6 |
+| [x] | **M7-7** | 有向グラフ I/O | 有向エッジリスト、簡易テキストの `directed` ヘッダ（後方互換）、DIMACS の `p arc`、DOT の `digraph` 出力 | ラウンドトリップ。既存の無向ファイルがそのまま読めること | 〜250 | M7-6 |
 | [ ] | **M7-8** | 有向のベンチ基準値 | 双方向格子・一方通行混在格子・`K_n` ハミルトン・arborescence を `docs/benchmarks.md` に記録 | **性能目標は置かない**。無向比の倍率を測って記録することが目的 | 〜200 | M7-7 |
 | [ ] | **M7-9** | v0.7 リリース | CHANGELOG / README / チュートリアルへの有向の節 | — | ドキュメント | M7-8 |
 

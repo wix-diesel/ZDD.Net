@@ -136,6 +136,45 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
   中間ノード数が少ないこと、`MinIter`/`MaxIter`/`RandIter`/`TopK`/`Sample` が `GraphSet` と同じ挙動を
   すること、`ToDot` が `digraph` として出力されること、`Bidirected(格子)` の `Paths(...).Count` が
   OEIS A007764 と一致することをテスト済み。
+- 有向グラフ I/O: エッジリスト・簡易テキスト・DIMACS の 3 形式を有向グラフに拡張（M7-7、issue #158、
+  [docs/design/m7-directed-graphs.md](docs/design/m7-directed-graphs.md) §3.6）。`DotOptions`/`DotWriter`
+  の有向対応（`digraph` 出力）は M7-6 の `DirectedGraphSet.ToDot`/`WriteDot` で既に済んでいたため、
+  このリリースの対象は残り 3 形式。**「`directed` ヘッダの有無で `Graph`/`DirectedGraph` のどちらが
+  返るかを明確にする」**という完了条件に対しては、1 つのメソッドの戻り値をヘッダ次第で変える
+  （`object` を返す、あるいはヘッダをスニッフィングする `TryParse` 系）案ではなく、**メソッドを分ける**
+  形を採った——`SimpleTextGraph.Read`/`DimacsGraph.Read` は今まで通り無向専用のまま何も変わらず
+  （既存ファイル・既存呼び出しは無改造で通る）、新設の `SimpleTextGraph.ReadDirected`/
+  `DimacsGraph.ReadDirected` が有向専用として追加された。ヘッダが呼んだメソッドと食い違う場合
+  （無向ヘッダを `ReadDirected` に、有向ヘッダを `Read` に）は、`GraphFormatException` が「これは
+  有向/無向ファイルなので `ReadDirected`/`Read` を使え」と行番号つきで指す——**無向ファイルを有向として
+  読もうとした場合（逆も）に何が起きるか分かるように**という完了条件はこれで満たす。
+  - エッジリスト: 新設の `DirectedEdgeListGraph`（`u v` を `u` → `v` として読む）。この形式は
+    ヘッダに向きを示すトークンが元々無い（頂点数だけの 1 行）ため、`EdgeListGraph.Read` と
+    `DirectedEdgeListGraph.Read` のどちらを呼ぶかだけが向きを決める——検出すべきヘッダの食い違いが
+    そもそも存在しない
+  - 簡易テキスト: ヘッダ行に `graph <vertexCount> <edgeCount> directed`（末尾に 1 トークン追加）と
+    書けるよう拡張。`directed` トークンが無い既存ファイルは今まで通り `Read` で読める（後方互換の
+    回帰テストとして、`edge` 行だけの素の無向ヘッダファイルが無改造で読めることをテスト済み）。
+    有向側は新設の `LabeledDirectedGraph`（`LabeledGraph` の有向版）を返す
+  - DIMACS: 問題行 `p edge` に対して `p arc` を受け付ける（`.gr` 系の最短路フォーマットが有向問題に
+    `arc` を使う慣行に合わせた）。辺行は重み無しの本ライブラリの形式に合わせて無向側と同じ `e` の
+    ままとした（`.gr` 系の `a` 行への追随は、重みを持たない本フォーマットには過剰と判断）
+  - 自己ループ・多重辺の検出: `DirectedGraph` のコンストラクタは自己ループと多重弧
+    （同じ `u` → `v` が 2 本、逆平行の `v` → `u` は多重辺扱いしない）を拒否するが、そこに投げさせると
+    行番号の無い `ArgumentException` になってしまう（無向側の 3 リーダーが元々この経路で、
+    行番号つきの `GraphFormatException` になっていなかった問題を有向側では引き継がない判断をした）。
+    そこで 3 つの有向リーダーはいずれもパース中にその場で自己ループ・重複弧を検出し、行番号つきの
+    `GraphFormatException` を投げる
+  - 検証: 各形式で書いて読んで一致すること（頂点数・弧数・弧順序）、逆平行弧を含むファイルが
+    正しく読み書きできること、数千弧規模（`DirectedGraph.Complete(100)` = 9900 弧、
+    `DirectedGraph.Grid(50,50)` 相当）を読み込めること、ラウンドトリップした有向グラフが
+    `DirectedGraphSet.Paths`/`Arborescences` を元のグラフと同じ結果で駆動すること（M3-10 の
+    `GraphIoIntegrationTests` と同じ検証パターンの有向版）をテスト済み
+  - Graphillion 互換 I/O（`GraphillionTextFormat`）は対象外のまま
+    （[docs/graphillion-io.md](docs/graphillion-io.md) §7 に追記）。Graphillion（Python 側）自体に
+    有向グラフの概念が無いため、`DirectedGraphSet` 用の書き出しメソッドは用意しない
+    （D8「他ライブラリにもある機能は優先度を下げる」・D4「実データが読み込めることを優先する」を
+    踏まえ、相互運用できる相手がいない「互換」を追加しない判断）。
 
 ## [0.6.0] - 2026-09-05
 
