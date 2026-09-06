@@ -39,6 +39,35 @@ namespace ZDD.Net.Tests.Io
             AssertSameOperationResults(original, loaded);
         }
 
+        // ---- directed (M7-7, issue #158) ----
+
+        [Fact]
+        public void ADirectedEdgeListRoundTrippedGraphDrivesDirectedGraphSetOperations()
+        {
+            DirectedGraph original = DirectedGraph.Grid(3, 3);
+            DirectedGraph loaded = DirectedEdgeListGraph.Read(DirectedEdgeListGraph.Write(original));
+
+            AssertSameDirectedOperationResults(original, loaded);
+        }
+
+        [Fact]
+        public void ADirectedSimpleTextRoundTrippedGraphDrivesDirectedGraphSetOperations()
+        {
+            DirectedGraph original = DirectedGraph.Grid(3, 3);
+            DirectedGraph loaded = SimpleTextGraph.ReadDirected(SimpleTextGraph.WriteDirected(original)).Graph;
+
+            AssertSameDirectedOperationResults(original, loaded);
+        }
+
+        [Fact]
+        public void ADirectedDimacsRoundTrippedGraphDrivesDirectedGraphSetOperations()
+        {
+            DirectedGraph original = DirectedGraph.Grid(3, 3);
+            DirectedGraph loaded = DimacsGraph.ReadDirected(DimacsGraph.WriteDirected(original));
+
+            AssertSameDirectedOperationResults(original, loaded);
+        }
+
         private static void AssertSameOperationResults(Graph original, Graph loaded)
         {
             BigInteger originalPaths = GraphSet.Paths(original, from: 0, to: original.VertexCount - 1).Count;
@@ -55,6 +84,19 @@ namespace ZDD.Net.Tests.Io
             BigInteger loadedMatchings = GraphSet.Matchings(loaded).Count;
             Assert.Equal(originalMatchings, loadedMatchings);
             Assert.True(originalMatchings > 0);
+        }
+
+        private static void AssertSameDirectedOperationResults(DirectedGraph original, DirectedGraph loaded)
+        {
+            BigInteger originalPaths = DirectedGraphSet.Paths(original, from: 0, to: original.VertexCount - 1).Count;
+            BigInteger loadedPaths = DirectedGraphSet.Paths(loaded, from: 0, to: loaded.VertexCount - 1).Count;
+            Assert.Equal(originalPaths, loadedPaths);
+            Assert.True(originalPaths > 0);
+
+            BigInteger originalArborescences = DirectedGraphSet.Arborescences(original, root: 0).Count;
+            BigInteger loadedArborescences = DirectedGraphSet.Arborescences(loaded, root: 0).Count;
+            Assert.Equal(originalArborescences, loadedArborescences);
+            Assert.True(originalArborescences > 0);
         }
     }
 }

@@ -159,3 +159,26 @@ C# 側の辺順序生成ループ（`Graph.Grid(rows, cols)`）と Python 側の
 
 `GraphillionTextFormat` は `System.IO`/`System.Collections.Generic` などの BCL のみを使い、
 `src/ZDD.Net` の `PackageReference` は引き続き 0 のまま（`DependencyPolicyTests` で検査）。
+
+## 7. 有向グラフは対象外
+
+M7（`DirectedGraph` / `DirectedGraphSet`、[docs/design/m7-directed-graphs.md](design/m7-directed-graphs.md)
+&#167;3.6、issue #158）で有向グラフに対応した後も、Graphillion 互換 I/O だけは有向を扱わない。
+
+- `GraphillionTextFormat` が読み書きするのは根から到達可能な ZDD ノードの生の列挙（`<id> <elem> <lo>
+  <hi>`）で、そこに「辺」や「頂点」の概念は登場しない——`elem`（変数番号）と実際の辺の対応づけは
+  `GraphSet`/`DirectedGraphSet` が universe（辺の並び）として外部に持っているだけ。したがって
+  `GraphillionTextFormat` 自体には有向グラフを技術的に拒否する仕掛けは無い（族を生成した universe が
+  `Edge` か `DirectedEdge` かに関わらず、変数番号の列として同じように読み書きできてしまう）
+- それでも意図的に **サポートしない**: Graphillion（Python 側）自体に有向グラフの概念が無いため
+  （`docs/design/m7-directed-graphs.md` §1 のスコープ表、D8「他ライブラリにもある機能は優先度を下げる」・
+  D4「実データが読み込めることを優先する」を踏まえた判断——Graphillion に無い概念の「互換」を謳っても
+  相互運用できる相手がいない）
+- そのため `DirectedGraphSet` に `GraphillionTextFormat` 用の書き出しメソッド（`GraphSet` にも実は
+  存在しない——生の `Zdd`/`Universe` を直接 `GraphillionTextFormat.Write`/`Read` に渡す使い方をする）
+  は用意しない。`DirectedGraphSet` の族を Graphillion 互換テキストで往復させたいという要望が今後
+  出た場合も、Python 側で有向グラフを扱えるようにならない限り「読めても Python の Graphillion と
+  突き合わせる相手がいない」ため、このドキュメントの方針を変えない限り追加しない
+- 無向の `Graph`/`GraphSet` からエッジリスト・簡易テキスト・DIMACS で読み書きする分には、この節は
+  一切関係ない（そちらは `EdgeListGraph`/`SimpleTextGraph`/`DimacsGraph` が担当し、Graphillion とは
+  無関係の独自フォーマット）
