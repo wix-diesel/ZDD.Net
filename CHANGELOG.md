@@ -30,6 +30,25 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
   （`PrecomputedZddSpec` との `And` 合成が正しく働くこと）、`FromSets` の結果が
   `SetSet<Edge>.FromSets` と一致することを、3 辺のグラフの全族（2^(2^3) 通り）で総当たり照合済み。
   `Empty` / `PowerSet` は既存ジェネレータと同じく毎回新しいユニバースを作る。
+- `GraphSet` / `DirectedGraphSet` の族代数演算 `Union` / `Intersect` / `Difference` /
+  `SymmetricDifference`（および演算子 `|` `&` `-` `^`）と `Maximal` / `Minimal`、
+  ユニバースの載せ替え `ToUniverseOf(other)`（M8-2、issue #188）。`Zdd` にも `SetSet<T>` にもある
+  族代数がグラフ層にだけ無く、Graphillion で最頻出の `gs1 | gs2` が書けなかった。
+  結果は全て `PrecomputedZddSpec` で包むので、`Including` などのフィルタは演算結果にも従来どおり効く。
+  本題は**ユニバースが共有されていない**こと——`GraphSet.Paths(g, ...)` と `GraphSet.Cycles(g)` は
+  同じ `Graph` から作っても別々の `SetUniverse<Edge>` と `ZddManager` を持つため、
+  `ReferenceEquals(Universe, other.Universe)` を要求する結合はそのままでは通らない。
+  **B18（暗黙昇格をしない）を維持**し、`SetSet<T>.ToUniverse` に相当する明示的な入口を
+  グラフ層にも置く形で解決した（OPEN-QUESTIONS の **B23**）。`GraphSet` は自分の `Graph` を
+  知っているので、引数はユニバースではなく相手の `GraphSet` を取る。二項演算はユニバース不一致で
+  `ArgumentException` になり、メッセージが **`ToUniverseOf` を名指しする**。`ToUniverseOf` は両者の
+  `Graph.Edges` が**順序を含めて一致する**ことを要求し、中身は `Zdd.TransferTo`（M6-5）。
+  辺順序が違う場合は、先に `ToEdgeOrder`（M6-6）で揃えるよう例外メッセージで案内する
+  （`DirectedGraphSet` 側には有向版の `ToEdgeOrder` がまだ無いので、`DirectedGraph.WithEdgeOrder` を
+  案内する）。`Graph` インスタンスごとにユニバースを共有する案は、1 つのマネージャに全族のノードが
+  溜まって `Collect()`（M5-3）の意味が変わり「1 問題ごとにマネージャを捨てる」使い方（B14）が
+  効かなくなるため採らず、v1.1 で単独検証する。3 辺のグラフの全族の全ペア（256 × 256 通り）で
+  4 つの演算と `Maximal` / `Minimal` を総当たり照合済み。
 
 ## [0.7.0] - 2026-09-06
 

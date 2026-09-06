@@ -697,6 +697,35 @@ GraphSet fromZdd = GraphSet.FromZdd(g, FrontierBuilder.Build<MySpec>(manager, sp
 「辺 index の範囲を外れた item を使っていないこと」だけ。`DirectedGraphSet` にも
 `DirectedGraph` / `DirectedEdge` 版の同じ 4 つがある。
 
+族同士の演算（`Union` / `Intersect` / `Difference` / `SymmetricDifference` と
+`|` `&` `-` `^`、および `Maximal` / `Minimal`）も `GraphSet` / `DirectedGraphSet` に揃えてある
+（M8-2、issue #188）。ただし**ジェネレータは呼ばれるたびに新しいユニバースとマネージャを作る**ので、
+同じ `Graph` から作った族同士でもそのままでは結合できない（OPEN-QUESTIONS の B18「暗黙昇格をしない」）。
+明示的に載せ替える入口が `ToUniverseOf`:
+
+```csharp
+Graph g = Graph.Grid(4, 4);
+
+GraphSet paths  = GraphSet.Paths(g, from: 0, to: 15);
+GraphSet cycles = GraphSet.Cycles(g);   // paths とは別のユニバース／マネージャ
+
+GraphSet either = paths | cycles.ToUniverseOf(paths);   // 明示的に揃えてから結合する
+GraphSet shortEither = either.Smaller(10);              // 結果にもフィルタは従来どおり効く
+```
+
+`ToUniverseOf` を挟まずに `paths | cycles` と書くと `ArgumentException` になり、
+例外メッセージが `ToUniverseOf` を名指しする。中身は `Zdd.TransferTo`（M6-5）そのもので、
+相手の `Graph` の辺が**順序を含めて一致する**ことを要求する。辺順序が違う場合は先に
+`ToEdgeOrder`（M6-6）で揃える——これも例外メッセージが案内する:
+
+```csharp
+GraphSet onOptimized = GraphSet.Cycles(g.Optimize());
+GraphSet combined = paths | onOptimized.ToEdgeOrder(g).ToUniverseOf(paths);
+```
+
+ユニバースを 1 つにまとめてしまう案（`Graph` ごとに共有する）は、1 つのマネージャに全族の
+ノードが溜まって `Collect()` の意味が変わるため採らなかった。詳細は OPEN-QUESTIONS の B23。
+
 M6-9 で追加した辺の族の生成メソッドも同じ流儀:
 
 ```csharp
