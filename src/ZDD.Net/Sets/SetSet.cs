@@ -5,6 +5,7 @@ using System.IO;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using ZDD.Net.Core;
+using ZDD.Net.Frontier;
 using ZDD.Net.Internal;
 using ZDD.Net.Io;
 using ZDD.Net.Specs;
@@ -276,6 +277,69 @@ namespace ZDD.Net.Sets
         /// <summary>Keeps only the member sets that are minimal under inclusion.</summary>
         public SetSet<T> Minimal() => new SetSet<T>(Universe, Zdd.Minimal());
 
+        /// <summary>
+        /// Complement <c>2^Universe &#8726; F</c>: every subset of <see cref="Universe"/>'s elements
+        /// that is <b>not</b> a member of this family (M8-3, issue #189).
+        /// </summary>
+        /// <remarks>
+        /// <b>Closed over <see cref="Universe"/>, not over the manager</b>: this is
+        /// <see cref="Core.Zdd.ComplementWithin"/> over <see cref="Universe"/>'s items, not
+        /// <see cref="Core.Zdd.Complement"/>, which would also bring in subsets of items no element is
+        /// mapped to whenever <see cref="ZddManager.VariableCount"/> exceeds <see cref="SetUniverse{T}.Count"/>.
+        /// <c>F.Complement().Complement() == F</c>; <c>Empty(u).Complement() == PowerSet(u)</c>.
+        /// </remarks>
+        /// <example>
+        /// <code>
+        /// var universe = new SetUniverse&lt;string&gt;(new[] { "a", "b" });
+        /// SetSet&lt;string&gt; f = SetSet&lt;string&gt;.FromSets(universe, new[] { new[] { "a" } });
+        ///
+        /// // { {}, {"b"}, {"a", "b"} } — the other three subsets of { "a", "b" }.
+        /// SetSet&lt;string&gt; rest = f.Complement();
+        /// </code>
+        /// </example>
+        public SetSet<T> Complement() => new SetSet<T>(Universe, Zdd.ComplementWithin(UniverseItems()));
+
+        // ==================== Size filters (M8-3, issue #189) ====================
+
+        /// <summary>Keeps only member sets with more than <paramref name="n"/> elements (Graphillion's <c>larger_than</c>: an open bound).</summary>
+        /// <param name="n">The size threshold; must be non-negative. Sets of exactly <paramref name="n"/> elements are dropped.</param>
+        /// <example><code>SetSet&lt;string&gt; big = family.Larger(2);   // |s| &gt; 2</code></example>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="n"/> is negative.</exception>
+        public SetSet<T> Larger(int n)
+        {
+            ThrowHelper.ThrowIfNegative(n, nameof(n));
+
+            int min = n + 1;
+            int max = Math.Max(min, Universe.Count);
+            return FilterBySize(min, max);
+        }
+
+        /// <summary>Keeps only member sets with fewer than <paramref name="n"/> elements (Graphillion's <c>smaller_than</c>: an open bound).</summary>
+        /// <param name="n">The size threshold; must be non-negative. <c>0</c> yields the empty family (no set has fewer than zero elements).</param>
+        /// <example><code>SetSet&lt;string&gt; small = family.Smaller(2);   // |s| &lt; 2</code></example>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="n"/> is negative.</exception>
+        public SetSet<T> Smaller(int n)
+        {
+            ThrowHelper.ThrowIfNegative(n, nameof(n));
+
+            if (n == 0)
+            {
+                return Empty(Universe);
+            }
+
+            return FilterBySize(0, n - 1);
+        }
+
+        /// <summary>Keeps only member sets with exactly <paramref name="n"/> elements (Graphillion's <c>len</c>).</summary>
+        /// <param name="n">The required size; must be non-negative.</param>
+        /// <example><code>SetSet&lt;string&gt; exact = family.LenEquals(2);   // |s| == 2</code></example>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="n"/> is negative.</exception>
+        public SetSet<T> LenEquals(int n)
+        {
+            ThrowHelper.ThrowIfNegative(n, nameof(n));
+            return FilterBySize(n, n);
+        }
+
         /// <summary>Removes one contained element from each member set, using every element of <see cref="Universe"/>. See <see cref="Core.Zdd.RemoveSomeItem()"/>.</summary>
         public SetSet<T> RemoveSomeItem() => new SetSet<T>(Universe, Zdd.RemoveSomeItem());
 
@@ -434,6 +498,65 @@ namespace ZDD.Net.Sets
         /// <inheritdoc cref="GetEnumerator"/>
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
+        // ==================== Lazy enumeration (M8-3, issue #189) ====================
+
+        /// <summary>Lazily enumerates every member set in ascending total weight order.</summary>
+        /// <param name="weights">Per-element weight; must have an entry for every element of <see cref="Universe"/>, including elements this family never uses.</param>
+        /// <remarks>
+        /// <para>
+        /// Genuinely lazy: enumerating the first <c>k</c> sets (e.g. via <c>.Take(k)</c>) costs work
+        /// proportional to <c>k</c>, not the family's full size &#8212; unlike
+        /// <see cref="TopK(IReadOnlyDictionary{T, int}, int)"/>, <c>k</c> need not be picked up front.
+        /// </para>
+        /// <para>
+        /// <paramref name="weights"/> is read eagerly, so a missing entry throws when the enumerable is
+        /// created, not on the first <c>MoveNext</c>. It is a dictionary rather than
+        /// <c>GraphSet.MinIter</c>'s <c>Func&lt;Edge, TWeight&gt;</c> on purpose: each layer takes weights
+        /// the way its own <see cref="MinWeight(IReadOnlyDictionary{T, int})"/> already does.
+        /// </para>
+        /// </remarks>
+        /// <example><code>foreach (var s in family.MinIter(weights).Take(10)) { /* the 10 lightest sets */ }</code></example>
+        /// <exception cref="ArgumentNullException"><paramref name="weights"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="weights"/> is missing an entry for a universe element.</exception>
+        public IEnumerable<IReadOnlySet<T>> MinIter(IReadOnlyDictionary<T, int> weights) =>
+            IterCore<int, Int32WeightOps>(weights, maximize: false);
+
+        /// <inheritdoc cref="MinIter(IReadOnlyDictionary{T, int})"/>
+        public IEnumerable<IReadOnlySet<T>> MinIter(IReadOnlyDictionary<T, long> weights) =>
+            IterCore<long, Int64WeightOps>(weights, maximize: false);
+
+        /// <inheritdoc cref="MinIter(IReadOnlyDictionary{T, int})"/>
+        public IEnumerable<IReadOnlySet<T>> MinIter(IReadOnlyDictionary<T, double> weights) =>
+            IterCore<double, DoubleWeightOps>(weights, maximize: false);
+
+        /// <summary>Lazily enumerates every member set in descending total weight order. See <see cref="MinIter(IReadOnlyDictionary{T, int})"/>.</summary>
+        /// <param name="weights">Per-element weight; must have an entry for every element of <see cref="Universe"/>, including elements this family never uses.</param>
+        /// <remarks><c>MaxIter(w).Take(k)</c> yields <see cref="TopK(IReadOnlyDictionary{T, int}, int)"/>'s <c>k</c> weights, in the same order; sets of equal weight may come out in either order.</remarks>
+        /// <exception cref="ArgumentNullException"><paramref name="weights"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="weights"/> is missing an entry for a universe element.</exception>
+        public IEnumerable<IReadOnlySet<T>> MaxIter(IReadOnlyDictionary<T, int> weights) =>
+            IterCore<int, Int32WeightOps>(weights, maximize: true);
+
+        /// <inheritdoc cref="MaxIter(IReadOnlyDictionary{T, int})"/>
+        public IEnumerable<IReadOnlySet<T>> MaxIter(IReadOnlyDictionary<T, long> weights) =>
+            IterCore<long, Int64WeightOps>(weights, maximize: true);
+
+        /// <inheritdoc cref="MaxIter(IReadOnlyDictionary{T, int})"/>
+        public IEnumerable<IReadOnlySet<T>> MaxIter(IReadOnlyDictionary<T, double> weights) =>
+            IterCore<double, DoubleWeightOps>(weights, maximize: true);
+
+        /// <summary>Lazily and endlessly enumerates member sets, each drawn independently and uniformly at random (with replacement).</summary>
+        /// <param name="random">Random source; fix a seed for deterministic output.</param>
+        /// <remarks>Never completes on its own &#8212; bound it with <c>.Take(n)</c> or a <c>break</c>.</remarks>
+        /// <example><code>foreach (var s in family.RandIter(new Random(1)).Take(5)) { /* ... */ }</code></example>
+        /// <exception cref="ArgumentNullException"><paramref name="random"/> is <see langword="null"/>.</exception>
+        /// <exception cref="InvalidOperationException">This family is empty (thrown on the first <c>MoveNext</c>).</exception>
+        public IEnumerable<IReadOnlySet<T>> RandIter(Random random)
+        {
+            ArgumentNullException.ThrowIfNull(random);
+            return RandIterCore(random);
+        }
+
         /// <summary>Whether two families are the same set of member sets over the same <see cref="Universe"/>.</summary>
         public bool Equals(SetSet<T>? other) =>
             other is not null && ReferenceEquals(Universe, other.Universe) && Zdd == other.Zdd;
@@ -480,6 +603,56 @@ namespace ZDD.Net.Sets
             DotOptions effective = options?.Clone() ?? new DotOptions();
             effective.LevelLabel = item => Universe.ElementAt(item).ToString() ?? string.Empty;
             return effective;
+        }
+
+        /// <summary>The whole universe as item indices (<c>0 .. Universe.Count - 1</c>), the sub-universe <see cref="Complement"/> closes over.</summary>
+        private int[] UniverseItems()
+        {
+            var items = new int[Universe.Count];
+
+            for (int i = 0; i < items.Length; i++)
+            {
+                items[i] = i;
+            }
+
+            return items;
+        }
+
+        /// <summary>
+        /// Keeps the member sets whose size lies in <c>[min, max]</c>, composing
+        /// <see cref="CardinalitySpec"/> onto this family in one frontier expansion
+        /// (<see cref="ZddExtensions.Subset{TSpec, TState}"/>) instead of intersecting with a
+        /// separately built ZDD.
+        /// </summary>
+        private SetSet<T> FilterBySize(int min, int max) =>
+            new SetSet<T>(Universe, Zdd.Subset<CardinalitySpec, int>(new CardinalitySpec(Universe.Count, min, max)));
+
+        /// <summary>
+        /// Resolves <paramref name="weights"/> eagerly (so a missing entry throws at the call, not at the
+        /// first <c>MoveNext</c>), then hands the family to <see cref="LazyWeightEnumeration"/>.
+        /// </summary>
+        private IEnumerable<IReadOnlySet<T>> IterCore<TWeight, TOps>(IReadOnlyDictionary<T, TWeight> weights, bool maximize)
+            where TOps : struct, IWeightOps<TWeight>
+        {
+            TWeight[] resolved = Universe.ToValueArray(weights, nameof(weights));
+            return IterCore<TWeight, TOps>(resolved, maximize);
+        }
+
+        private IEnumerable<IReadOnlySet<T>> IterCore<TWeight, TOps>(TWeight[] weights, bool maximize)
+            where TOps : struct, IWeightOps<TWeight>
+        {
+            foreach (WeightedSet<TWeight> item in LazyWeightEnumeration.Enumerate<TWeight, TOps>(Zdd.Owner!, Zdd.Id, weights, maximize))
+            {
+                yield return Universe.ToElementSet(item.Items);
+            }
+        }
+
+        private IEnumerable<IReadOnlySet<T>> RandIterCore(Random random)
+        {
+            while (true)
+            {
+                yield return Sample(random);
+            }
         }
 
         private SetSet<T> Combine(SetSet<T> other, Func<Zdd, Zdd, Zdd> operation)
