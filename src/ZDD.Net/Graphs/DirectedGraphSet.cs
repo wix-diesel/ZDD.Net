@@ -90,6 +90,101 @@ namespace ZDD.Net.Graphs
         /// <summary>Whether this family has no member arc sets.</summary>
         public bool IsEmpty => _family.IsEmpty;
 
+        // ==================== Factories (M8-1) ====================
+
+        /// <summary>
+        /// The family of exactly <paramref name="edgeSets"/> &#8212; the directed counterpart of
+        /// <see cref="GraphSet.FromSets"/>, and the starting point for a family that no generator
+        /// produces. Duplicate arcs within one set, and duplicate sets, are collapsed.
+        /// </summary>
+        /// <param name="graph">The graph whose arcs the sets are drawn from.</param>
+        /// <param name="edgeSets">The member arc sets; every arc must be one of <paramref name="graph"/>'s.</param>
+        /// <example><code>DirectedGraphSet gs = DirectedGraphSet.FromSets(graph, new[] { new[] { new DirectedEdge(1, 2) } });</code></example>
+        /// <exception cref="ArgumentNullException"><paramref name="graph"/>, <paramref name="edgeSets"/>, or one of its sets is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException">An arc is not part of <paramref name="graph"/> (the message names it).</exception>
+        public static DirectedGraphSet FromSets(DirectedGraph graph, IEnumerable<IEnumerable<DirectedEdge>> edgeSets)
+        {
+            ArgumentNullException.ThrowIfNull(graph);
+            ArgumentNullException.ThrowIfNull(edgeSets);
+
+            var universe = new SetUniverse<DirectedEdge>(graph.Edges);
+            var materialized = new List<DirectedEdge[]>();
+
+            foreach (IEnumerable<DirectedEdge> edgeSet in edgeSets)
+            {
+                if (edgeSet is null)
+                {
+                    throw new ArgumentNullException(nameof(edgeSets), $"'{nameof(edgeSets)}' contains a null set.");
+                }
+
+                DirectedEdge[] edges = edgeSet as DirectedEdge[] ?? System.Linq.Enumerable.ToArray(edgeSet);
+
+                foreach (DirectedEdge edge in edges)
+                {
+                    if (!universe.Contains(edge))
+                    {
+                        throw new ArgumentException($"Arc {edge} is not part of the given graph.", nameof(edgeSets));
+                    }
+                }
+
+                materialized.Add(edges);
+            }
+
+            return FromPrecomputed(graph, universe, SetSet<DirectedEdge>.FromSets(universe, materialized).Zdd);
+        }
+
+        /// <summary>The family with no member arc sets at all &#8212; the identity for <c>Union</c>, and what every filter narrows toward.</summary>
+        /// <param name="graph">The graph whose arcs the (absent) sets would be drawn from.</param>
+        /// <example><code>DirectedGraphSet none = DirectedGraphSet.Empty(graph);</code></example>
+        /// <exception cref="ArgumentNullException"><paramref name="graph"/> is <see langword="null"/>.</exception>
+        public static DirectedGraphSet Empty(DirectedGraph graph)
+        {
+            ArgumentNullException.ThrowIfNull(graph);
+
+            var universe = new SetUniverse<DirectedEdge>(graph.Edges);
+            return FromPrecomputed(graph, universe, universe.Manager.Empty);
+        }
+
+        /// <summary>The family of every arc subset of <paramref name="graph"/> (2^E).</summary>
+        /// <param name="graph">The graph whose arcs are the universe.</param>
+        /// <example><code>DirectedGraphSet all = DirectedGraphSet.PowerSet(graph); // Count == 2^graph.EdgeCount</code></example>
+        /// <exception cref="ArgumentNullException"><paramref name="graph"/> is <see langword="null"/>.</exception>
+        public static DirectedGraphSet PowerSet(DirectedGraph graph)
+        {
+            ArgumentNullException.ThrowIfNull(graph);
+
+            var universe = new SetUniverse<DirectedEdge>(graph.Edges);
+            return FromPrecomputed(graph, universe, universe.Manager.PowerSetOf(GraphSetFactory.AllItems(graph.EdgeCount)));
+        }
+
+        /// <summary>
+        /// Reads a <see cref="Core.Zdd"/> built with the low-level API back as a family of
+        /// <paramref name="graph"/>'s arc sets, taking item index <c>i</c> to be arc index <c>i</c>.
+        /// </summary>
+        /// <param name="graph">The graph to read <paramref name="zdd"/> against.</param>
+        /// <param name="zdd">The family, over a manager with at least <paramref name="graph"/>'s arc count of variables.</param>
+        /// <example><code>DirectedGraphSet gs = DirectedGraphSet.FromZdd(graph, FrontierBuilder.Build&lt;MySpec&gt;(manager, spec));</code></example>
+        /// <remarks>
+        /// <b>The caller guarantees the correspondence</b>, exactly as in <see cref="GraphSet.FromZdd"/>:
+        /// that <paramref name="zdd"/> was really built over <paramref name="graph"/>'s arc order cannot be
+        /// checked, only that its manager has enough variables and that no set uses an item outside
+        /// <paramref name="graph"/>'s arcs.
+        /// </remarks>
+        /// <exception cref="ArgumentNullException"><paramref name="graph"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="zdd"/>'s manager has fewer variables than <paramref name="graph"/> has arcs, or
+        /// some member set uses an item index that is not an arc index of <paramref name="graph"/>.
+        /// </exception>
+        public static DirectedGraphSet FromZdd(DirectedGraph graph, Zdd zdd)
+        {
+            ArgumentNullException.ThrowIfNull(graph);
+
+            int levelOffset = GraphSetFactory.ValidateZddOver(zdd, graph.EdgeCount, nameof(zdd));
+            var universe = new SetUniverse<DirectedEdge>(graph.Edges);
+            Zdd rebuilt = Build(universe.Manager, new PrecomputedZddSpec(zdd, levelOffset));
+            return FromPrecomputed(graph, universe, rebuilt);
+        }
+
         // ==================== Generators ====================
 
         /// <summary>The family of directed simple <c>from</c>&#8211;<c>to</c> paths of <paramref name="graph"/>. See <see cref="Specs.DirectedPathSpec"/>.</summary>
@@ -453,6 +548,13 @@ namespace ZDD.Net.Graphs
         }
 
         // ==================== Internals ====================
+
+        /// <summary>
+        /// Wraps a <see cref="Zdd"/> built without a frontier walk (M8-1's factories) as a family over a
+        /// fresh universe, using <see cref="PrecomputedZddSpec"/> so <see cref="Filter"/> still composes.
+        /// </summary>
+        private static DirectedGraphSet FromPrecomputed(DirectedGraph graph, SetUniverse<DirectedEdge> universe, Zdd zdd) =>
+            new DirectedGraphSet(graph, universe, zdd, new PrecomputedZddSpec(zdd));
 
         private static DirectedGraphSet Generate<TSpec>(DirectedGraph graph, TSpec spec)
             where TSpec : struct, IArrayDdSpec
