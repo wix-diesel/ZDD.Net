@@ -23,7 +23,10 @@ namespace ZDD.Net.Benchmarks
     /// <see cref="ParallelFrontierReport"/>, the sequential-vs-parallel build time comparison
     /// docs/benchmarks.md's M4-3 section (parallel level expansion) is measured against (issue #46), and
     /// <c>serialize</c> runs <see cref="SerializationReport"/>, the <c>ZddBinaryFormat</c> write/read
-    /// timing vs. build-time comparison docs/benchmarks.md's M5-1 section is measured against (issue #53).
+    /// timing vs. build-time comparison docs/benchmarks.md's M5-1 section is measured against (issue #53),
+    /// and <c>directed-graph</c> runs <see cref="DirectedGraphReport"/>, the directed-vs-undirected
+    /// multiplier and matrix-tree/factorial cross-checks docs/benchmarks.md's M7-8 section is measured
+    /// against (issue #159).
     /// <see cref="ComparisonReport"/> adds no CLI mode of its own — its cases (issue #51 / M4-8, the
     /// Graphillion/TdZdd comparison) are folded into <see cref="MemoryReport.AllCases"/>, so
     /// <c>time</c>/<c>memory</c> above already reach them.
@@ -77,6 +80,12 @@ namespace ZDD.Net.Benchmarks
             if (args.Any(a => string.Equals(a, "serialize", StringComparison.OrdinalIgnoreCase)))
             {
                 SerializationReport.Run();
+                return;
+            }
+
+            if (args.Any(a => string.Equals(a, "directed-graph", StringComparison.OrdinalIgnoreCase)))
+            {
+                DirectedGraphReport.Run();
                 return;
             }
 
