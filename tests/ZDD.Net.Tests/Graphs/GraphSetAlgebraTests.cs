@@ -124,6 +124,10 @@ namespace ZDD.Net.Tests.Graphs
 
                 Assert.Equal("other", ex.ParamName);
                 Assert.Contains(nameof(GraphSet.ToUniverseOf), ex.Message, StringComparison.Ordinal);
+
+                // The suggested fix moves the right operand, matching the docs and keeping the result
+                // on the left operand's universe (which is what Combine builds it over).
+                Assert.Contains($"left | right.{nameof(GraphSet.ToUniverseOf)}(left)", ex.Message, StringComparison.Ordinal);
             }
         }
 
@@ -192,6 +196,10 @@ namespace ZDD.Net.Tests.Graphs
 
             Assert.Equal("other", ex.ParamName);
             Assert.Contains(nameof(GraphSet.ToEdgeOrder), ex.Message, StringComparison.Ordinal);
+
+            // The guidance has to name an argument the caller actually holds, not ToEdgeOrder's own
+            // parameter name, so that following the message verbatim compiles.
+            Assert.Contains($"{nameof(GraphSet.ToEdgeOrder)}(other.{nameof(GraphSet.Graph)})", ex.Message, StringComparison.Ordinal);
         }
 
         [Fact]

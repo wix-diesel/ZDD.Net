@@ -1036,7 +1036,8 @@ namespace ZDD.Net.Graphs
                     throw new ArgumentException(
                         $"'other' is a family of a different edge order: edge index {i} is {mine} here but {theirs} there. " +
                         $"{nameof(ToUniverseOf)} moves a family between universes, not between edge orders: align the " +
-                        $"orders first with '{nameof(ToEdgeOrder)}(target)', then move the result onto 'other'.",
+                        $"orders first with '{nameof(ToEdgeOrder)}(other.{nameof(Graph)})' (available when this family's graph " +
+                        $"came from {nameof(Graph.Optimize)} / {nameof(Graph.WithEdgeOrder)}), then move the result onto 'other'.",
                         "other");
                 }
             }
@@ -1440,7 +1441,7 @@ namespace ZDD.Net.Graphs
                 throw new ArgumentException(
                     "The two GraphSet instances do not share the same SetUniverse<Edge>; only families built over the same universe can be combined (B18: no implicit promotion). " +
                     "Every generator builds a fresh universe, so even two families of the very same Graph have separate ones: " +
-                    $"move one onto the other first with '{nameof(ToUniverseOf)}' (e.g. 'left.{nameof(ToUniverseOf)}(right) | right').",
+                    $"move the right operand onto the left one first with '{nameof(ToUniverseOf)}' (e.g. 'left | right.{nameof(ToUniverseOf)}(left)').",
                     nameof(other));
             }
 

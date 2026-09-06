@@ -684,7 +684,7 @@ namespace ZDD.Net.Graphs
                 throw new ArgumentException(
                     "The two DirectedGraphSet instances do not share the same SetUniverse<DirectedEdge>; only families built over the same universe can be combined (B18: no implicit promotion). " +
                     "Every generator builds a fresh universe, so even two families of the very same DirectedGraph have separate ones: " +
-                    $"move one onto the other first with '{nameof(ToUniverseOf)}' (e.g. 'left.{nameof(ToUniverseOf)}(right) | right').",
+                    $"move the right operand onto the left one first with '{nameof(ToUniverseOf)}' (e.g. 'left | right.{nameof(ToUniverseOf)}(left)').",
                     nameof(other));
             }
 
