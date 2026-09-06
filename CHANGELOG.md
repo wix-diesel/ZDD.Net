@@ -112,6 +112,30 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
   ため）、`DirectedDegreeConstraintSpec` を頂点数 8 以下の総当たり照合およびランダム有向グラフで検証し、
   同スペックで `DirectedPathSpec` の次数プロファイルを再現すると（連結性を落とした分の）非交差な
   上位集合になること（M3-7 の `DegreeConstraintSpec` 版と同じ検証手法の有向版）もテスト済み。
+- `DirectedGraphSet`: M7-1〜M7-5 で作った有向スペックを `GraphSet` と同じ使い心地で使える高レベル API
+  （M7-6、issue #157、[docs/design/m7-directed-graphs.md](docs/design/m7-directed-graphs.md) §3.5）。
+  `GraphSet` が `SetSet<Edge>` の上に載っているのと同じ構造で `SetSet<DirectedEdge>` の上に載せ、
+  `GraphSetSpec.cs` の型消去したスペック連鎖（`IErasedGraphSpec` / `ArraySpecErased<TSpec>` /
+  `StructSpecErased<TSpec, TState>` / `AndErasedSpec` / `PrecomputedZddSpec` / `ErasedGraphDdSpec`）は
+  スペックの状態表現にしか依存しないためそのまま再利用し、`DirectedGraph` 専用に新設したのは
+  `Including(DirectedEdge)` / `Excluding(DirectedEdge)` / `Including(int)` / `Excluding(int)` が
+  組み立てる `DirectedEdgeMembershipSpec` / `DirectedVertexTouchSpec`（無向版 `EdgeMembershipSpec` /
+  `VertexTouchSpec` の弧版。`Including(int vertex)` は向き不問——入向き・出向きどちらの弧でも 1 本
+  あれば足りる。向きを区別したい場合は `Including(DirectedEdge)` を使う）の 2 つだけ。`CardinalitySpec` /
+  `LinearConstraintSpec` はどちらも「アイテム数」としてしか辺を見ておらず `Graph` / `DirectedGraph` の
+  どちらにも依存しないため無改造で共有できた。`GraphSet` と共通の基底クラスは作らない
+  （`docs/OPEN-QUESTIONS.md` B22）——`Including` が自分自身の型を返すには自己参照型引数（CRTP）が
+  必要になり公開 API の可読性が大きく落ちるためで、重複するのは薄いラッパ約 30 行分だけ、実体は
+  `SetSet<T>` 側に 1 つしか無い。ジェネレータは `Paths` / `Cycles` / `HamiltonianPaths` /
+  `HamiltonianCycles` / `Arborescences` / `DegreeConstrained` の 6 つ、フィルタ・列挙・重み API は
+  `Including` / `Excluding`（辺・頂点）/ `Larger` / `Smaller` / `LenEquals` / `CostAtMost` /
+  `CostAtLeast` / `CostEquals` / `MinIter` / `MaxIter` / `RandIter` / `MaxWeight` / `MinWeight` /
+  `TopK` / `Sample` / `Probability` / `ElementAt` / `IndexOf` まで `GraphSet` と同じ形で揃えた。
+  受け入れ条件として、各ジェネレータの結果が対応するスペックを直接 `Build` した結果と一致すること、
+  フィルタ連鎖（`Including(e).Excluding(f).Smaller(n)` など）が探索中に適用されており事後フィルタより
+  中間ノード数が少ないこと、`MinIter`/`MaxIter`/`RandIter`/`TopK`/`Sample` が `GraphSet` と同じ挙動を
+  すること、`ToDot` が `digraph` として出力されること、`Bidirected(格子)` の `Paths(...).Count` が
+  OEIS A007764 と一致することをテスト済み。
 
 ## [0.6.0] - 2026-09-05
 
