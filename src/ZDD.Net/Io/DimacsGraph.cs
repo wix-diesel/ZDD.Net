@@ -265,13 +265,13 @@ namespace ZDD.Net.Io
 
                     if (u == v)
                     {
-                        throw new GraphFormatException(lineNumber, $"Arc {u} -> {v} is a self-loop; self-loops are not supported.");
+                        throw new GraphFormatException(lineNumber, $"Arc {u + 1} -> {v + 1} is a self-loop; self-loops are not supported.");
                     }
 
                     DirectedEdge edge = new DirectedEdge(u, v);
                     if (!seen.Add(edge))
                     {
-                        throw new GraphFormatException(lineNumber, $"Arc {u} -> {v} duplicates an earlier arc; multi-arcs are not supported.");
+                        throw new GraphFormatException(lineNumber, $"Arc {u + 1} -> {v + 1} duplicates an earlier arc; multi-arcs are not supported.");
                     }
 
                     edges.Add(edge);

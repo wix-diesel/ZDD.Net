@@ -239,6 +239,10 @@ namespace ZDD.Net.Tests.Io
 
             Assert.Equal(2, ex.LineNumber);
             Assert.Contains("self-loop", ex.Message, StringComparison.Ordinal);
+
+            // The message must report the 1-based vertex number as it appears in the input line, not the
+            // internal 0-based index — DIMACS is 1-based throughout, including its other error messages.
+            Assert.Contains("Arc 1 -> 1", ex.Message, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -249,6 +253,9 @@ namespace ZDD.Net.Tests.Io
 
             Assert.Equal(3, ex.LineNumber);
             Assert.Contains("duplicates", ex.Message, StringComparison.Ordinal);
+
+            // Same 1-based reporting requirement as the self-loop case above.
+            Assert.Contains("Arc 1 -> 2", ex.Message, StringComparison.Ordinal);
         }
 
         [Fact]
