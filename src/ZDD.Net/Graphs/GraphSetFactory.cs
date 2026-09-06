@@ -46,14 +46,20 @@ namespace ZDD.Net.Graphs
                     paramName);
             }
 
-            foreach (int item in zdd.Support())
+            // Only a wider manager can hold an item that is not an edge index, so the support walk
+            // (O(node count), and the common case is a family built over this very graph) is skipped
+            // when the counts already agree.
+            if (variableCount > edgeCount)
             {
-                if (item >= edgeCount)
+                foreach (int item in zdd.Support())
                 {
-                    throw new ArgumentException(
-                        $"'{paramName}' uses item index {item}, which is not an edge index of the graph " +
-                        $"(0 .. {edgeCount - 1}).",
-                        paramName);
+                    if (item >= edgeCount)
+                    {
+                        throw new ArgumentException(
+                            $"'{paramName}' uses item index {item}, which is not an edge index of the graph " +
+                            $"(0 .. {edgeCount - 1}).",
+                            paramName);
+                    }
                 }
             }
 
