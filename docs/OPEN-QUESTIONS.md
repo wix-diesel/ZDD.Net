@@ -41,6 +41,21 @@ v0.5 到達後に他ライブラリ（Graphillion / TdZdd / SAPPOROBDD / CUDD+EX
 | **B21** | `TryBuild` が `false` を返す条件 | **`BuildLimit` 超過のときだけ**。キャンセルとスペック自身の例外は飲み込まない。`false` のときマネージャの状態は不変 | .NET の慣行では `Try` パターンはキャンセルを飲み込まない。状態不変は「トップダウン展開中は一時ノード表にしか書かない」ことから成立する |
 | **B22** | `GraphSet` と `DirectedGraphSet` の共通化 | **共通基底クラスは作らない**。どちらも `SetSet<T>` の上に載る薄いラッパにする | 「`Including` が自分自身の型を返す」ために自己参照型引数（CRTP）が必要になり、公開 API の可読性が大きく落ちる。重複するのは各 30 行程度のラッパだけ |
 
+
+## 確定した決定事項（2026-09-06 / v0.8 の計画時）
+
+v0.7 到達後に 4 層（`Zdd` / `SetSet<T>` / `GraphSet` / `DirectedGraphSet`）の public API を
+突き合わせ、欠落を [docs/design/m8-api-symmetry.md](design/m8-api-symmetry.md) にまとめた際の決定。
+
+| # | 論点 | 決定 | 根拠 |
+|---|---|---|---|
+| **D10** | v1.0 の凍結前にもう 1 つマイルストーンを挟むか | **挟む（M8 / v0.8）**。従来の M8「安定化と公開」は M9 に繰り下げ | 4 層の API 非対称には機能の欠落（`GraphSet` に族代数演算も明示的な生成手段も無い）が含まれ、配列パラメータ・別名・`IHybridDdSpec` は凍結後には直せない。M6 / M7 と同じ基準（凍結後に足すと破壊的になるものだけ前倒し）を適用した |
+| **B23** | `GraphSet` 同士の二項演算とユニバース | **B18 を維持し暗黙昇格はしない**。`GraphSet.ToUniverseOf(other)` を明示的な入口として用意し、不一致の例外メッセージで案内する | ジェネレータが呼ばれるたびに `new SetUniverse<Edge>(graph.Edges)` を作るため、同じ `Graph` から作った 2 つの `GraphSet` でもユニバースは別物。`Graph` 単位でユニバースを共有する案は `Collect()`（M5-3）の意味が変わるため v1.1 で単独検証する |
+| **B24** | スペック・高レベル API の配列パラメータ | **`ReadOnlySpan<T>` に統一し、コンストラクタで防御的コピーを取る** | `Zdd` 層は既に `ReadOnlySpan` で統一されている。現状は `int[]` をそのまま保持しており、呼び出し後に書き換えられると壊れるが、その挙動が未規定。凍結後は直せない |
+| **B25** | `IHybridDdSpec<TScalar>` の扱い | **`internal` に戻す**。構築の入口（`FrontierBuilder.Build` のオーバーロード）が実装できた時点で v1.1 以降に再公開する | 実装しても構築できない public 型を v1.0 の API 表面に残す価値が無い。`[Experimental]` を付けても「呼べるが動かない」ことは変わらない |
+| **B26** | `Restrict` / `Permit` / `Subset0` / `Subset1` の別名 | **両方 public のまま残す**。doc 上の主従だけ確定させ（正は `SupersetsOf` / `SubsetsOf` / `OnSet` / `OffSet`）、`[Obsolete]` は付けない | TdZdd / SAPPOROBDD からの移植が主要な流入経路で別名は実際に効く。`NonSubsetsOf` / `NonSupersetsOf` には別名が無いので、削除しても対称にはならない。`TreatWarningsAsErrors` の利用者にとって `[Obsolete]` は実質削除になる |
+| **B27** | `SetSet<T>` の永続化 | **対象外**。`GraphSetBinaryFormat` は `GraphSet` / `DirectedGraphSet` のみを対象にする | 要素型 `T` の直列化方法を決められない。`SetUniverse<T>` を利用者が復元して `FromSets` する経路を doc で案内する |
+
 ---
 
 ### A1 の実測結果（このリモート環境の egress ポリシー）
