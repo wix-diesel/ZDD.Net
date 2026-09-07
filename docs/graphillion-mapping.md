@@ -102,7 +102,7 @@ GraphSet gs = GraphSet.Graphs(grid, constraints);
 | `gs.difference(other)` / `gs - other` | `F.Difference(G)` / `F - G`、`gs.Difference(gs2)` / `gs - gs2` | 同上 |
 | `gs.symmetric_difference(other)` | `F.SymmetricDifference(G)` / `F ^ G`、`gs.SymmetricDifference(gs2)` / `gs ^ gs2` | 同上 |
 | `gs.maximal()` / `gs.minimal()` | `F.Maximal()` / `F.Minimal()`、`gs.Maximal()` / `gs.Minimal()` | 包含関係で極大／極小なメンバーだけ残す（`GraphSet` 版は M8-2） |
-| `gs.complement()` | `Zdd.Complement()` / `SetSet<T>.Complement()` | `SetSet<T>` 版はユニバース内（`2^Universe \ F`）に閉じる。`Zdd` 版はマネージャの全変数が対象で、部分ユニバース版 `Zdd.ComplementWithin(items)` もある（M6-1、`SetSet<T>` 版は M8-3） |
+| `gs.complement()` | `F.Zdd.Complement()` / `F.Complement()` | `SetSet<T>` 版はユニバース内（`2^Universe \ F`）に閉じる。`Zdd` 版はマネージャの全変数が対象で、部分ユニバース版 `F.Zdd.ComplementWithin(items)` もある（M6-1、`SetSet<T>` 版は M8-3） |
 | `gs.cost_le(costs, cost)` | `gs.CostAtMost(costs, bound)` | `cost_ge`/`cost_eq` は `CostAtLeast`/`CostEquals`（M6-8） |
 | `gs.larger_than(size)` / `smaller_than(size)` | `gs.Larger(size)` / `gs.Smaller(size)`、`F.Larger(size)` / `F.Smaller(size)` | どちらも開区間（`> size` / `< size`）。`SetSet<T>` 版は M8-3 |
 | `gs.len(size)` | `gs.LenEquals(size)` / `F.LenEquals(size)` | `SetSet<T>` 版は M8-3 |
