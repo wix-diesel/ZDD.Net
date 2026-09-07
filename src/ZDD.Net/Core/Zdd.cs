@@ -255,32 +255,34 @@ namespace ZDD.Net.Core
         /// <summary>Keeps only sets that contain (are a superset of) some set in <paramref name="g"/>.</summary>
         /// <param name="g">The family giving the condition; must belong to the same manager.</param>
         /// <remarks>
-        /// Same operation as <see cref="Restrict"/> (SAPPOROBDD naming); both names are provided.
+        /// <see cref="Restrict"/> is a compatibility alias retained for SAPPOROBDD and TdZdd users.
         /// <c>F.SupersetsOf(Base) == F</c>; <c>F.SupersetsOf(&#8709;) == &#8709;</c>.
         /// </remarks>
         /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
         /// <exception cref="ArgumentException"><paramref name="g"/> belongs to a different manager, or is <c>default(Zdd)</c>.</exception>
         /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
+        /// <seealso cref="Restrict"/>
         public Zdd SupersetsOf(Zdd g) => Manager.SupersetsOf(this, g);
 
-        /// <summary>Alias for <see cref="SupersetsOf"/> (SAPPOROBDD naming). Same operation.</summary>
-        /// <param name="g">The family giving the condition; must belong to the same manager.</param>
+        /// <inheritdoc cref="SupersetsOf"/>
+        /// <remarks>Alias retained for compatibility with SAPPOROBDD and TdZdd.</remarks>
         public Zdd Restrict(Zdd g) => Manager.SupersetsOf(this, g);
 
         /// <summary>Keeps only sets that are contained in (are a subset of) some set in <paramref name="g"/>.</summary>
         /// <param name="g">The family giving the condition; must belong to the same manager.</param>
         /// <remarks>
-        /// Same operation as <see cref="Permit"/> (SAPPOROBDD naming); both names are provided.
+        /// <see cref="Permit"/> is a compatibility alias retained for SAPPOROBDD and TdZdd users.
         /// <c>F.SubsetsOf(&#8709;) == &#8709;</c>; <c>F.SubsetsOf(Base)</c> is <c>{&#8709;}</c> if
         /// <c>F</c> contains &#8709;, else &#8709;.
         /// </remarks>
         /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
         /// <exception cref="ArgumentException"><paramref name="g"/> belongs to a different manager, or is <c>default(Zdd)</c>.</exception>
         /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
+        /// <seealso cref="Permit"/>
         public Zdd SubsetsOf(Zdd g) => Manager.SubsetsOf(this, g);
 
-        /// <summary>Alias for <see cref="SubsetsOf"/> (SAPPOROBDD naming). Same operation.</summary>
-        /// <param name="g">The family giving the condition; must belong to the same manager.</param>
+        /// <inheritdoc cref="SubsetsOf"/>
+        /// <remarks>Alias retained for compatibility with SAPPOROBDD and TdZdd.</remarks>
         public Zdd Permit(Zdd g) => Manager.SubsetsOf(this, g);
 
         /// <summary>Keeps only sets that are not a subset of any set in <paramref name="g"/>.</summary>
@@ -321,10 +323,11 @@ namespace ZDD.Net.Core
         /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="item"/> is out of range.</exception>
         /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
+        /// <seealso cref="Subset1"/>
         public Zdd OnSet(int item) => Manager.OnSet(this, item);
 
-        /// <summary>Alias for <see cref="OnSet"/> (Minato's naming).</summary>
-        /// <param name="item">Item index, between 0 and <see cref="ZddManager.VariableCount"/> (exclusive).</param>
+        /// <inheritdoc cref="OnSet"/>
+        /// <remarks>Alias retained for compatibility with SAPPOROBDD and TdZdd.</remarks>
         public Zdd Subset1(int item) => Manager.OnSet(this, item);
 
         /// <summary>Keeps only sets that do not contain <paramref name="item"/> (Minato's <c>Subset0</c>).</summary>
@@ -333,10 +336,11 @@ namespace ZDD.Net.Core
         /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="item"/> is out of range.</exception>
         /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
+        /// <seealso cref="Subset0"/>
         public Zdd OffSet(int item) => Manager.OffSet(this, item);
 
-        /// <summary>Alias for <see cref="OffSet"/> (Minato's naming).</summary>
-        /// <param name="item">Item index, between 0 and <see cref="ZddManager.VariableCount"/> (exclusive).</param>
+        /// <inheritdoc cref="OffSet"/>
+        /// <remarks>Alias retained for compatibility with SAPPOROBDD and TdZdd.</remarks>
         public Zdd Subset0(int item) => Manager.OffSet(this, item);
 
         /// <summary>Toggles membership of each item in <paramref name="items"/> across every set (a batched <see cref="Change"/>).</summary>

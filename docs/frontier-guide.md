@@ -236,6 +236,10 @@ Zdd accepted = FrontierBuilder.Build<DfaSpec, int>(
     dfaManager, new DfaSpec(transitions, initialState: 0, acceptStates: new[] { 0 }, length: 6));
 ```
 
+構築した `Zdd` を包含関係や item の有無で絞るときは、正の名前である `SupersetsOf` /
+`SubsetsOf` / `OnSet` / `OffSet` を使う。`Restrict` / `Permit` / `Subset1` / `Subset0` も
+SAPPOROBDD / TdZdd からの移植用の互換別名として public のまま利用できる。
+
 M6 で追加した 4 つの新規スペック（いずれも辺の族。`variableCount == graph.EdgeCount`）:
 
 ```csharp

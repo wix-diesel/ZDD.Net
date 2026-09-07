@@ -107,7 +107,7 @@ Zdd b = manager.Singleton(1) | manager.Singleton(2); // {{1}, {2}}
 
 ### 3.2 ZDD 固有の演算（Minato の基本演算）
 
-| メソッド | 別名 | 意味 |
+| メソッド | 別名・演算子 | 意味 |
 |---|---|---|
 | `F.Product(G)` | `F * G` | `{ a ∪ b : a ∈ F, b ∈ G }`（直積結合／join） |
 | `F.Quotient(G)` | `F / G` | `G` のどの集合とも重ならず、足しても `F` に入る集合 |
@@ -138,9 +138,9 @@ Zdd reconstructed = quotient * b | remainder;
 // reconstructed == product
 ```
 
-`SupersetsOf`/`Restrict`、`SubsetsOf`/`Permit`、`OnSet`/`Subset1`、`OffSet`/`Subset0` は
-それぞれ**同じ演算の別名**（前者が .NET 的な名前、後者が SAPPOROBDD／Minato の記法）。
-どちらの名前で探しても見つかるように両方を用意してある。
+`SupersetsOf` / `SubsetsOf` / `OnSet` / `OffSet` が正の名前で、`Restrict` / `Permit` /
+`Subset1` / `Subset0` は同じ演算を呼ぶ SAPPOROBDD / TdZdd 互換の別名である。移植しやすさと
+検索性のために両方を public のまま残しており、互換別名に `[Obsolete]` は付けていない。
 
 ### 3.3 問い合わせ
 
