@@ -229,7 +229,7 @@ M6-4→M6-5→M6-6 は直列。M6-9 以降は M6-8 の後に一列。
 | [x] | **M8-3** | `SetSet<T>` のフィルタと遅延列挙 | `Larger` / `Smaller` / `LenEquals` / `MinIter` / `MaxIter` / `RandIter` / `Complement` | `GraphSet` の同名メソッドと結果が一致。`Complement` がユニバース内に閉じている | 〜300 | M7-9（M8-1 と並行可） |
 | [x] | **M8-4** | 残りの層間ギャップ | `DirectedGraphSet` の1要素変種、`Zdd.LongCount()` | 4層の API 対応表に `×` が残らない | 〜200 | M8-2 |
 | [x] | **M8-5** | 配列パラメータの `ReadOnlySpan<T>` 化 | スペック5箇所・高レベル API 4箇所。コンストラクタで防御的コピー | 既存の呼び出しがソース互換のまま通る。**呼び出し後に元配列を書き換えても結果が変わらない**回帰テスト | 〜250 | M7-9（並行可） |
-| [ ] | **M8-6** | `IHybridDdSpec<TScalar>` の決着 | 実装しても構築できない public 型を `internal` に戻す（推奨案） | public API から消え、内部実装とテストはそのまま通る | 〜100 | M7-9（並行可） |
+| [x] | **M8-6** | `IHybridDdSpec<TScalar>` の決着 | 実装しても構築できない public 型を `internal` に戻す（推奨案） | public API から消え、内部実装とテストはそのまま通る | 〜100 | M7-9（並行可） |
 | [ ] | **M8-7** | 別名4組の主従の確定 | `Restrict` / `Permit` / `Subset0` / `Subset1` の doc 上の位置づけを統一（推奨は両方 public のまま） | 別名側が `<inheritdoc>` + `<seealso>` で正側を指す。`[Obsolete]` は付けない | 〜100 | M8-4 |
 | [ ] | **M8-8** | `GraphSet` の永続化 | `GraphSetBinaryFormat`（グラフ＋辺順序＋ZDD を1つの形式で） | ラウンドトリップで辺集合が一致。既存の `ZddBinaryFormat` のファイルが従来どおり読める | 〜300 | M8-2 |
 | [ ] | **M8-9** | v0.8 リリース | CHANGELOG / README / `docs/api-guide.md` / 移行対応表 §4 の更新 | — | ドキュメント | M8-8 |

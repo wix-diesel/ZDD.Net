@@ -9,10 +9,13 @@ namespace ZDD.Net.Frontier
     /// </summary>
     /// <typeparam name="TScalar">The scalar half of the state; use a <c>struct</c>, as for <see cref="IDdSpec{TState}"/>.</typeparam>
     /// <remarks>
+    /// This contract remains internal until a construction entry point is implemented. Re-exposing it as
+    /// a public API is planned for v1.1 together with the hybrid <c>FrontierBuilder.Build</c> overload.
+    ///
     /// Two states match when <see cref="ScalarEquals"/> accepts the scalars and the arrays agree element-wise,
     /// which keeps the array comparison out of user code while the scalar may still ignore stale fields.
     /// </remarks>
-    public interface IHybridDdSpec<TScalar>
+    internal interface IHybridDdSpec<TScalar>
     {
         /// <summary>The number of <see cref="int"/> slots in the array half; read once, before construction starts.</summary>
         int ArrayLength { get; }

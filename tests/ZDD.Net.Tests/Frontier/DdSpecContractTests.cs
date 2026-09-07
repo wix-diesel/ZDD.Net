@@ -18,6 +18,12 @@ namespace ZDD.Net.Tests.Frontier
     /// </remarks>
     public class DdSpecContractTests
     {
+        [Fact]
+        public void HybridSpecIsNotPartOfThePublicApi()
+        {
+            Assert.False(typeof(IHybridDdSpec<>).IsPublic);
+        }
+
         [Theory]
         [InlineData(4, 0)]
         [InlineData(4, 1)]

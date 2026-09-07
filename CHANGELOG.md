@@ -8,6 +8,13 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
 
 ## [Unreleased]
 
+### Changed
+
+- `IHybridDdSpec<TScalar>` を public API から外し、構築入口が実装されるまで `internal` に戻した
+  （M8-6、issue #192）。公開されていた一方で `FrontierBuilder.Build` に対応するオーバーロードがなく、
+  実装しても ZDD を構築できない契約だったため、実利用者はいないと見込まれる破壊的変更。
+  ハイブリッド版の構築入口と再公開は v1.1 バックログの issue #200 で扱う。
+
 ### Added
 
 - `GraphSet.FromSets` / `Empty` / `PowerSet` / `FromZdd` と、`DirectedGraphSet` の同じ 4 つ
