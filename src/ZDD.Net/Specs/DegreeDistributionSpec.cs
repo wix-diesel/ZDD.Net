@@ -55,15 +55,14 @@ namespace ZDD.Net.Specs
         /// <param name="graph">The graph to search.</param>
         /// <param name="counts">
         /// The required number of vertices at each degree: <c>counts[d]</c> vertices must end up with
-        /// degree exactly <c>d</c>. Copied, so later mutating the array passed in has no effect on the
+        /// degree exactly <c>d</c>. Copied, so later mutating the source storage has no effect on the
         /// spec. A degree of <c>counts.Length</c> or higher is never accepted (there is no bucket for it).
         /// </param>
-        /// <exception cref="ArgumentNullException"><paramref name="graph"/> or <paramref name="counts"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentNullException"><paramref name="graph"/> is <see langword="null"/>.</exception>
         /// <exception cref="ArgumentOutOfRangeException">Some <c>counts[d]</c> is negative.</exception>
-        public DegreeDistributionSpec(Graph graph, int[] counts)
+        public DegreeDistributionSpec(Graph graph, ReadOnlySpan<int> counts)
         {
             ArgumentNullException.ThrowIfNull(graph);
-            ArgumentNullException.ThrowIfNull(counts);
 
             for (int d = 0; d < counts.Length; d++)
             {
@@ -74,7 +73,7 @@ namespace ZDD.Net.Specs
             }
 
             _graph = graph;
-            _counts = (int[])counts.Clone();
+            _counts = counts.ToArray();
             _frontierManager = new FrontierManager(graph);
         }
 

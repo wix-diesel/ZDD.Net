@@ -49,25 +49,24 @@ namespace ZDD.Net.Specs
 
         /// <summary>Creates a spec enforcing per-vertex in-/out-degree ranges on <paramref name="graph"/>.</summary>
         /// <param name="graph">The graph to search.</param>
-        /// <param name="inLo">The minimum in-degree for each vertex, indexed like <see cref="DirectedGraph.VertexCount"/>.</param>
-        /// <param name="inHi">The maximum in-degree for each vertex, indexed like <see cref="DirectedGraph.VertexCount"/>.</param>
-        /// <param name="outLo">The minimum out-degree for each vertex, indexed like <see cref="DirectedGraph.VertexCount"/>.</param>
-        /// <param name="outHi">The maximum out-degree for each vertex, indexed like <see cref="DirectedGraph.VertexCount"/>.</param>
-        /// <exception cref="ArgumentNullException">
-        /// <paramref name="graph"/>, <paramref name="inLo"/>, <paramref name="inHi"/>, <paramref name="outLo"/> or <paramref name="outHi"/> is <see langword="null"/>.
-        /// </exception>
+        /// <param name="inLo">The minimum in-degree for each vertex, indexed like <see cref="DirectedGraph.VertexCount"/>. Copied.</param>
+        /// <param name="inHi">The maximum in-degree for each vertex, indexed like <see cref="DirectedGraph.VertexCount"/>. Copied.</param>
+        /// <param name="outLo">The minimum out-degree for each vertex, indexed like <see cref="DirectedGraph.VertexCount"/>. Copied.</param>
+        /// <param name="outHi">The maximum out-degree for each vertex, indexed like <see cref="DirectedGraph.VertexCount"/>. Copied.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="graph"/> is <see langword="null"/>.</exception>
         /// <exception cref="ArgumentException">
         /// Any array does not have exactly <see cref="DirectedGraph.VertexCount"/> entries, or some
         /// <c>inHi[v]</c>/<c>outHi[v]</c> is less than the matching <c>inLo[v]</c>/<c>outLo[v]</c>.
         /// </exception>
         /// <exception cref="ArgumentOutOfRangeException">Some <c>inLo[v]</c> or <c>outLo[v]</c> is negative.</exception>
-        public DirectedDegreeConstraintSpec(DirectedGraph graph, int[] inLo, int[] inHi, int[] outLo, int[] outHi)
+        public DirectedDegreeConstraintSpec(
+            DirectedGraph graph,
+            ReadOnlySpan<int> inLo,
+            ReadOnlySpan<int> inHi,
+            ReadOnlySpan<int> outLo,
+            ReadOnlySpan<int> outHi)
         {
             ArgumentNullException.ThrowIfNull(graph);
-            ArgumentNullException.ThrowIfNull(inLo);
-            ArgumentNullException.ThrowIfNull(inHi);
-            ArgumentNullException.ThrowIfNull(outLo);
-            ArgumentNullException.ThrowIfNull(outHi);
 
             CheckLength(graph, inLo, nameof(inLo));
             CheckLength(graph, inHi, nameof(inHi));
@@ -100,10 +99,10 @@ namespace ZDD.Net.Specs
             }
 
             _graph = graph;
-            _inLo = (int[])inLo.Clone();
-            _inHi = (int[])inHi.Clone();
-            _outLo = (int[])outLo.Clone();
-            _outHi = (int[])outHi.Clone();
+            _inLo = inLo.ToArray();
+            _inHi = inHi.ToArray();
+            _outLo = outLo.ToArray();
+            _outHi = outHi.ToArray();
             _frontierManager = new FrontierManager(graph);
 
             int edgeCount = graph.EdgeCount;
@@ -226,7 +225,7 @@ namespace ZDD.Net.Specs
             return remaining > 0 ? remaining : DdResult.True;
         }
 
-        private static void CheckLength(DirectedGraph graph, int[] array, string paramName)
+        private static void CheckLength(DirectedGraph graph, ReadOnlySpan<int> array, string paramName)
         {
             if (array.Length != graph.VertexCount)
             {

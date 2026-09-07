@@ -56,19 +56,17 @@ namespace ZDD.Net.Specs
 
         /// <summary>Creates a spec enforcing a per-vertex degree range on <paramref name="graph"/>.</summary>
         /// <param name="graph">The graph to search.</param>
-        /// <param name="lo">The minimum degree for each vertex, indexed like <see cref="Graph.VertexCount"/>.</param>
-        /// <param name="hi">The maximum degree for each vertex, indexed like <see cref="Graph.VertexCount"/>.</param>
-        /// <exception cref="ArgumentNullException"><paramref name="graph"/>, <paramref name="lo"/> or <paramref name="hi"/> is <see langword="null"/>.</exception>
+        /// <param name="lo">The minimum degree for each vertex, indexed like <see cref="Graph.VertexCount"/>. Copied.</param>
+        /// <param name="hi">The maximum degree for each vertex, indexed like <see cref="Graph.VertexCount"/>. Copied.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="graph"/> is <see langword="null"/>.</exception>
         /// <exception cref="ArgumentException">
         /// <paramref name="lo"/> or <paramref name="hi"/> does not have exactly <see cref="Graph.VertexCount"/> entries,
         /// or some <c>hi[v]</c> is less than <c>lo[v]</c>.
         /// </exception>
         /// <exception cref="ArgumentOutOfRangeException">Some <c>lo[v]</c> is negative.</exception>
-        public DegreeConstraintSpec(Graph graph, int[] lo, int[] hi)
+        public DegreeConstraintSpec(Graph graph, ReadOnlySpan<int> lo, ReadOnlySpan<int> hi)
         {
             ArgumentNullException.ThrowIfNull(graph);
-            ArgumentNullException.ThrowIfNull(lo);
-            ArgumentNullException.ThrowIfNull(hi);
 
             if (lo.Length != graph.VertexCount)
             {
@@ -97,8 +95,8 @@ namespace ZDD.Net.Specs
             }
 
             _graph = graph;
-            _lo = (int[])lo.Clone();
-            _hi = (int[])hi.Clone();
+            _lo = lo.ToArray();
+            _hi = hi.ToArray();
             _frontierManager = new FrontierManager(graph);
 
             int edgeCount = graph.EdgeCount;

@@ -529,19 +529,19 @@ namespace ZDD.Net.Graphs
         /// <param name="lo">The minimum degree for each vertex, indexed like <see cref="Graphs.Graph.VertexCount"/>.</param>
         /// <param name="hi">The maximum degree for each vertex, indexed like <see cref="Graphs.Graph.VertexCount"/>.</param>
         /// <example><code>GraphSet degreeConstrained = GraphSet.DegreeConstrained(Graph.Complete(5), lo: new[] { 1, 1, 1, 1, 1 }, hi: new[] { 2, 2, 2, 2, 2 });</code></example>
-        /// <exception cref="ArgumentNullException"><paramref name="graph"/>, <paramref name="lo"/> or <paramref name="hi"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentNullException"><paramref name="graph"/> is <see langword="null"/>.</exception>
         /// <exception cref="ArgumentException">
         /// <paramref name="lo"/> or <paramref name="hi"/> does not have exactly <see cref="Graphs.Graph.VertexCount"/> entries,
         /// or some <c>hi[v]</c> is less than <c>lo[v]</c>.
         /// </exception>
         /// <exception cref="ArgumentOutOfRangeException">Some <c>lo[v]</c> is negative.</exception>
-        public static GraphSet DegreeConstrained(Graph graph, int[] lo, int[] hi)
+        public static GraphSet DegreeConstrained(Graph graph, ReadOnlySpan<int> lo, ReadOnlySpan<int> hi)
         {
             ArgumentNullException.ThrowIfNull(graph);
             return Generate(graph, new DegreeConstraintSpec(graph, lo, hi));
         }
 
-        /// <summary>The family of edge sets in which every vertex's degree lies in <c>[lo, hi]</c>. See <see cref="DegreeConstrained(Graph, int[], int[])"/>.</summary>
+        /// <summary>The family of edge sets in which every vertex's degree lies in <c>[lo, hi]</c>. See <see cref="DegreeConstrained(Graph, ReadOnlySpan{int}, ReadOnlySpan{int})"/>.</summary>
         /// <param name="graph">The graph to search.</param>
         /// <param name="lo">The minimum degree, applied to every vertex.</param>
         /// <param name="hi">The maximum degree, applied to every vertex.</param>
@@ -581,13 +581,12 @@ namespace ZDD.Net.Graphs
         /// <param name="weights">The per-edge weight, indexed like <see cref="Graphs.Graph.Edges"/>; must all be non-negative.</param>
         /// <param name="capacity">The capacity.</param>
         /// <example><code>GraphSet fits = GraphSet.Knapsacks(Graph.Complete(5), weights: new[] { 2, 3, 4, 5, 9, 1, 6, 7, 8, 2 }, capacity: 10);</code></example>
-        /// <exception cref="ArgumentNullException"><paramref name="graph"/> or <paramref name="weights"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentNullException"><paramref name="graph"/> is <see langword="null"/>.</exception>
         /// <exception cref="ArgumentException"><paramref name="weights"/> does not have exactly <see cref="Graphs.Graph.EdgeCount"/> entries.</exception>
         /// <exception cref="ArgumentOutOfRangeException">Some weight is negative.</exception>
-        public static GraphSet Knapsacks(Graph graph, int[] weights, long capacity)
+        public static GraphSet Knapsacks(Graph graph, ReadOnlySpan<int> weights, long capacity)
         {
             ArgumentNullException.ThrowIfNull(graph);
-            ArgumentNullException.ThrowIfNull(weights);
 
             if (weights.Length != graph.EdgeCount)
             {
@@ -630,9 +629,9 @@ namespace ZDD.Net.Graphs
         /// <param name="graph">The graph to search.</param>
         /// <param name="counts">The required number of vertices at each degree; <c>counts[d]</c> for degree <c>d</c>.</param>
         /// <example><code>GraphSet distribution = GraphSet.DegreeDistributions(Graph.Complete(4), counts: new[] { 0, 0, 0, 4 });</code></example>
-        /// <exception cref="ArgumentNullException"><paramref name="graph"/> or <paramref name="counts"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentNullException"><paramref name="graph"/> is <see langword="null"/>.</exception>
         /// <exception cref="ArgumentOutOfRangeException">Some <c>counts[d]</c> is negative.</exception>
-        public static GraphSet DegreeDistributions(Graph graph, int[] counts)
+        public static GraphSet DegreeDistributions(Graph graph, ReadOnlySpan<int> counts)
         {
             ArgumentNullException.ThrowIfNull(graph);
             return Generate(graph, new DegreeDistributionSpec(graph, counts));

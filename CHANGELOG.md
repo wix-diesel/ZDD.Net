@@ -80,6 +80,13 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
   `long` に収まらない場合は `OverflowException` を投げる。これにより `Zdd` / `SetSet<T>` /
   `GraphSet` / `DirectedGraphSet` の4層すべてで `Count` / `LongCount()` / `CountApprox` が揃った。
 
+- 5 つのスペックと 4 つのグラフ生成 API が受け取る `int[]` を `ReadOnlySpan<int>` に変更した
+  （M8-5、issue #191）。配列からの暗黙変換により既存コードのソース互換性は保たれる一方、
+  シグネチャ変更のためバイナリ互換性はなく、利用側は再コンパイルが必要になる。各スペックは
+  コンストラクタ内で入力を防御的コピーするため、その後に呼び出し側の配列を書き換えても構築結果は
+  変化しない。`GraphConstraints.LinearConstraints` は `ReadOnlySpan<T>` をタプル要素にできないため
+  `int[]` のまま残し、配列を `Graphs()` / `Where()` の呼び出し中にだけ読み取る契約を明記した。
+
 ## [0.7.0] - 2026-09-06
 
 M7「有向グラフ対応」マイルストーン（[docs/PLAN.md](docs/PLAN.md) §12、

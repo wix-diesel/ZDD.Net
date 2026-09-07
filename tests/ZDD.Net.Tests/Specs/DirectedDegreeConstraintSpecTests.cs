@@ -147,17 +147,17 @@ namespace ZDD.Net.Tests.Specs
         }
 
         [Fact]
-        public void ConstructorRejectsNullArguments()
+        public void ConstructorRejectsNullGraphOrEmptyBounds()
         {
             DirectedGraph graph = DirectedGraph.Path(2);
             var zero = new[] { 0, 0 };
             var one = new[] { 1, 1 };
 
             Assert.Throws<ArgumentNullException>(() => new DirectedDegreeConstraintSpec(null!, zero, one, zero, one));
-            Assert.Throws<ArgumentNullException>(() => new DirectedDegreeConstraintSpec(graph, null!, one, zero, one));
-            Assert.Throws<ArgumentNullException>(() => new DirectedDegreeConstraintSpec(graph, zero, null!, zero, one));
-            Assert.Throws<ArgumentNullException>(() => new DirectedDegreeConstraintSpec(graph, zero, one, null!, one));
-            Assert.Throws<ArgumentNullException>(() => new DirectedDegreeConstraintSpec(graph, zero, one, zero, null!));
+            Assert.Throws<ArgumentException>(() => new DirectedDegreeConstraintSpec(graph, ReadOnlySpan<int>.Empty, one, zero, one));
+            Assert.Throws<ArgumentException>(() => new DirectedDegreeConstraintSpec(graph, zero, ReadOnlySpan<int>.Empty, zero, one));
+            Assert.Throws<ArgumentException>(() => new DirectedDegreeConstraintSpec(graph, zero, one, ReadOnlySpan<int>.Empty, one));
+            Assert.Throws<ArgumentException>(() => new DirectedDegreeConstraintSpec(graph, zero, one, zero, ReadOnlySpan<int>.Empty));
             Assert.Throws<ArgumentNullException>(() => new DirectedDegreeConstraintSpec(null!, 0, 1, 0, 1));
         }
 

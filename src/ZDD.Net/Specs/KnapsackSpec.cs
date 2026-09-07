@@ -27,17 +27,15 @@ namespace ZDD.Net.Specs
 
         /// <summary>Creates a spec accepting subsets whose weights sum to at most <paramref name="capacity"/>.</summary>
         /// <param name="weights">
-        /// The per-item weights; must all be non-negative. Copied, so later mutating the array passed
-        /// in has no effect on the spec.
+        /// The per-item weights; must all be non-negative. Copied, so later mutating the source storage
+        /// has no effect on the spec.
         /// </param>
         /// <param name="capacity">
         /// The capacity. Negative is accepted and simply describes the empty family (not even the empty
         /// set fits a negative capacity), matching how <see cref="CardinalitySpec"/> treats <c>min &gt; n</c>.
         /// </param>
-        public KnapsackSpec(int[] weights, long capacity)
+        public KnapsackSpec(ReadOnlySpan<int> weights, long capacity)
         {
-            ArgumentNullException.ThrowIfNull(weights);
-
             for (int i = 0; i < weights.Length; i++)
             {
                 if (weights[i] < 0)
@@ -46,7 +44,7 @@ namespace ZDD.Net.Specs
                 }
             }
 
-            _weights = (int[])weights.Clone();
+            _weights = weights.ToArray();
             _capacity = capacity;
 
             int n = _weights.Length;

@@ -257,13 +257,18 @@ namespace ZDD.Net.Graphs
         /// <param name="outLo">The minimum out-degree for each vertex.</param>
         /// <param name="outHi">The maximum out-degree for each vertex.</param>
         /// <example><code>DirectedGraphSet oneEach = DirectedGraphSet.DegreeConstrained(DirectedGraph.Complete(5), inLo: new[] { 1, 1, 1, 1, 1 }, inHi: new[] { 1, 1, 1, 1, 1 }, outLo: new[] { 1, 1, 1, 1, 1 }, outHi: new[] { 1, 1, 1, 1, 1 });</code></example>
-        /// <exception cref="ArgumentNullException"><paramref name="graph"/>, <paramref name="inLo"/>, <paramref name="inHi"/>, <paramref name="outLo"/> or <paramref name="outHi"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentNullException"><paramref name="graph"/> is <see langword="null"/>.</exception>
         /// <exception cref="ArgumentException">
         /// One of the arrays does not have exactly <see cref="Graphs.DirectedGraph.VertexCount"/> entries,
         /// or some <c>inHi[v]</c>/<c>outHi[v]</c> is less than the matching <c>inLo[v]</c>/<c>outLo[v]</c>.
         /// </exception>
         /// <exception cref="ArgumentOutOfRangeException">Some <c>inLo[v]</c> or <c>outLo[v]</c> is negative.</exception>
-        public static DirectedGraphSet DegreeConstrained(DirectedGraph graph, int[] inLo, int[] inHi, int[] outLo, int[] outHi)
+        public static DirectedGraphSet DegreeConstrained(
+            DirectedGraph graph,
+            ReadOnlySpan<int> inLo,
+            ReadOnlySpan<int> inHi,
+            ReadOnlySpan<int> outLo,
+            ReadOnlySpan<int> outHi)
         {
             ArgumentNullException.ThrowIfNull(graph);
             return Generate(graph, new DirectedDegreeConstraintSpec(graph, inLo, inHi, outLo, outHi));
