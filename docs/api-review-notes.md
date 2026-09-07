@@ -50,19 +50,15 @@
 
 `NonSubsetsOf` / `NonSupersetsOf`（L273, L282）には別名が無く、上記 4 組だけが対象。
 
-### 2. `LongCount` が層によって非対称
+### 2. `LongCount` が層によって非対称（M8-4 で解決）
 
-- `Zdd`: `Count`（`BigInteger`、厳密） + `CountApprox`（`double`、近似）はあるが **`LongCount` が無い**
-- `ZDD.Net.Graphs.GraphSet` / `ZDD.Net.Sets.SetSet<T>`: `Count` + `CountApprox` に加えて
-  **`LongCount()`**（`checked((long)Count)`、`GraphSet.cs` L88 / `SetSet.cs` L160）がある
+- `Zdd`: `Count`（`BigInteger`、厳密）+ `LongCount()`（`long`、厳密）+ `CountApprox`（`double`、近似）
+- `SetSet<T>` / `GraphSet` / `DirectedGraphSet`: 同じ3段構え
 
-`SetSet<T>` の XML doc（`SetSet.cs` L47）は「`Count`（厳密 `BigInteger`）・`LongCount`（厳密
-`long`、範囲外は例外）・`CountApprox`（近似 `double`）」という 3 段構えを謳っているが、この
-3 段構えは `SetSet<T>` と `GraphSet` だけのもので、**土台となる `Zdd` 自身には無い**。
-「まず `Zdd` にあるべき機能が高レベルラッパーにだけ追加されている」逆転が起きている。
-M8-1 での論点: `Zdd.LongCount()` を追加して 3 層で揃えるか、`Zdd` は `BigInteger` のみを
-正とする方針を明文化して `GraphSet`/`SetSet<T>` 側の `LongCount` を「利便のための例外」と
-doc で位置づけるか。
+M8-4（issue #190）で `Zdd.LongCount()` を `checked((long)Count)` として追加する側に決着した。
+上位3層が既に `LongCount()` を持っていたため、土台だけ `BigInteger` のみを正とする例外的な方針を
+採るより、4層で同じ数え上げ API を提供する方が説明しやすい。厳密値が `long` に収まらない場合は
+`OverflowException` を投げることを XML doc とテストで固定している。
 
 ### 3. `FrontierManager` と `VertexFrontierManager` で語彙が揃っていない
 
