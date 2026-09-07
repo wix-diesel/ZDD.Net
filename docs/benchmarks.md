@@ -86,4 +86,4 @@ Graphillion 2.1（Python公開API）と TdZdd `95ad69d` を、このマシンで
 | 9×9 | 14,698.7 KB | 6,540 KB | 46,408 KB |
 | 11×11 | 229,347.0 KB | 27,292 KB | 495,116 KB |
 
-比較用コードと再実行手順は [bench/comparison](../bench/comparison/README.md) を参照。
+比較用コードと再実行手順は [bench/comparison](https://github.com/wix-diesel/ZDD.Net/tree/main/bench/comparison) を参照。
