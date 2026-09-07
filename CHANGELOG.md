@@ -71,15 +71,6 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
   `ArgumentException` になる。**(3) `Larger` / `Smaller` は開区間**（Graphillion の
   `larger_than` / `smaller_than`、`GraphSet` の既存実装と同じ）。
 
-- `DirectedGraphSet` に `AddSomeItem` / `RemoveSomeItem` / `RemoveAddSomeItems` の引数なし版と
-  `ReadOnlySpan<DirectedEdge>` 版を追加し、`Zdd` に `LongCount()` を追加した（M8-4、issue #190）。
-  有向グラフ層だけ欠けていた 1 要素変種は `GraphSet` と同じく ZDD 演算の結果を
-  `PrecomputedZddSpec` で包むため、変換後も `Including` / `Excluding` などのフィルタを合成できる。
-  `edges` 版はグラフに属さない arc を `ArgumentException` で拒否する。3 arc の全族 256 通りで
-  無向版と有向版の結果を照合した。`Zdd.LongCount()` は `checked((long)Count)` であり、厳密値が
-  `long` に収まらない場合は `OverflowException` を投げる。これにより `Zdd` / `SetSet<T>` /
-  `GraphSet` / `DirectedGraphSet` の4層すべてで `Count` / `LongCount()` / `CountApprox` が揃った。
-
 ## [0.7.0] - 2026-09-06
 
 M7「有向グラフ対応」マイルストーン（[docs/PLAN.md](docs/PLAN.md) §12、

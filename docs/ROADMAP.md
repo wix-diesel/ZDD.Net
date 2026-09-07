@@ -215,39 +215,15 @@ M6-4→M6-5→M6-6 は直列。M6-9 以降は M6-8 の後に一列。
 
 ---
 
-## M8: API の対称化と凍結準備（v0.8）
-
-> **背景**: v0.7 到達後に4つの層（`Zdd` / `SetSet<T>` / `GraphSet` / `DirectedGraphSet`）の
-> public API を突き合わせたところ、同じ語彙が層ごとに欠けていることが分かった。
-> あわせて、凍結後には直せない項目（配列パラメータ・別名・`IHybridDdSpec`）をここで片付ける。
-> 設計の詳細は [docs/design/m8-api-symmetry.md](design/m8-api-symmetry.md)。
+## M8: 安定化と公開（v1.0）
 
 | 完了 | ID | タイトル | 内容 | 受け入れ条件 | 目安 | 依存 |
 |---|---|---|---|---|---|---|
-| [x] | **M8-1** | `GraphSet` / `DirectedGraphSet` の生成 API | `FromSets` / `Empty` / `PowerSet` / `FromZdd`。既存の `PrecomputedZddSpec` 経路に載せる | Graphillion の `GraphSet([[...], ...])` 相当が書ける。生成した族に `Including` などのフィルタが従来どおり効く | 〜300 | M7-9 |
-| [x] | **M8-2** | `GraphSet` / `DirectedGraphSet` の族代数演算 | `Union` / `Intersect` / `Difference` / `SymmetricDifference` ＋演算子、`Maximal` / `Minimal`、`ToUniverseOf` | 同一ユニバースでの結果が `Zdd` 層と一致。ユニバース不一致の例外が `ToUniverseOf` を案内する | 〜350 | M8-1 |
-| [x] | **M8-3** | `SetSet<T>` のフィルタと遅延列挙 | `Larger` / `Smaller` / `LenEquals` / `MinIter` / `MaxIter` / `RandIter` / `Complement` | `GraphSet` の同名メソッドと結果が一致。`Complement` がユニバース内に閉じている | 〜300 | M7-9（M8-1 と並行可） |
-| [x] | **M8-4** | 残りの層間ギャップ | `DirectedGraphSet` の1要素変種、`Zdd.LongCount()` | 4層の API 対応表に `×` が残らない | 〜200 | M8-2 |
-| [ ] | **M8-5** | 配列パラメータの `ReadOnlySpan<T>` 化 | スペック5箇所・高レベル API 4箇所。コンストラクタで防御的コピー | 既存の呼び出しがソース互換のまま通る。**呼び出し後に元配列を書き換えても結果が変わらない**回帰テスト | 〜250 | M7-9（並行可） |
-| [ ] | **M8-6** | `IHybridDdSpec<TScalar>` の決着 | 実装しても構築できない public 型を `internal` に戻す（推奨案） | public API から消え、内部実装とテストはそのまま通る | 〜100 | M7-9（並行可） |
-| [ ] | **M8-7** | 別名4組の主従の確定 | `Restrict` / `Permit` / `Subset0` / `Subset1` の doc 上の位置づけを統一（推奨は両方 public のまま） | 別名側が `<inheritdoc>` + `<seealso>` で正側を指す。`[Obsolete]` は付けない | 〜100 | M8-4 |
-| [ ] | **M8-8** | `GraphSet` の永続化 | `GraphSetBinaryFormat`（グラフ＋辺順序＋ZDD を1つの形式で） | ラウンドトリップで辺集合が一致。既存の `ZddBinaryFormat` のファイルが従来どおり読める | 〜300 | M8-2 |
-| [ ] | **M8-9** | v0.8 リリース | CHANGELOG / README / `docs/api-guide.md` / 移行対応表 §4 の更新 | — | ドキュメント | M8-8 |
-
-**M8 の並行可能性**: M8-3 / M8-5 / M8-6 は M7-9 の直後に並行して切れる。
-M8-1 → M8-2 → M8-4 → M8-7 は直列。M8-8 は M8-2 の後。
-
----
-
-## M9: 安定化と公開（v1.0）
-
-| 完了 | ID | タイトル | 内容 | 受け入れ条件 | 目安 | 依存 |
-|---|---|---|---|---|---|---|
-| [ ] | **M9-1** | 公開 API の凍結 | `PublicApiGenerator` + `Verify` による API 承認テスト、命名の最終レビュー | API 差分が意図せず入らない | 〜200 | M8-9 |
-| [ ] | **M9-2** | trim / NativeAOT 検証 | 警告ゼロ化、AOT サンプルの実行 | AOT で全サンプルが動く | 〜150 | M9-1 |
-| [ ] | **M9-3** | パッケージング | SourceLink、決定的ビルド、シンボルパッケージ、`README.md` の NuGet 表示 | `dotnet pack` の成果物を検証 | 設定のみ | M9-2 |
-| [ ] | **M9-4** | チュートリアル | Getting Started、Graphillion からの移行ガイド、性能チューニング指針 | — | ドキュメント | M9-3 |
-| [ ] | **M9-5** | v1.0 リリース | NuGet 公開、GitHub Release | — | — | M9-4 |
+| [ ] | **M8-1** | 公開 API の凍結 | `PublicApiGenerator` + `Verify` による API 承認テスト、命名の最終レビュー | API 差分が意図せず入らない | 〜200 | M7-9 |
+| [ ] | **M8-2** | trim / NativeAOT 検証 | 警告ゼロ化、AOT サンプルの実行 | AOT で全サンプルが動く | 〜150 | M8-1 |
+| [ ] | **M8-3** | パッケージング | SourceLink、決定的ビルド、シンボルパッケージ、`README.md` の NuGet 表示 | `dotnet pack` の成果物を検証 | 設定のみ | M8-2 |
+| [ ] | **M8-4** | チュートリアル | Getting Started、Graphillion からの移行ガイド、性能チューニング指針 | — | ドキュメント | M8-3 |
+| [ ] | **M8-5** | v1.0 リリース | NuGet 公開、GitHub Release | — | — | M8-4 |
 
 ---
 
@@ -263,25 +239,10 @@ M8-1 → M8-2 → M8-4 → M8-7 は直列。M8-8 は M8-2 の後。
 | M5 (v0.5) | 7 | 2 週 |
 | M6 (v0.6) | 16 | 3〜4 週 |
 | M7 (v0.7) | 9 | 2〜3 週 |
-| M8 (v0.8) | 9 | 2〜3 週 |
-| M9 (v1.0) | 5 | 1〜2 週 |
-| **合計** | **99** | **20〜27 週** |
+| M8 (v1.0) | 5 | 1〜2 週 |
+| **合計** | **90** | **18〜24 週** |
 
 1 PR あたり平均 250〜300 行、レビュー時間 15〜30 分を想定。
-
-### M8 を差し込んだ理由（2026-09-06 の改訂）
-
-当初 M8 だった「安定化と公開（v1.0）」を M9 に繰り下げ、その前に
-M8「API の対称化と凍結準備」を挟んだ。既存 issue #60〜64 のタイトル・ラベルも
-`[M9-x]` / `M9` に付け替えてある。
-
-- **4層の API 非対称は凍結前でなければならない**。とくに `GraphSet` / `DirectedGraphSet` に
-  族代数演算と明示的な生成手段が無いのは体裁ではなく機能の欠落で、API 承認テスト（M9-1）が
-  入った後は追加のたびに承認ベースラインが揺れる
-- **配列パラメータ（M8-5）・別名（M8-7）・`IHybridDdSpec`（M8-6）は凍結後には直せない**。
-  M9-1 の後では「意図せぬ差分」ではなく major バージョンを上げる話になる
-- 性能改善・キャンセル API・新スペックなど「後からでも足せるもの」は意図的に外し、
-  v1.1 バックログとして個別 issue に落とした（設計書 §10）
 
 ### M6 / M7 を差し込んだ理由（2026-09-04 の改訂）
 

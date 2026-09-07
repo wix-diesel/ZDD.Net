@@ -126,13 +126,6 @@ namespace ZDD.Net.Core
         /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
         public BigInteger Count => this.Evaluate<CardinalityEval, BigInteger>(default);
 
-        /// <summary>The exact number of sets in this family, as a <see cref="long"/>.</summary>
-        /// <remarks>Equivalent to <c>checked((long)Count)</c>.</remarks>
-        /// <exception cref="OverflowException"><see cref="Count"/> does not fit in a <see cref="long"/>.</exception>
-        /// <exception cref="InvalidOperationException">This is <c>default(Zdd)</c>.</exception>
-        /// <exception cref="ObjectDisposedException">The owning manager has been disposed.</exception>
-        public long LongCount() => checked((long)Count);
-
         /// <summary>The number of sets in this family, approximated as a <see cref="double"/>. Faster than <see cref="Count"/>.</summary>
         /// <remarks>
         /// Exact up to 2^53; beyond that low-order digits round off, and it saturates to

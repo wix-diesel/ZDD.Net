@@ -47,30 +47,6 @@ namespace ZDD.Net.Tests.Core
         }
 
         [Fact]
-        public void LongCountMatchesTheExactCountWhileItFits()
-        {
-            using ZddManager manager = new ZddManager(20);
-            Zdd family = PowerSetOf(manager) - manager.Singleton(0);
-
-            var universe = new ZDD.Net.Sets.SetUniverse<int>(Enumerable.Range(0, 20));
-            Zdd transferred = family.TransferTo(universe.Manager);
-            var setFamily = new ZDD.Net.Sets.SetSet<int>(universe, transferred);
-
-            Assert.Equal(checked((long)family.Count), family.LongCount());
-            Assert.Equal(setFamily.LongCount(), transferred.LongCount());
-        }
-
-        [Fact]
-        public void LongCountThrowsWhenTheExactCountDoesNotFitInALong()
-        {
-            using ZddManager manager = new ZddManager(63);
-            Zdd powerSet = PowerSetOf(manager);
-
-            Assert.Equal(BigInteger.One << 63, powerSet.Count);
-            Assert.Throws<OverflowException>(() => powerSet.LongCount());
-        }
-
-        [Fact]
         public void ThePowerSetHasTwoToTheVariableCountElements()
         {
             for (int variableCount = 0; variableCount <= MaxCountingVariableCount; variableCount++)
@@ -314,7 +290,6 @@ namespace ZDD.Net.Tests.Core
             Zdd invalid = default;
 
             Assert.Throws<InvalidOperationException>(() => invalid.Count);
-            Assert.Throws<InvalidOperationException>(() => invalid.LongCount());
             Assert.Throws<InvalidOperationException>(() => invalid.CountApprox);
             Assert.Throws<InvalidOperationException>(() => invalid.CountBySize());
             Assert.Throws<InvalidOperationException>(() => invalid.Evaluate<CardinalityEval, BigInteger>(default));
@@ -328,7 +303,6 @@ namespace ZDD.Net.Tests.Core
             manager.Dispose();
 
             Assert.Throws<ObjectDisposedException>(() => family.Count);
-            Assert.Throws<ObjectDisposedException>(() => family.LongCount());
             Assert.Throws<ObjectDisposedException>(() => family.CountApprox);
             Assert.Throws<ObjectDisposedException>(() => family.CountBySize());
         }
