@@ -105,7 +105,9 @@ namespace ZDD.Net.Benchmarks
                 return;
             }
 
-            BenchmarkRunner.Run<FrontierBuildBenchmarks>();
+            // Forward BenchmarkDotNet options (for example, --filter) so expensive cases can be
+            // measured independently when the host has an operational resource limit.
+            BenchmarkSwitcher.FromTypes(new[] { typeof(FrontierBuildBenchmarks) }).Run(args);
         }
     }
 }
