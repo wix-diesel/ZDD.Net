@@ -50,6 +50,27 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
   効かなくなるため採らず、v1.1 で単独検証する。3 辺のグラフの全族の全ペア（256 × 256 通り）で
   4 つの演算と `Maximal` / `Minimal` を総当たり照合済み。
 
+- `SetSet<T>` のサイズフィルタ `Larger` / `Smaller` / `LenEquals`、遅延列挙 `MinIter` / `MaxIter`
+  （`int` / `long` / `double`）/ `RandIter`、および `Complement`（M8-3、issue #189）。M8-2 とは
+  逆向きの非対称で、`GraphSet` / `DirectedGraphSet` にはあるのに土台の `SetSet<T>` に無かった。
+  `SetSet<T>` はグラフに限らない汎用の組合せ数え上げで直接使う型なので、「大きさで絞る」
+  「重み順に列挙する」がグラフ経由でしか使えないのは筋が通らない。実装は `GraphSet` の同名
+  メソッドをなぞる——サイズフィルタは `CardinalitySpec`（M3-5）を `Zdd.Subset` で 1 回の展開に
+  合成し（中間 ZDD を作らない）、`MinIter` / `MaxIter` は `LazyWeightEnumeration`、`RandIter` は
+  `Sample` の無限反復。3 辺相当（3 要素）のユニバースの全族 256 通り × しきい値 0〜4 でサイズ
+  フィルタと `Complement` を総当たり照合し、同じ辺集合を `SetSet<Edge>` と `GraphSet` の両方で
+  作って 7 つの API の結果が一致することも確認した。設計上の判断が 3 つ:
+  **(1) `Complement` はユニバース内に閉じる**——`Zdd.Complement()` はマネージャの全変数
+  （`VariableCount`）が対象で、マネージャがユニバースより広い場合に意味がずれるため、
+  `Zdd.ComplementWithin`（M6-1）でユニバースの item だけを対象にする（`SetUniverse<T>` は要素数
+  ぴったりのマネージャを作るので公開 API 経由では両者は一致するが、意味の基準はユニバース側に
+  置き、マネージャが広い場合の回帰テストを入れた）。**(2) 重みの受け方は層ごとに揃えない**——
+  `GraphSet` は `Func<Edge, TWeight>`、`SetSet<T>` は `IReadOnlyDictionary<T, TWeight>` で、
+  各層の既存の `MaxWeight` / `MinWeight` に合わせた意図的な差である旨を XML doc に明記した。
+  辞書はユニバースの全要素分が必要で、欠けていると列挙開始時ではなく**呼び出し時点で**
+  `ArgumentException` になる。**(3) `Larger` / `Smaller` は開区間**（Graphillion の
+  `larger_than` / `smaller_than`、`GraphSet` の既存実装と同じ）。
+
 ## [0.7.0] - 2026-09-06
 
 M7「有向グラフ対応」マイルストーン（[docs/PLAN.md](docs/PLAN.md) §12、

@@ -102,18 +102,18 @@ GraphSet gs = GraphSet.Graphs(grid, constraints);
 | `gs.difference(other)` / `gs - other` | `F.Difference(G)` / `F - G`、`gs.Difference(gs2)` / `gs - gs2` | 同上 |
 | `gs.symmetric_difference(other)` | `F.SymmetricDifference(G)` / `F ^ G`、`gs.SymmetricDifference(gs2)` / `gs ^ gs2` | 同上 |
 | `gs.maximal()` / `gs.minimal()` | `F.Maximal()` / `F.Minimal()`、`gs.Maximal()` / `gs.Minimal()` | 包含関係で極大／極小なメンバーだけ残す（`GraphSet` 版は M8-2） |
-| `gs.complement()` | `F.Complement()` | ZDD.Net には部分ユニバース版 `F.ComplementWithin(items)` もある（M6-1） |
+| `gs.complement()` | `F.Zdd.Complement()` / `F.Complement()` | `SetSet<T>` 版はユニバース内（`2^Universe \ F`）に閉じる。`Zdd` 版はマネージャの全変数が対象で、部分ユニバース版 `F.Zdd.ComplementWithin(items)` もある（M6-1、`SetSet<T>` 版は M8-3） |
 | `gs.cost_le(costs, cost)` | `gs.CostAtMost(costs, bound)` | `cost_ge`/`cost_eq` は `CostAtLeast`/`CostEquals`（M6-8） |
-| `gs.larger_than(size)` / `smaller_than(size)` | `gs.Larger(size)` / `gs.Smaller(size)` | |
-| `gs.len(size)` | `gs.LenEquals(size)` | |
+| `gs.larger_than(size)` / `smaller_than(size)` | `gs.Larger(size)` / `gs.Smaller(size)`、`F.Larger(size)` / `F.Smaller(size)` | どちらも開区間（`> size` / `< size`）。`SetSet<T>` 版は M8-3 |
+| `gs.len(size)` | `gs.LenEquals(size)` / `F.LenEquals(size)` | `SetSet<T>` 版は M8-3 |
 | `gs.including(edge_or_vertex)` / `gs.excluding(...)` | `gs.Including(edge)` / `gs.Excluding(edge)` | |
 | `gs.add_some_element()` | `F.AddSomeItem()` / `gs.AddSomeItem()` | 対象を絞る `items` 版もある（M6-7） |
 | `gs.remove_some_element()` | `F.RemoveSomeItem()` / `gs.RemoveSomeItem()` | 同上 |
 | `gs.remove_add_some_elements()` | `F.RemoveAddSomeItems()` / `gs.RemoveAddSomeItems()` | `O(|items|²)` になる点は Graphillion と同じ |
 | `gs.len()` / `gs.__len__()` | `F.Count` | `BigInteger`。近似が欲しいなら `F.CountApprox` |
-| `gs.rand_iter()` | `gs.RandIter(random)` | 遅延列挙。1 つだけ欲しいなら `F.Sample(random)` |
+| `gs.rand_iter()` | `gs.RandIter(random)` / `F.RandIter(random)` | 遅延列挙（無限列。`Take` で打ち切る）。1 つだけ欲しいなら `F.Sample(random)`（`SetSet<T>` 版は M8-3） |
 | `gs.choice()` | `F.Sample(random)` | |
-| `gs.min_iter(weights)` / `max_iter(weights)` | `gs.MinIter(weights)` / `gs.MaxIter(weights)` | 遅延列挙 |
+| `gs.min_iter(weights)` / `max_iter(weights)` | `gs.MinIter(weights)` / `gs.MaxIter(weights)`、`F.MinIter(weights)` / `F.MaxIter(weights)` | 遅延列挙。重みの受け方は `GraphSet` が `Func<Edge, TWeight>`、`SetSet<T>` が `IReadOnlyDictionary<T, TWeight>`（各層の `MaxWeight` / `MinWeight` に揃えた意図的な差。`SetSet<T>` 版は M8-3） |
 | `gs.probability(probabilities)` | `F.Probability(probabilities)` | |
 | `gs.dump(fp)` / `dumps()` / `load(fp)` / `loads(s)` | `ZDD.Net.Io.GraphillionTextFormat` | 相互運用済み。詳細は [docs/graphillion-io.md](graphillion-io.md)（M5-2） |
 

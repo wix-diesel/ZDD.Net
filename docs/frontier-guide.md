@@ -792,6 +792,44 @@ GraphSet backToOriginal = optimized.ToEdgeOrder(grid);                // 元の�
 `Zdd` の変数は `int` index だが、`SetSet<T>` は要素 `T` ↔ index の対応を `SetUniverse<T>` に
 肩代わりさせ、`GraphSet` はこの上に立つ `SetSet<Edge>` の特殊化になっている。
 
+サイズフィルタ・遅延列挙・`Complement` も `SetSet<T>` に揃えてある（M8-3、issue #189）。
+グラフに限らない組合せ数え上げでも、「大きさで絞る」「重みの軽い順に上から k 個だけ見る」が
+`GraphSet` を経由せずに書ける:
+
+```csharp
+var universe = new SetUniverse<string>(new[] { "a", "b", "c", "d" });
+SetSet<string> family = SetSet<string>.PowerSet(universe);
+
+SetSet<string> big   = family.Larger(2);      // 要素数 > 2（開区間。Graphillion の larger_than と同じ）
+SetSet<string> small = family.Smaller(2);     // 要素数 < 2（Smaller(0) は空の族）
+SetSet<string> exact = family.LenEquals(2);   // 要素数 == 2
+
+var weights = new Dictionary<string, int> { ["a"] = 3, ["b"] = 1, ["c"] = 4, ["d"] = -2 };
+
+foreach (var s in family.MinIter(weights).Take(10)) { /* 重みの軽い順に 10 個 */ }
+foreach (var s in family.MaxIter(weights).Take(10)) { /* 重い順に 10 個。TopK(weights, 10) と一致する */ }
+foreach (var s in family.RandIter(new Random(1)).Take(5)) { /* 一様ランダムに 5 個（無限列） */ }
+
+SetSet<string> rest = exact.Complement();     // 2^Universe \ exact
+```
+
+3 つの注意点:
+
+- **`Complement` はユニバース内に閉じる**。`Zdd.Complement()` はマネージャの全変数
+  （`VariableCount`）が対象なので、マネージャがユニバースより広い場合に意味がずれる。
+  `SetSet<T>.Complement()` は `Zdd.ComplementWithin`（M6-1）でユニバースの item だけを対象にする
+  （`SetUniverse<T>` は自分の要素数ぴったりのマネージャを作るので、公開 API 経由で作った族では
+  両者は一致する。それでも意味の基準はユニバース側に置いてある）
+- **重みの受け方は層ごとに違う**。`GraphSet` は `Func<Edge, TWeight>`、`SetSet<T>` は
+  `IReadOnlyDictionary<T, TWeight>`。各層の既存の `MaxWeight` / `MinWeight` に揃えた意図的な差で、
+  `int` / `long` / `double` の 3 つのオーバーロードがあるのも同じ
+- **重みの辞書はユニバースの全要素分が要る**。その族が一度も使っていない要素の分も必要で、
+  欠けていると（列挙の最初の `MoveNext` ではなく）`MinIter` / `MaxIter` を**呼んだ時点で**
+  `ArgumentException` になる。ユニバース外の要素の分が余分に入っている場合は単に無視される
+
+`MinIter` / `MaxIter` / `RandIter` はどれも遅延列挙で、`Take(k)` の手間は族の大きさではなく
+`k` に比例する——`2^40` 個のメンバーを持つ族から先頭 3 個を取っても一瞬で返る。
+
 グラフを実データ（ファイル）から読み込みたいときは `ZDD.Net.Io`（`DimacsGraph` / `EdgeListGraph` /
 `SimpleTextGraph`）を使う。`GraphSet` と組み合わせた「実グラフを読み込んで解く」エンドツーエンドの
 例、および `Graph.Optimize` を組み合わせた実践的な指針は [docs/tutorial.md](tutorial.md) を参照
