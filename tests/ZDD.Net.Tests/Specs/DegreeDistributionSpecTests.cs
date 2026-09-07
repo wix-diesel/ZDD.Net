@@ -179,10 +179,9 @@ namespace ZDD.Net.Tests.Specs
         }
 
         [Fact]
-        public void ConstructorRejectsNullGraphOrCounts()
+        public void ConstructorRejectsNullGraph()
         {
             Assert.Throws<ArgumentNullException>(() => new DegreeDistributionSpec(null!, new[] { 1 }));
-            Assert.Throws<ArgumentNullException>(() => new DegreeDistributionSpec(Graph.Path(2), null!));
         }
 
         [Fact]

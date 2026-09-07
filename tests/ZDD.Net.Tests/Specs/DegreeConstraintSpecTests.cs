@@ -106,11 +106,11 @@ namespace ZDD.Net.Tests.Specs
         }
 
         [Fact]
-        public void ConstructorRejectsNullLoOrHi()
+        public void ConstructorRejectsEmptyLoOrHi()
         {
             Graph graph = Graph.Path(2);
-            Assert.Throws<ArgumentNullException>(() => new DegreeConstraintSpec(graph, null!, new[] { 1, 1 }));
-            Assert.Throws<ArgumentNullException>(() => new DegreeConstraintSpec(graph, new[] { 0, 0 }, null!));
+            Assert.Throws<ArgumentException>(() => new DegreeConstraintSpec(graph, ReadOnlySpan<int>.Empty, new[] { 1, 1 }));
+            Assert.Throws<ArgumentException>(() => new DegreeConstraintSpec(graph, new[] { 0, 0 }, ReadOnlySpan<int>.Empty));
         }
 
         [Fact]

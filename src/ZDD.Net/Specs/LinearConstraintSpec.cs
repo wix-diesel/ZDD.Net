@@ -38,11 +38,11 @@ namespace ZDD.Net.Specs
         /// <summary>Creates a spec enforcing <c>Σ coefficients[i] x[i] {op} bound</c>.</summary>
         /// <param name="coefficients">
         /// The per-item coefficients <c>a[i]</c>; may contain negatives. Copied, so later mutating the
-        /// array passed in has no effect on the spec.
+        /// source storage has no effect on the spec.
         /// </param>
         /// <param name="op">The comparison to enforce.</param>
         /// <param name="bound">The bound <c>b</c>.</param>
-        public LinearConstraintSpec(int[] coefficients, LinearConstraintOperator op, long bound)
+        public LinearConstraintSpec(ReadOnlySpan<int> coefficients, LinearConstraintOperator op, long bound)
             : this(WidenToLong(coefficients), op, bound)
         {
         }
@@ -84,10 +84,8 @@ namespace ZDD.Net.Specs
             }
         }
 
-        private static long[] WidenToLong(int[] coefficients)
+        private static long[] WidenToLong(ReadOnlySpan<int> coefficients)
         {
-            ArgumentNullException.ThrowIfNull(coefficients);
-
             long[] widened = new long[coefficients.Length];
             for (int i = 0; i < coefficients.Length; i++)
             {

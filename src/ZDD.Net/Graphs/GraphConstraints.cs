@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using ZDD.Net.Specs;
 
@@ -67,9 +68,9 @@ namespace ZDD.Net.Graphs
         public IReadOnlyList<IReadOnlyList<int>>? VertexGroups { get; set; }
 
         /// <summary>
-        /// Linear constraints on the chosen edges: each entry requires <c>&#931; Coefficients[i] x[i] {Op} Bound</c>,
-        /// where <c>x[i]</c> is 1 if edge <c>i</c> is chosen and 0 otherwise. <c>Coefficients</c> must have
-        /// exactly one entry per edge of the graph the constraints are applied to. See <see cref="LinearConstraintSpec"/>.
+        /// Linear constraints on chosen edges; each coefficient array must have one entry per graph edge.
+        /// Arrays are read only during <see cref="GraphSet.Graphs(Graph, GraphConstraints)"/> or <see cref="GraphSet.Where(GraphConstraints)"/>;
+        /// <see cref="ReadOnlySpan{T}"/> cannot be used as a tuple element. See <see cref="LinearConstraintSpec"/>.
         /// </summary>
         public IReadOnlyList<(int[] Coefficients, LinearConstraintOperator Op, long Bound)>? LinearConstraints { get; set; }
     }
