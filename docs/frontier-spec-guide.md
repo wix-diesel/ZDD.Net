@@ -7,7 +7,8 @@
 - 公開の構築器 `FrontierBuilder.Build` は `IDdSpec<TState>` と `IArrayDdSpec` の両方に対応する
   オーバーロードを持ち、ここに載っているコードはそのまま呼べる。組み込みスペックの一覧や
   `Graph`/`FrontierManager`/`BuildOptions` の使い方は [docs/frontier-guide.md](frontier-guide.md) を参照。
-  `IHybridDdSpec<TScalar>` 版のオーバーロードは未対応（v0.3 以降）。
+  スカラと配列を組み合わせる `IHybridDdSpec<TScalar>` は、構築オーバーロードが実装されるまで
+  internal とし、v1.1 で構築入口とともに再公開する予定（[issue #200](https://github.com/wix-diesel/ZDD.Net/issues/200)）。
 - 設計の背景は [docs/PLAN.md](PLAN.md) §6
 
 ---
@@ -184,19 +185,24 @@ public readonly struct ExactlyKSpec : IDdSpec<int>
 - `k > n` でも枝刈りが全部の枝を ⊥ に落とすので、族は空になる（特別扱いは不要）。
   ただし `n == 0` は根が水準 0（＝⊥）になってしまうので、この例はアイテムが 1 個以上あることを前提にしている。
 
-## 6. `IArrayDdSpec` と `IHybridDdSpec<TScalar>` の使い分け
+## 6. 配列状態と内部のハイブリッド契約
 
 | インタフェース | 状態 | 使いどころ |
 |---|---|---|
 | `IDdSpec<TState>` | 固定長の struct | 大きさがコンパイル時に決まる。基数制約・線形制約・オートマトン |
 | `IArrayDdSpec` | `int` の可変長配列 | 大きさが実行時に決まる。mate 配列・comp 配列 |
-| `IHybridDdSpec<TScalar>` | スカラ + `int` 配列 | 上の 2 つの複合。「mate 配列 + 残り辺数のカウンタ」など |
+
+内部には、スカラと `int` 配列を組み合わせる `IHybridDdSpec<TScalar>` 契約もある。ただし現在は
+`FrontierBuilder.Build` に対応する入口がないため public API ではなく、利用者は実装できない。
+「mate 配列 + 残り辺数のカウンタ」のような状態は、現時点では `IArrayDdSpec` の配列にスカラも
+格納する。ハイブリッド版の構築入口を実装する v1.1 バックログ
+（[issue #200](https://github.com/wix-diesel/ZDD.Net/issues/200)）で再公開を検討する。
 
 配列部分の等価判定とハッシュは**構築器が要素ごとに行う**ので、利用者は書かなくてよい。
 その代わり、**意味を持たなくなったスロットは決まった値（通常 0）に戻す**こと。
 ゴミが残っていると、同じ意味の状態が別物として扱われる。
 
-配列の長さは `ArrayLength` で 1 度だけ問い合わせる。構築中に変えてはならない。
+`IArrayDdSpec` の配列の長さは `ArrayLength` で 1 度だけ問い合わせる。構築中に変えてはならない。
 
 ## 7. スペックは `struct` で書く
 

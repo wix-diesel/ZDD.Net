@@ -914,7 +914,7 @@ Core 単体より大きく出ることが多い。`bench/ZDD.Net.Benchmarks` は
   [wix-diesel.github.io/ZDD.Net](https://wix-diesel.github.io/ZDD.Net/)
 - 「格子グラフの s–t パスを数える」から「実グラフを読み込んで解く」までの一本道の入門:
   [docs/tutorial.md](tutorial.md)
-- スペックの規約の詳しい説明（`IDdSpec`/`IArrayDdSpec`/`IHybridDdSpec` の契約、状態の寿命、
+- スペックの規約の詳しい説明（public な `IDdSpec` / `IArrayDdSpec` の契約、状態の寿命、
   `struct` を強く勧める理由）: [docs/frontier-spec-guide.md](frontier-spec-guide.md)
 - Core（`ZddManager`/`Zdd`）の使い方: [docs/api-guide.md](api-guide.md)
 - ベンチ基準値（代表ケースの実行時間・フロンティア幅・ノード数、数千辺の実グラフでの完走記録）:

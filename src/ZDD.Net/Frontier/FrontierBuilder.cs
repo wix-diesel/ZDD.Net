@@ -21,8 +21,8 @@ namespace ZDD.Net.Frontier
     /// </code>
     /// </example>
     /// <remarks>
-    /// This is the library's central entry point: write an <see cref="IDdSpec{TState}"/> (or
-    /// <see cref="IArrayDdSpec"/> / <see cref="IHybridDdSpec{TScalar}"/>) and call one of the
+    /// This is the library's central entry point: write an <see cref="IDdSpec{TState}"/> or
+    /// <see cref="IArrayDdSpec"/> and call one of the
     /// <c>Build</c> overloads to get a <see cref="Zdd"/> that every Core operation (<c>Count</c>,
     /// enumeration, <c>Sample</c>, <c>MaxWeight</c>, ...) works on unchanged.
     /// </remarks>
