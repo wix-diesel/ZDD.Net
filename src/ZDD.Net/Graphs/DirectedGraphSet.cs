@@ -313,6 +313,32 @@ namespace ZDD.Net.Graphs
         /// <summary>Keeps only the arc sets that are minimal under inclusion.</summary>
         public DirectedGraphSet Minimal() => WrapPrecomputed(Zdd.Minimal());
 
+        // ==================== 1-item variants (M8-4) ====================
+
+        /// <summary>Removes one contained arc from each arc set, using every arc of <see cref="Graph"/>. See <see cref="Zdd.RemoveSomeItem()"/>.</summary>
+        public DirectedGraphSet RemoveSomeItem() => WrapPrecomputed(Zdd.RemoveSomeItem());
+
+        /// <summary>Removes one contained arc, chosen from <paramref name="edges"/>, from each arc set. See <see cref="Zdd.RemoveSomeItem(ReadOnlySpan{int})"/>.</summary>
+        /// <exception cref="ArgumentException">An arc of <paramref name="edges"/> is not part of <see cref="Graph"/>.</exception>
+        public DirectedGraphSet RemoveSomeItem(params ReadOnlySpan<DirectedEdge> edges) =>
+            WrapPrecomputed(Zdd.RemoveSomeItem(ResolveEdgeIndices(edges)));
+
+        /// <summary>Adds one absent arc to each arc set, using every arc of <see cref="Graph"/>. See <see cref="Zdd.AddSomeItem()"/>.</summary>
+        public DirectedGraphSet AddSomeItem() => WrapPrecomputed(Zdd.AddSomeItem());
+
+        /// <summary>Adds one absent arc, chosen from <paramref name="edges"/>, to each arc set. See <see cref="Zdd.AddSomeItem(ReadOnlySpan{int})"/>.</summary>
+        /// <exception cref="ArgumentException">An arc of <paramref name="edges"/> is not part of <see cref="Graph"/>.</exception>
+        public DirectedGraphSet AddSomeItem(params ReadOnlySpan<DirectedEdge> edges) =>
+            WrapPrecomputed(Zdd.AddSomeItem(ResolveEdgeIndices(edges)));
+
+        /// <summary>Removes one contained arc and adds a different absent arc to each arc set, using every arc of <see cref="Graph"/>. See <see cref="Zdd.RemoveAddSomeItems()"/>.</summary>
+        public DirectedGraphSet RemoveAddSomeItems() => WrapPrecomputed(Zdd.RemoveAddSomeItems());
+
+        /// <summary>Removes one contained arc and adds a different absent arc, both chosen from <paramref name="edges"/>, to each arc set. See <see cref="Zdd.RemoveAddSomeItems(ReadOnlySpan{int})"/>.</summary>
+        /// <exception cref="ArgumentException">An arc of <paramref name="edges"/> is not part of <see cref="Graph"/>.</exception>
+        public DirectedGraphSet RemoveAddSomeItems(params ReadOnlySpan<DirectedEdge> edges) =>
+            WrapPrecomputed(Zdd.RemoveAddSomeItems(ResolveEdgeIndices(edges)));
+
         // ==================== Universe transfer (M8-2) ====================
 
         /// <summary>
@@ -739,6 +765,18 @@ namespace ZDD.Net.Graphs
             }
 
             throw new ArgumentException($"Arc {edge} is not part of this graph set's graph.", nameof(edge));
+        }
+
+        private int[] ResolveEdgeIndices(ReadOnlySpan<DirectedEdge> edges)
+        {
+            var indices = new int[edges.Length];
+
+            for (int i = 0; i < edges.Length; i++)
+            {
+                indices[i] = ResolveEdgeIndex(edges[i]);
+            }
+
+            return indices;
         }
 
         private IEnumerable<IReadOnlySet<DirectedEdge>> IterCore<TWeight, TOps>(Func<DirectedEdge, TWeight> weight, bool maximize)
