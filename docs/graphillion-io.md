@@ -182,3 +182,35 @@ M7（`DirectedGraph` / `DirectedGraphSet`、[docs/design/m7-directed-graphs.md](
 - 無向の `Graph`/`GraphSet` からエッジリスト・簡易テキスト・DIMACS で読み書きする分には、この節は
   一切関係ない（そちらは `EdgeListGraph`/`SimpleTextGraph`/`DimacsGraph` が担当し、Graphillion とは
   無関係の独自フォーマット）
+
+## 8. `GraphSetBinaryFormat`（独自バイナリ形式）
+
+`GraphSetBinaryFormat` は `GraphSet` / `DirectedGraphSet` を、グラフと ZDD をまとめて保存する独自形式。
+Graphillion との互換性は無いが、読み込み側で同じグラフと辺順序を別途再現する必要がない。
+
+```csharp
+using (FileStream output = File.Create("paths.gzdd"))
+    GraphSetBinaryFormat.Write(paths, output);
+
+using FileStream input = File.OpenRead("paths.gzdd");
+GraphSet restored = GraphSetBinaryFormat.Read(input);
+```
+
+形式バージョン 1 の配置は次のとおり。整数のうち頂点数・辺数・頂点番号・順序写像は unsigned
+LEB128（`VarInt`）、版数だけは 4 バイト little-endian で格納する。
+
+1. `GZDB`（4 バイトのマジック）
+2. 形式版数（現在は 1）
+3. 種別（0: 無向、1: 有向）
+4. 頂点数、辺数
+5. 辺順序どおりの端点ペア
+6. `SourceOrder` の有無（0/1）。存在する場合は、現在の各辺から元の辺 index への置換
+7. `ZddBinaryFormat` の完全なバイト列（`ZDDB` ヘッダを含む）
+
+`Graph.Optimize()` / `DirectedGraph.Optimize()` 後の `SourceOrder` も保存されるため、復元後に元の辺順序へ
+`ToEdgeOrder` できる。読み込まれた族は `FromZdd` と同様に構築時のスペックを持たず、その後のフィルタは
+既存 ZDD に対する部分族演算として処理される。
+
+`SetSet<T>` は意図的に対象外。任意の `T` を一意かつ安全に直列化する契約が無いためである。必要な場合は
+利用者側で要素を保存し、復元した `SetUniverse<T>` と `SetSet<T>.FromSets` を使うか、辺集合なら
+`GraphSet` / `DirectedGraphSet` に変換してこの形式を使う。

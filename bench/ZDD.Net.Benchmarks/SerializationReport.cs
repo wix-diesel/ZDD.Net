@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using ZDD.Net.Core;
 using ZDD.Net.Frontier;
+using ZDD.Net.Graphs;
 using ZDD.Net.Io;
 
 namespace ZDD.Net.Benchmarks
@@ -23,6 +24,38 @@ namespace ZDD.Net.Benchmarks
             {
                 Measure(name, variableCount, build);
             }
+
+            MeasureLargeGraphSet();
+        }
+
+        private static void MeasureLargeGraphSet()
+        {
+            Graph graph = Graph.Path(4001);
+            GraphSet family = GraphSet.FromSets(graph, new[] { graph.Edges });
+            using ZddManager familyManager = family.Zdd.Manager;
+            using MemoryStream stream = new MemoryStream();
+
+            Stopwatch writeWatch = Stopwatch.StartNew();
+            GraphSetBinaryFormat.Write(family, stream);
+            writeWatch.Stop();
+            long fileSize = stream.Length;
+            stream.Position = 0;
+
+            Stopwatch readWatch = Stopwatch.StartNew();
+            GraphSet restored = GraphSetBinaryFormat.Read(stream);
+            readWatch.Stop();
+            using ZddManager restoredManager = restored.Zdd.Manager;
+
+            long nodeCount = familyManager.NodeCount;
+
+            if (restored.Count != family.Count || restored.Graph.EdgeCount != graph.EdgeCount)
+            {
+                throw new InvalidOperationException("GraphSet/path-4000: round trip did not preserve the graph family.");
+            }
+
+            Console.WriteLine(
+                $"{"GraphSet/path-4000",-40} {0,7:F2}ms {writeWatch.Elapsed.TotalMilliseconds,7:F2}ms " +
+                $"{readWatch.Elapsed.TotalMilliseconds,7:F2}ms {fileSize,10:N0}B {((double)fileSize / nodeCount),10:F2} {nodeCount,10:N0}");
         }
 
         private static void Measure(string name, int variableCount, Func<ZddManager, BuildOptions?, Zdd> build)
