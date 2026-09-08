@@ -41,8 +41,7 @@
 **public API の表面積が実質 2 倍**になっている。`docs/frontier-guide.md` や XML doc では
 「`OnSet`/`OffSet`/`SupersetsOf`/`SubsetsOf` が主、`Subset1`/`Subset0`/`Restrict`/`Permit` は
 別名」という位置づけで書かれている箇所はあるが、**API 上はどちらが正でどちらが別名かを示す
-属性・doc 上の統一表記が無い**。M9-1 の issue 本文が挙げている論点そのものなので、ここでは
-選択肢だけ提示する:
+属性・doc 上の統一表記が無い**。M8-7（issue #193）で次の選択肢を検討した:
 
 - (a) 両方 public のまま残す。ただし XML doc で「推奨はこちら」を明記し、`<seealso>` で相互参照する
 - (b) 別名側を `[Obsolete("Use XxxOf instead", error: false)]` にして緩やかに一本化へ誘導する
@@ -50,6 +49,10 @@
   馴染みがある利用者への配慮は失われる）
 
 `NonSubsetsOf` / `NonSupersetsOf`（L273, L282）には別名が無く、上記 4 組だけが対象。
+
+**決定（B26）**: (a) を採用し、.NET 的な名前を正、SAPPOROBDD / TdZdd 由来の名前を
+互換別名とした。移植の入口を維持する価値があり、警告を出してまで一本化する理由がないため、
+互換別名に `[Obsolete]` は付けない。
 
 ### 2. `LongCount` が層によって非対称（M8-4 で解決）
 

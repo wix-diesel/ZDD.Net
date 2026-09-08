@@ -89,6 +89,11 @@ v1.0 までは API 未確定のプレリリース版として公開する（[doc
 
 ### Changed
 
+- `Zdd` の同一操作を指す 4 組について、`SupersetsOf` / `SubsetsOf` / `OnSet` / `OffSet` を
+  正の名前、`Restrict` / `Permit` / `Subset1` / `Subset0` を SAPPOROBDD / TdZdd 互換の別名と
+  位置づけた（M8-7、issue #193）。移植時の入口として両方を public のまま残し、互換別名には
+  `[Obsolete]` を付けない。XML doc の継承と相互参照により、生成ドキュメントから両方を辿れる。
+
 - `IHybridDdSpec<TScalar>` を public API から外し、構築入口が実装されるまで `internal` に戻した
   （M8-6、issue #192）。公開されていた一方で `FrontierBuilder.Build` に対応するオーバーロードがなく、
   実装しても ZDD を構築できない契約だったため、実利用者はいないと見込まれる破壊的変更。

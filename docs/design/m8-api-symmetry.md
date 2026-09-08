@@ -291,7 +291,7 @@ CHANGELOG の M0〜M4 で毎回「未対応」と書かれ続けている（`api
 | `Subset1(int)` | `OnSet(int)` |
 | `Subset0(int)` | `OffSet(int)` |
 
-**推奨は (a) 両方 public のまま残し、doc 上の主従を確定させる**。
+**(a) 両方 public のまま残し、doc 上の主従を確定させる方針に決定した**（B26）。
 
 - `NonSubsetsOf` / `NonSupersetsOf` には対応する別名が無く、削除しても**対称にはならない**
   （SAPPOROBDD 語彙で API 全体を覆えるわけではない）
