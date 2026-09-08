@@ -266,6 +266,7 @@ namespace ZDD.Net.Core
 
         /// <inheritdoc cref="SupersetsOf"/>
         /// <remarks>Alias retained for compatibility with SAPPOROBDD and TdZdd.</remarks>
+        /// <seealso cref="SupersetsOf"/>
         public Zdd Restrict(Zdd g) => Manager.SupersetsOf(this, g);
 
         /// <summary>Keeps only sets that are contained in (are a subset of) some set in <paramref name="g"/>.</summary>
@@ -283,6 +284,7 @@ namespace ZDD.Net.Core
 
         /// <inheritdoc cref="SubsetsOf"/>
         /// <remarks>Alias retained for compatibility with SAPPOROBDD and TdZdd.</remarks>
+        /// <seealso cref="SubsetsOf"/>
         public Zdd Permit(Zdd g) => Manager.SubsetsOf(this, g);
 
         /// <summary>Keeps only sets that are not a subset of any set in <paramref name="g"/>.</summary>
@@ -328,6 +330,7 @@ namespace ZDD.Net.Core
 
         /// <inheritdoc cref="OnSet"/>
         /// <remarks>Alias retained for compatibility with SAPPOROBDD and TdZdd.</remarks>
+        /// <seealso cref="OnSet"/>
         public Zdd Subset1(int item) => Manager.OnSet(this, item);
 
         /// <summary>Keeps only sets that do not contain <paramref name="item"/> (Minato's <c>Subset0</c>).</summary>
@@ -341,6 +344,7 @@ namespace ZDD.Net.Core
 
         /// <inheritdoc cref="OffSet"/>
         /// <remarks>Alias retained for compatibility with SAPPOROBDD and TdZdd.</remarks>
+        /// <seealso cref="OffSet"/>
         public Zdd Subset0(int item) => Manager.OffSet(this, item);
 
         /// <summary>Toggles membership of each item in <paramref name="items"/> across every set (a batched <see cref="Change"/>).</summary>
