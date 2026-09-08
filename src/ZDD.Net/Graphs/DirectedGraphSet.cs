@@ -177,10 +177,16 @@ namespace ZDD.Net.Graphs
         /// </exception>
         public static DirectedGraphSet FromZdd(DirectedGraph graph, Zdd zdd)
         {
+            return FromZdd(graph, zdd, null);
+        }
+
+        /// <summary>Builds a precomputed family using the supplied options for its new manager.</summary>
+        internal static DirectedGraphSet FromZdd(DirectedGraph graph, Zdd zdd, ZddManagerOptions? options)
+        {
             ArgumentNullException.ThrowIfNull(graph);
 
             int levelOffset = GraphSetFactory.ValidateZddOver(zdd, graph.EdgeCount, nameof(zdd));
-            var universe = new SetUniverse<DirectedEdge>(graph.Edges);
+            var universe = new SetUniverse<DirectedEdge>(graph.Edges, managerOptions: options);
             Zdd rebuilt = Build(universe.Manager, new PrecomputedZddSpec(zdd, levelOffset));
             return FromPrecomputed(graph, universe, rebuilt);
         }

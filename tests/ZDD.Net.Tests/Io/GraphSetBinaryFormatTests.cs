@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Xunit;
+using ZDD.Net.Core;
 using ZDD.Net.Graphs;
 using ZDD.Net.Io;
 
@@ -87,6 +88,29 @@ namespace ZDD.Net.Tests.Io
             Assert.Equal(optimized.Edges, restored.Graph.Edges);
             Assert.Equal(source.Edges, restored.Graph.SourceOrder!.Source.Edges);
             Assert.Equal(optimized.SourceOrder!.ToSourceEdgeIndices, restored.Graph.SourceOrder.ToSourceEdgeIndices);
+            AssertMembersEqual(original, restored);
+        }
+
+        [Fact]
+        public void ReadOptionsConfigureTheReturnedFamilyManager()
+        {
+            GraphSet original = GraphSet.PowerSet(Graph.Path(3));
+            using MemoryStream stream = new MemoryStream(Write(original));
+            var options = new ZddManagerOptions
+            {
+                InitialNodeCapacity = 64,
+                InitialUniqueTableCapacity = 256,
+                InitialCacheCapacity = 32,
+                MaxCacheCapacity = 512,
+            };
+
+            GraphSet restored = GraphSetBinaryFormat.Read(stream, options);
+            ZddStatistics statistics = restored.Zdd.Manager.GetStatistics();
+
+            Assert.Equal(66L, statistics.NodeTableCapacity);
+            Assert.Equal(256, statistics.UniqueTableCapacity);
+            Assert.Equal(32, statistics.CacheCapacity);
+            Assert.Equal(512, statistics.MaxCacheCapacity);
         }
 
         [Fact]
