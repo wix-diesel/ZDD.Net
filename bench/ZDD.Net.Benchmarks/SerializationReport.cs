@@ -50,7 +50,7 @@ namespace ZDD.Net.Benchmarks
             }
 
             Console.WriteLine(
-                $"{\"GraphSet/path-4000\",-40} {0,7:F2}ms {writeWatch.Elapsed.TotalMilliseconds,7:F2}ms " +
+                $"{"GraphSet/path-4000",-40} {0,7:F2}ms {writeWatch.Elapsed.TotalMilliseconds,7:F2}ms " +
                 $"{readWatch.Elapsed.TotalMilliseconds,7:F2}ms {fileSize,10:N0}B {((double)fileSize / graph.EdgeCount),10:F2} {graph.EdgeCount,10:N0}");
         }
 
