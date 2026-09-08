@@ -177,11 +177,11 @@ namespace ZDD.Net.Graphs
         /// </exception>
         public static GraphSet FromZdd(Graph graph, Zdd zdd)
         {
-            return FromZdd(graph, zdd, null);
+            return FromZddWithOptions(graph, zdd, null);
         }
 
         /// <summary>Builds a precomputed family using the supplied options for its new manager.</summary>
-        internal static GraphSet FromZdd(Graph graph, Zdd zdd, ZddManagerOptions? options)
+        internal static GraphSet FromZddWithOptions(Graph graph, Zdd zdd, ZddManagerOptions? options)
         {
             ArgumentNullException.ThrowIfNull(graph);
 

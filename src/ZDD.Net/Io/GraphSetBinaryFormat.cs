@@ -53,7 +53,7 @@ namespace ZDD.Net.Io
 
             try
             {
-                return GraphSet.FromZdd(graph, zdd, options);
+                return GraphSet.FromZddWithOptions(graph, zdd, options);
             }
             finally
             {
@@ -71,7 +71,7 @@ namespace ZDD.Net.Io
 
             try
             {
-                return DirectedGraphSet.FromZdd(graph, zdd, options);
+                return DirectedGraphSet.FromZddWithOptions(graph, zdd, options);
             }
             finally
             {
